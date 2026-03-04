@@ -1,0 +1,27 @@
+{
+  "name": "lexflow",
+  "version": "1.0.0",
+  "description": "LexFlow -- Gestionale Studio Legale con Crittografia Zero-Knowledge",
+  "author": "Pietro Longo",
+  "private": true,
+  "scripts": {
+    "tauri": "npx @tauri-apps/cli",
+    "dev": "npx @tauri-apps/cli dev",
+    "build": "npx @tauri-apps/cli build --target universal-apple-darwin",
+    "build:mac": "npx @tauri-apps/cli build --target universal-apple-darwin",
+    "build:mac-arm": "npx @tauri-apps/cli build --target aarch64-apple-darwin",
+    "build:mac-intel": "npx @tauri-apps/cli build --target x86_64-apple-darwin",
+    "build:win": "npx @tauri-apps/cli build --target x86_64-pc-windows-msvc --bundles msi",
+    "build:all": "npx @tauri-apps/cli build",
+    "build:me": "npx @tauri-apps/cli build && rm -rf /Applications/LexFlow.app ~/Desktop/LexFlow.app && cp -R src-tauri/target/release/bundle/macos/LexFlow.app /Applications/ && cp -R src-tauri/target/release/bundle/macos/LexFlow.app ~/Desktop/ && echo '\\n✅ BOOM! App aggiornata in Applicazioni e sulla Scrivania.'",
+    "android:init": "npx @tauri-apps/cli android init",
+    "android:dev": "npx @tauri-apps/cli android dev",
+    "android:build": "npx @tauri-apps/cli android build --apk",
+    "android:build-aab": "npx @tauri-apps/cli android build --aab",
+    "icons": "python3 scripts/generate-icons.py"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0"
+  }
+}
+

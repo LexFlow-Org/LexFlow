@@ -1,0 +1,20 @@
+# Forza Rust a usare lld (il linker ultraveloce) invece di quello di base del Mac
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "link-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld"
+]
+
+[target.x86_64-apple-darwin]
+rustflags = [
+    "-C", "link-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld"
+]
+
+[target.x86_64-pc-windows-msvc]
+# lld-link per cross-compile Windows da macOS via cargo-xwin
+linker = "lld-link"
+rustflags = [
+    "-C", "linker-flavor=msvc",
+    "-C", "link-arg=/LIBPATH:/Users/pietrolongo/Library/Caches/cargo-xwin/xwin/sdk/lib/um/x86_64",
+    "-C", "link-arg=/LIBPATH:/Users/pietrolongo/Library/Caches/cargo-xwin/xwin/sdk/lib/ucrt/x86_64",
+    "-C", "link-arg=/LIBPATH:/Users/pietrolongo/Library/Caches/cargo-xwin/xwin/crt/lib/x86_64",
+]

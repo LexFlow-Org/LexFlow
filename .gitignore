@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Build output — Tauri
+src-tauri/target/
+src-tauri/gen/
+client/dist/
+
+# Build artifacts
+*.dmg
+*.exe
+*.blockmap
+*.ipa
+*.apk
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.android
+.env.keys
+*.keystore
+*.jks
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temp
+*.tmp
+
+# License key registry (encrypted local file — NEVER commit)
+scripts/.lexflow-issued-keys.enc
+scripts/.lexflow-registry-salt
+scripts/lexflow-keys-export.csv
+*.bak
+src-tauri/icons/android/
+src-tauri/icons/ios/
+
+__pycache__/

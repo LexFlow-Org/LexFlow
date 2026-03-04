@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- LSUIElement: Marks the app as an "agent" (menu bar / tray app).
+         macOS will NOT deprioritize or terminate the process when no windows are visible.
+         The app icon will be hidden from the Dock (expected for tray-only apps). -->
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
