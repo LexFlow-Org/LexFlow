@@ -885,7 +885,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters }) {
     const d = new Date(sow); d.setDate(sow.getDate() + i);
     return { date: d, str: toDateStr(d) };
   });
-  const { filtered, eventsByDate } = useFilteredByDate(events, activeFilters);
+  const { eventsByDate } = useFilteredByDate(events, activeFilters);
 
   return (
     <div className="h-full flex flex-col">
@@ -1015,7 +1015,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
   for (let d = 1; d <= daysInMonth; d++) { cells.push({ date: new Date(year, month, d), str: toDateStr(new Date(year, month, d)), outside: false }); }
   const remaining = 42 - cells.length;
   for (let d = 1; d <= remaining; d++) { cells.push({ date: new Date(year, month + 1, d), str: toDateStr(new Date(year, month + 1, d)), outside: true }); }
-  const { filtered, eventsByDate } = useFilteredByDate(events, activeFilters);
+  const { eventsByDate } = useFilteredByDate(events, activeFilters);
 
   return (
     <div className="h-full flex flex-col">
