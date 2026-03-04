@@ -145,6 +145,20 @@ function resolveDragResult(ev, newStartMin, duration, newDate) {
   return { ...ev, date: newDate || ev.date, timeStart: fmtTime(sh, sm), timeEnd: fmtTime(eh, em) };
 }
 
+/** Shared drag cleanup — remove listeners, reset element styles, remove ghost */
+function cleanupDragListeners(onMove, onUp, el, ghostId, longPressTimer) {
+  document.removeEventListener('mousemove', onMove);
+  document.removeEventListener('mouseup', onUp);
+  if (longPressTimer) clearTimeout(longPressTimer);
+  document.body.classList.remove('agenda-dragging');
+  document.body.style.cursor = '';
+  const ghost = document.getElementById(ghostId);
+  if (ghost) ghost.remove();
+  el.style.zIndex = '';
+  el.style.opacity = '';
+  el.style.transition = '';
+}
+
 /** Drag handler for TodayView events — vertical only (time change + long-press duplicate) */
 function handleTodayEventDrag(e, ev, onSave) {
   if (e.target.closest('.resize-handle') || e.target.closest('button')) return;
@@ -182,28 +196,9 @@ function handleTodayEventDrag(e, ev, onSave) {
   };
 
   const onUp = () => {
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-    if (longPressTimer) clearTimeout(longPressTimer);
-    document.body.classList.remove('agenda-dragging');
-    document.body.style.cursor = '';
-    const ghost = document.getElementById('drag-ghost');
-    if (ghost) ghost.remove();
-    el.style.zIndex = '';
-    el.style.opacity = '';
-    el.style.transition = '';
+    cleanupDragListeners(onMove, onUp, el, 'drag-ghost', longPressTimer);
 
-    if (isDuplicate && moved) {
-      el._didDrag = true;
-      el._didLongPress = true;
-      onSave({ ...resolveDragResult(ev, newStart, duration), id: genId(), completed: false, title: ev.title });
-    } else if (isDuplicate && !moved) {
-      el._didLongPress = true;
-      onSave({ ...ev, id: genId(), title: ev.title + ' (copia)', completed: false });
-    } else if (moved && newStart !== origStart) {
-      el._didDrag = true;
-      onSave(resolveDragResult(ev, newStart, duration));
-    }
+    commitDragResult(el, ev, onSave, { moved, isDuplicate, newStartMin: newStart, origStartMin: origStart, duration, newDate: ev.date, origDate: ev.date });
   };
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
@@ -284,16 +279,7 @@ function handleWeekEventDrag(e, ev, onSave) {
   };
 
   const onUp = () => {
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-    if (longPressTimer) clearTimeout(longPressTimer);
-    document.body.classList.remove('agenda-dragging');
-    document.body.style.cursor = '';
-    const ghost = document.getElementById('week-drag-ghost');
-    if (ghost) ghost.remove();
-    el.style.zIndex = '';
-    el.style.opacity = '';
-    el.style.transition = '';
+    cleanupDragListeners(onMove, onUp, el, 'week-drag-ghost', longPressTimer);
     commitDragResult(el, ev, onSave, { moved, isDuplicate, newStartMin, origStartMin, duration, newDate, origDate });
   };
   document.addEventListener('mousemove', onMove);
@@ -699,6 +685,21 @@ function UpcomingPanel({ events, onEdit, onToggle }) {
 }
 
 // --- Vista Oggi ---
+
+/** Shared hook: filter events by active category filters and group by date */
+function useFilteredByDate(events, activeFilters) {
+  const filtered = activeFilters.length > 0 ? events.filter(e => activeFilters.includes(e.category)) : events;
+  const eventsByDate = useMemo(() => {
+    const map = new Map();
+    for (const e of filtered) {
+      if (!map.has(e.date)) map.set(e.date, []);
+      map.get(e.date).push(e);
+    }
+    return map;
+  }, [filtered]);
+  return { filtered, eventsByDate };
+}
+
 function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
   const now = new Date();
   const todayStr = toDateStr(now);
@@ -884,17 +885,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters }) {
     const d = new Date(sow); d.setDate(sow.getDate() + i);
     return { date: d, str: toDateStr(d) };
   });
-  const filtered = activeFilters.length > 0 ? events.filter(e => activeFilters.includes(e.category)) : events;
-
-  // Pre-group events by date for O(1) lookup per day
-  const eventsByDate = useMemo(() => {
-    const map = new Map();
-    for (const e of filtered) {
-      if (!map.has(e.date)) map.set(e.date, []);
-      map.get(e.date).push(e);
-    }
-    return map;
-  }, [filtered]);
+  const { filtered, eventsByDate } = useFilteredByDate(events, activeFilters);
 
   return (
     <div className="h-full flex flex-col">
@@ -1024,17 +1015,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
   for (let d = 1; d <= daysInMonth; d++) { cells.push({ date: new Date(year, month, d), str: toDateStr(new Date(year, month, d)), outside: false }); }
   const remaining = 42 - cells.length;
   for (let d = 1; d <= remaining; d++) { cells.push({ date: new Date(year, month + 1, d), str: toDateStr(new Date(year, month + 1, d)), outside: true }); }
-  const filtered = activeFilters.length > 0 ? events.filter(e => activeFilters.includes(e.category)) : events;
-
-  // Pre-group events by date for O(1) lookup per cell
-  const eventsByDate = useMemo(() => {
-    const map = new Map();
-    for (const e of filtered) {
-      if (!map.has(e.date)) map.set(e.date, []);
-      map.get(e.date).push(e);
-    }
-    return map;
-  }, [filtered]);
+  const { filtered, eventsByDate } = useFilteredByDate(events, activeFilters);
 
   return (
     <div className="h-full flex flex-col">
