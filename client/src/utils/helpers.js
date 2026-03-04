@@ -31,3 +31,27 @@ export function formatDateIT(dateStr, fallback = '—') {
   if (Number.isNaN(d.getTime())) return fallback;
   return d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+
+/**
+ * Map agenda events to notification-schedule items.
+ * Filters out completed / no-time events and coerces remindMinutes.
+ * @param {Array} events
+ * @param {number} defaultPreavviso
+ * @returns {Array<{id,date,time,title,remindMinutes,customRemindTime}>}
+ */
+export function mapAgendaToScheduleItems(events, defaultPreavviso = 30) {
+  return (events || [])
+    .filter(e => !e.completed && e.timeStart)
+    .map(e => ({
+      id: e.id,
+      date: e.date,
+      time: e.timeStart,
+      title: e.title,
+      remindMinutes: (() => {
+        if (typeof e.remindMinutes === 'number') return e.remindMinutes;
+        if (e.remindMinutes === 'custom') return 0;
+        return Number.parseInt(e.remindMinutes, 10) || defaultPreavviso;
+      })(),
+      customRemindTime: e.customRemindTime || null,
+    }));
+}

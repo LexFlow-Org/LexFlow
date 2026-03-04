@@ -24,6 +24,29 @@ const DAYS_IT = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 const MONTHS_IT = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
 /* ======== Billing helpers ======== */
+
+function PracticeSelect({ id, label, value, onChange, practices, placeholder = '-- Nessuno --' }) {
+  return (
+    <div>
+      <label htmlFor={id} className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">{label}</label>
+      <select id={id} value={value} onChange={onChange} className="input-field w-full py-3">
+        <option value="">{placeholder}</option>
+        {practices.filter(p => p.status === 'active').map(p => (
+          <option key={p.id} value={p.id}>{p.client} — {p.object}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+PracticeSelect.propTypes = {
+  id: PropTypes.string.isRequired,
+  label: PropTypes.string.isRequired,
+  value: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+  practices: PropTypes.array.isRequired,
+  placeholder: PropTypes.string,
+};
+
 const CPA_RATE = 0.04;
 const IVA_RATE = 0.22;
 
@@ -481,15 +504,7 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
         </div>
         <form onSubmit={handleSave} className="px-8 py-6 space-y-5">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="manual-log-practice" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Fascicolo</label>
-              <select id="manual-log-practice" value={practiceId} onChange={e => setPracticeId(e.target.value)} className="input-field w-full py-3">
-                <option value="">-- Nessuno --</option>
-                {practices.filter(p => p.status === 'active').map(p => (
-                  <option key={p.id} value={p.id}>{p.client} \u2014 {p.object}</option>
-                ))}
-              </select>
-            </div>
+            <PracticeSelect id="manual-log-practice" label="Fascicolo" value={practiceId} onChange={e => setPracticeId(e.target.value)} practices={practices} />
             <div>
               <label htmlFor="manual-log-date" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Data</label>
               <input id="manual-log-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="input-field w-full py-3" />
@@ -618,15 +633,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="inv-practice" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Fascicolo</label>
-              <select id="inv-practice" value={practiceId} onChange={e => setPracticeId(e.target.value)} className="input-field w-full py-3">
-                <option value="">-- Seleziona --</option>
-                {practices.filter(p => p.status === 'active').map(p => (
-                  <option key={p.id} value={p.id}>{p.client} \u2014 {p.object}</option>
-                ))}
-              </select>
-            </div>
+            <PracticeSelect id="inv-practice" label="Fascicolo" value={practiceId} onChange={e => setPracticeId(e.target.value)} practices={practices} placeholder="-- Seleziona --" />
             <div>
               <label htmlFor="inv-client" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Cliente</label>
               <input id="inv-client" value={clientName} onChange={e => setClientName(e.target.value)} className="input-field w-full py-3" placeholder="Nome cliente..." />

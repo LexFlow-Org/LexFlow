@@ -4,6 +4,7 @@ import { Routes, Route, useNavigate } from 'react-router-dom';
 import { Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
 import * as api from './tauri-api';
+import { mapAgendaToScheduleItems } from './utils/helpers';
 
 // Componenti
 import LoginScreen from './components/LoginScreen';
@@ -55,12 +56,6 @@ export default function App() {
   const [settings, setSettings] = useState({});
   const [selectedId, setSelectedId] = useState(null);
 
-  /** Coerce remindMinutes to integer — handles 'custom' string from UI */
-  const coerceRemindMinutes = useCallback((raw, fallback) => {
-    if (typeof raw === 'number') return raw;
-    if (raw === 'custom') return 0;
-    return Number.parseInt(raw, 10) || (fallback || 30);
-  }, []);
   const [showCreate, setShowCreate] = useState(false);
 
   // --- 1. INIZIALIZZAZIONE ---
@@ -199,6 +194,35 @@ export default function App() {
     return [...manualEvents, ...syncedEvents];
   }, []);
 
+  // Centralizza il sync dello schedule verso il backend Rust scheduler
+  const syncScheduleToBackend = useCallback(async (events, pList, settingsOverride) => {
+    if (!api.syncNotificationSchedule) return;
+    // A. Eventi agenda
+    const s = settingsOverride || settings;
+    const agendaItems = mapAgendaToScheduleItems(events, s?.preavviso || 30);
+    // B. Scadenze fascicoli attivi (notifica alle 09:00 del giorno della scadenza)
+    const deadlineItems = [];
+    (pList || []).filter(p => p.status === 'active').forEach(p => {
+      (p.deadlines || []).forEach(d => {
+        deadlineItems.push({
+          id: `deadline-${p.id}-${d.date}`,
+          date: d.date,
+          time: '09:00',
+          title: `Scadenza: ${d.label} — ${p.client}`,
+          remindMinutes: 0, // notify at 09:00 sharp
+        });
+      });
+    });
+    const items = [...agendaItems, ...deadlineItems];
+    const briefingTimes = [
+      s?.briefingMattina || '08:30',
+      s?.briefingPomeriggio || '14:30',
+      s?.briefingSera || '19:30',
+    ];
+    await api.syncNotificationSchedule({ briefingTimes, items })
+      .catch(e => console.warn('[App] syncScheduleToBackend failed:', e));
+  }, [settings]);
+
   const loadAllData = useCallback(async () => {
     try {
       const pracs = (await api.loadPractices().catch(() => []) || []).map(p => ({
@@ -216,37 +240,12 @@ export default function App() {
       
       await api.saveAgenda(synced).catch(e => console.warn('[App] saveAgenda sync failed:', e));
 
-      // Sync schedule al backend subito dopo il load — così lo scheduler Rust
-      // ha dati freschi immediatamente (events + deadlines + briefing times)
-      if (api.syncNotificationSchedule) {
-        const agendaItems = synced
-          .filter(e => !e.completed && e.timeStart)
-          .map(e => ({
-            id: e.id, date: e.date, time: e.timeStart, title: e.title,
-            remindMinutes: coerceRemindMinutes(e.remindMinutes, currentSettings?.preavviso),
-            customRemindTime: e.customRemindTime || null,
-          }));
-        const deadlineItems = [];
-        pracs.filter(p => p.status === 'active').forEach(p => {
-          (p.deadlines || []).forEach(d => {
-            deadlineItems.push({
-              id: `deadline-${p.id}-${d.date}`, date: d.date, time: '09:00',
-              title: `Scadenza: ${d.label} — ${p.client}`, remindMinutes: 0,
-            });
-          });
-        });
-        const briefingTimes = [
-          currentSettings?.briefingMattina || '08:30',
-          currentSettings?.briefingPomeriggio || '14:30',
-          currentSettings?.briefingSera || '19:30',
-        ];
-        await api.syncNotificationSchedule({ briefingTimes, items: [...agendaItems, ...deadlineItems] })
-          .catch(e => console.warn('[App] syncNotificationSchedule failed:', e));
-      }
+      // Sync schedule al backend (riusa syncScheduleToBackend con settings override)
+      await syncScheduleToBackend(synced, pracs, currentSettings);
     } catch (e) { 
       console.error("Errore caricamento dati:", e); 
     }
-  }, [syncDeadlinesToAgenda]);
+  }, [syncDeadlinesToAgenda, syncScheduleToBackend]);
 
   const handleUnlock = useCallback(async () => {
     setBlurred(false);
@@ -307,43 +306,6 @@ export default function App() {
       toast.error('Errore salvataggio agenda');
     }
   };
-
-  // Centralizza il sync dello schedule verso il backend Rust scheduler
-  const syncScheduleToBackend = useCallback(async (events, pList) => {
-    if (!api.syncNotificationSchedule) return;
-    // A. Eventi agenda
-    const agendaItems = (events || [])
-      .filter(e => !e.completed && e.timeStart)
-      .map(e => ({
-        id: e.id,
-        date: e.date,
-        time: e.timeStart,
-        title: e.title,
-        remindMinutes: coerceRemindMinutes(e.remindMinutes, settings?.preavviso),
-        customRemindTime: e.customRemindTime || null,
-      }));
-    // B. Scadenze fascicoli attivi (notifica alle 09:00 del giorno della scadenza)
-    const deadlineItems = [];
-    (pList || []).filter(p => p.status === 'active').forEach(p => {
-      (p.deadlines || []).forEach(d => {
-        deadlineItems.push({
-          id: `deadline-${p.id}-${d.date}`,
-          date: d.date,
-          time: '09:00',
-          title: `Scadenza: ${d.label} — ${p.client}`,
-          remindMinutes: 0, // notify at 09:00 sharp
-        });
-      });
-    });
-    const items = [...agendaItems, ...deadlineItems];
-    const briefingTimes = [
-      settings?.briefingMattina || '08:30',
-      settings?.briefingPomeriggio || '14:30',
-      settings?.briefingSera || '19:30',
-    ];
-    await api.syncNotificationSchedule({ briefingTimes, items })
-      .catch(e => console.warn('[App] syncScheduleToBackend failed:', e));
-  }, [settings, coerceRemindMinutes]);
 
   const handleSelectPractice = (id) => {
     setSelectedId(id);

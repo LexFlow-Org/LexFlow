@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import { CalendarClock, ChevronRight, Check, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
-import { formatDateIT } from '../utils/helpers';
+import { formatDateIT, mapAgendaToScheduleItems } from '../utils/helpers';
 
 const TYPE_LABELS = { civile: 'Civile', penale: 'Penale', amm: 'Amministrativo', stra: 'Stragiudiziale', agenda: 'Agenda' };
 
@@ -95,20 +95,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
       await api.saveSettings(updated);
       // Sync backend scheduler con formato corretto: briefingTimes (array) + items preservati
       const briefingTimes = [briefingMattina, briefingPomeriggio, briefingSera].filter(Boolean);
-      const items = (agendaEvents || [])
-        .filter(e => !e.completed && e.timeStart)
-        .map(e => ({
-          id: e.id,
-          date: e.date,
-          time: e.timeStart,
-          title: e.title,
-          remindMinutes: (() => {
-            if (typeof e.remindMinutes === 'number') return e.remindMinutes;
-            if (e.remindMinutes === 'custom') return 0;
-            return Number.parseInt(e.remindMinutes, 10) || (settings?.preavviso || 30);
-          })(),
-          customRemindTime: e.customRemindTime || null,
-        }));
+      const items = mapAgendaToScheduleItems(agendaEvents, settings?.preavviso || 30);
       await api.syncNotificationSchedule({ briefingTimes, items });
       setBriefingDirty(false);
       toast.success('Orari briefing aggiornati');
@@ -131,22 +118,26 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    /** Parse date string and return days-diff from today, or null if invalid */
+    const daysDiff = (dateStr) => {
+      const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime())) return null;
+      d.setHours(0, 0, 0, 0);
+      return Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+    };
+
     const all = [];
     (practices || []).filter(p => p.status === 'active').forEach(p => {
       (p.deadlines || []).forEach(d => {
-        const dDate = new Date(d.date);
-        if (Number.isNaN(dDate.getTime())) return;
-        dDate.setHours(0, 0, 0, 0);
-        const diff = Math.ceil((dDate - today) / (1000 * 60 * 60 * 24));
+        const diff = daysDiff(d.date);
+        if (diff === null) return;
         all.push({ ...d, practiceId: p.id, client: p.client, object: p.object, type: p.type, diff, source: 'practice' });
       });
     });
 
     (agendaEvents || []).filter(e => e.category === 'scadenza' && !e.completed).forEach(e => {
-      const dDate = new Date(e.date);
-      if (Number.isNaN(dDate.getTime())) return;
-      dDate.setHours(0, 0, 0, 0);
-      const diff = Math.ceil((dDate - today) / (1000 * 60 * 60 * 24));
+      const diff = daysDiff(e.date);
+      if (diff === null) return;
       all.push({
         id: e.id,
         label: e.title,

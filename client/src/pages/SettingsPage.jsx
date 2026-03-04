@@ -43,6 +43,17 @@ const AUTOLOCK_OPTIONS = [
   { value: 0, label: 'Mai' },
 ];
 
+/** Shared pwd+error+showPwd state used by all password modals */
+function usePwdState() {
+  const [pwd, setPwd] = useState('');
+  const [error, setError] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const pwdChange = e => { setPwd(e.target.value); setError(''); };
+  const toggle = () => setShowPwd(v => !v);
+  return { pwd, setPwd, error, setError, showPwd, pwdChange, toggle };
+}
+
+
 /* ── Shared Modal Sub-Components ── */
 
 /** Header gradient bar with icon, title, subtitle, close button */
@@ -134,11 +145,30 @@ ModalFooter.propTypes = {
   actionClass: PropTypes.string,
   disabled: PropTypes.bool,
 };
+
+/** Wrapper: ModalOverlay + container + ModalHeader + body + ModalFooter */
+function ModalShell({ labelledBy, headerProps, footerProps, children }) {
+  return (
+    <ModalOverlay onClose={footerProps.onClose} labelledBy={labelledBy} zIndex={200}>
+      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
+        <ModalHeader {...headerProps} />
+        <div className="px-8 py-6 space-y-4">
+          {children}
+        </div>
+        <ModalFooter {...footerProps} />
+      </div>
+    </ModalOverlay>
+  );
+}
+ModalShell.propTypes = {
+  labelledBy: PropTypes.string.isRequired,
+  headerProps: PropTypes.object.isRequired,
+  footerProps: PropTypes.object.isRequired,
+  children: PropTypes.node.isRequired,
+};
 /* ── Factory Reset Modal ── */
 function FactoryResetModal({ onClose }) {
-  const [pwd, setPwd] = useState('');
-  const [error, setError] = useState('');
-  const [showPwd, setShowPwd] = useState(false);
+  const { pwd, error, setError, showPwd, pwdChange, toggle } = usePwdState();
 
   const doReset = async () => {
     if (!pwd) { setError('Password richiesta.'); return; }
@@ -148,24 +178,18 @@ function FactoryResetModal({ onClose }) {
   };
 
   return (
-    <ModalOverlay onClose={onClose} labelledBy="factory-reset-title" zIndex={200}>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <ModalHeader id="factory-reset-title" icon={LogOut} iconBg="bg-red-500/10" iconBorder="border-red-500/20" iconColor="text-red-400"
-          title="Factory Reset" subtitle="Tutti i dati verranno eliminati" onClose={onClose} />
-        <div className="px-8 py-6 space-y-4">
-          <p className="text-text-muted text-xs leading-relaxed">
-            Stai per cancellare <span className="text-white font-bold">tutti i dati del Vault</span>.
-            Inserisci la password per confermare. <span className="font-semibold">Azione irreversibile.</span>
-          </p>
-          <PasswordField value={pwd} onChange={e => { setPwd(e.target.value); setError(''); }}
-            showPwd={showPwd} onToggle={() => setShowPwd(v => !v)} placeholder="Password vault…" autoFocus
-            onKeyDown={async (e) => { if (e.key === 'Enter' && pwd) doReset(); }} />
-          {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
-        </div>
-        <ModalFooter onClose={onClose} onAction={doReset} actionLabel="Conferma Reset"
-          actionClass="rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all" />
-      </div>
-    </ModalOverlay>
+    <ModalShell labelledBy="factory-reset-title"
+      headerProps={{ id: 'factory-reset-title', icon: LogOut, iconBg: 'bg-red-500/10', iconBorder: 'border-red-500/20', iconColor: 'text-red-400', title: 'Factory Reset', subtitle: 'Tutti i dati verranno eliminati', onClose }}
+      footerProps={{ onClose, onAction: doReset, actionLabel: 'Conferma Reset', actionClass: 'rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all' }}>
+      <p className="text-text-muted text-xs leading-relaxed">
+        Stai per cancellare <span className="text-white font-bold">tutti i dati del Vault</span>.
+        Inserisci la password per confermare. <span className="font-semibold">Azione irreversibile.</span>
+      </p>
+      <PasswordField value={pwd} onChange={pwdChange}
+        showPwd={showPwd} onToggle={toggle} placeholder="Password vault…" autoFocus
+        onKeyDown={async (e) => { if (e.key === 'Enter' && pwd) doReset(); }} />
+      {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+    </ModalShell>
   );
 }
 
@@ -173,10 +197,8 @@ FactoryResetModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── Export Backup Modal ── */
 function ExportBackupModal({ onClose }) {
-  const [pwd, setPwd] = useState('');
+  const { pwd, error, setError, showPwd, pwdChange, toggle } = usePwdState();
   const [pwdConfirm, setPwdConfirm] = useState('');
-  const [showPwd, setShowPwd] = useState(false);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const doExport = async () => {
@@ -204,32 +226,21 @@ function ExportBackupModal({ onClose }) {
   };
 
   return (
-    <ModalOverlay onClose={onClose} labelledBy="export-backup-title" zIndex={200}>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <ModalHeader id="export-backup-title" icon={Download} iconBg="bg-primary/10" iconBorder="border-primary/20" iconColor="text-primary"
-          title="Esporta Backup" subtitle="Crea un file .lex cifrato" onClose={onClose} />
-        <div className="px-8 py-6 space-y-4">
-          <p className="text-text-muted text-xs leading-relaxed">
-            Scegli una password per proteggere il file di backup. Ti servirà per importarlo su un altro dispositivo.
-          </p>
-          <div className="space-y-3">
-            <PasswordField value={pwd} onChange={e => { setPwd(e.target.value); setError(''); }}
-              showPwd={showPwd} onToggle={() => setShowPwd(v => !v)} placeholder="Password backup…" autoFocus />
-            <div className="relative">
-              <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
-              <input type={showPwd ? 'text' : 'password'}
-                className="w-full py-3 pl-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
-                placeholder="Conferma password…"
-                value={pwdConfirm}
-                onChange={e => { setPwdConfirm(e.target.value); setError(''); }}
-                onKeyDown={e => { if (e.key === 'Enter') doExport(); }} />
-            </div>
-          </div>
-          {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
-        </div>
-        <ModalFooter onClose={onClose} onAction={doExport} actionLabel={loading ? 'Esporto…' : 'Esporta'} disabled={loading} />
+    <ModalShell labelledBy="export-backup-title"
+      headerProps={{ id: 'export-backup-title', icon: Download, iconBg: 'bg-primary/10', iconBorder: 'border-primary/20', iconColor: 'text-primary', title: 'Esporta Backup', subtitle: 'Crea un file .lex cifrato', onClose }}
+      footerProps={{ onClose, onAction: doExport, actionLabel: loading ? 'Esporto…' : 'Esporta', disabled: loading }}>
+      <p className="text-text-muted text-xs leading-relaxed">
+        Scegli una password per proteggere il file di backup. Ti servirà per importarlo su un altro dispositivo.
+      </p>
+      <div className="space-y-3">
+        <PasswordField value={pwd} onChange={pwdChange}
+          showPwd={showPwd} onToggle={toggle} placeholder="Password backup…" autoFocus />
+        <PasswordField value={pwdConfirm} onChange={e => { setPwdConfirm(e.target.value); setError(''); }}
+          showPwd={showPwd} onToggle={toggle} placeholder="Conferma password…"
+          onKeyDown={e => { if (e.key === 'Enter') doExport(); }} />
       </div>
-    </ModalOverlay>
+      {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+    </ModalShell>
   );
 }
 
@@ -237,9 +248,7 @@ ExportBackupModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── Import Backup Modal ── */
 function ImportBackupModal({ onClose }) {
-  const [pwd, setPwd] = useState('');
-  const [showPwd, setShowPwd] = useState(false);
-  const [error, setError] = useState('');
+  const { pwd, error, setError, showPwd, pwdChange, toggle } = usePwdState();
   const [loading, setLoading] = useState(false);
 
   const doImport = async () => {
@@ -266,23 +275,18 @@ function ImportBackupModal({ onClose }) {
   };
 
   return (
-    <ModalOverlay onClose={onClose} labelledBy="import-backup-title" zIndex={200}>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <ModalHeader id="import-backup-title" icon={Upload} iconBg="bg-primary/10" iconBorder="border-primary/20" iconColor="text-primary"
-          title="Importa Backup" subtitle="Sovrascrive i dati attuali" onClose={onClose} />
-        <div className="px-8 py-6 space-y-4">
-          <p className="text-text-muted text-xs leading-relaxed">
-            Inserisci la password con cui è stato cifrato il file di backup.
-            {' '}<span className="text-white font-semibold">I dati attuali verranno sovrascritti.</span>
-          </p>
-          <PasswordField value={pwd} onChange={e => { setPwd(e.target.value); setError(''); }}
-            showPwd={showPwd} onToggle={() => setShowPwd(v => !v)} placeholder="Password backup…" autoFocus
-            onKeyDown={e => { if (e.key === 'Enter') doImport(); }} />
-          {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
-        </div>
-        <ModalFooter onClose={onClose} onAction={doImport} actionLabel={loading ? 'Importo…' : 'Importa'} disabled={loading} />
-      </div>
-    </ModalOverlay>
+    <ModalShell labelledBy="import-backup-title"
+      headerProps={{ id: 'import-backup-title', icon: Upload, iconBg: 'bg-primary/10', iconBorder: 'border-primary/20', iconColor: 'text-primary', title: 'Importa Backup', subtitle: 'Sovrascrive i dati attuali', onClose }}
+      footerProps={{ onClose, onAction: doImport, actionLabel: loading ? 'Importo…' : 'Importa', disabled: loading }}>
+      <p className="text-text-muted text-xs leading-relaxed">
+        Inserisci la password con cui è stato cifrato il file di backup.
+        {' '}<span className="text-white font-semibold">I dati attuali verranno sovrascritti.</span>
+      </p>
+      <PasswordField value={pwd} onChange={pwdChange}
+        showPwd={showPwd} onToggle={toggle} placeholder="Password backup…" autoFocus
+        onKeyDown={e => { if (e.key === 'Enter') doImport(); }} />
+      {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+    </ModalShell>
   );
 }
 
