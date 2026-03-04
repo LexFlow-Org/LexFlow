@@ -70,6 +70,17 @@ function ModalHeader({ id, icon: Icon, iconBg, iconBorder, iconColor, title, sub
   );
 }
 
+
+ModalHeader.propTypes = {
+  id: PropTypes.string.isRequired,
+  icon: PropTypes.elementType.isRequired,
+  iconBg: PropTypes.string.isRequired,
+  iconBorder: PropTypes.string.isRequired,
+  iconColor: PropTypes.string.isRequired,
+  title: PropTypes.string.isRequired,
+  subtitle: PropTypes.string.isRequired,
+  onClose: PropTypes.func.isRequired,
+};
 /** Password input with KeyRound icon and show/hide toggle */
 function PasswordField({ value, onChange, showPwd, onToggle, placeholder = 'Password…', autoFocus = false, onKeyDown }) {
   return (
@@ -92,6 +103,16 @@ function PasswordField({ value, onChange, showPwd, onToggle, placeholder = 'Pass
   );
 }
 
+PasswordField.propTypes = {
+  value: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+  showPwd: PropTypes.bool.isRequired,
+  onToggle: PropTypes.func.isRequired,
+  placeholder: PropTypes.string,
+  autoFocus: PropTypes.bool,
+  onKeyDown: PropTypes.func,
+};
+
 /** Standard footer: Annulla + action button */
 function ModalFooter({ onClose, onAction, actionLabel, actionClass, disabled }) {
   return (
@@ -105,6 +126,14 @@ function ModalFooter({ onClose, onAction, actionLabel, actionClass, disabled }) 
   );
 }
 
+
+ModalFooter.propTypes = {
+  onClose: PropTypes.func.isRequired,
+  onAction: PropTypes.func.isRequired,
+  actionLabel: PropTypes.string.isRequired,
+  actionClass: PropTypes.string,
+  disabled: PropTypes.bool,
+};
 /* ── Factory Reset Modal ── */
 function FactoryResetModal({ onClose }) {
   const [pwd, setPwd] = useState('');
