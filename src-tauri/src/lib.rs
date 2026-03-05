@@ -3792,6 +3792,7 @@ fn verify_binary_integrity() {
 }
 
 /// Setup notification permissions and send welcome notification on first launch.
+#[allow(unused_variables)]
 fn setup_notification_permissions(app: &tauri::App, data_dir_for_scheduler: &std::path::Path) {
     use tauri_plugin_notification::NotificationExt;
     let state = app.notification().permission_state();
@@ -3871,6 +3872,7 @@ fn autolock_loop(ah: AppHandle) {
 }
 
 /// Copy all files from one directory to another, skipping existing files.
+#[cfg(not(target_os = "android"))]
 fn copy_dir_non_overwrite(src: &std::path::Path, dest_dir: &std::path::Path) {
     let entries = match fs::read_dir(src) {
         Ok(e) => e,
@@ -3885,6 +3887,7 @@ fn copy_dir_non_overwrite(src: &std::path::Path, dest_dir: &std::path::Path) {
 }
 
 /// Copy security files from one directory to another, skipping existing files.
+#[cfg(not(target_os = "android"))]
 fn copy_security_files_if_missing(src_dir: &std::path::Path, dest_dir: &std::path::Path) {
     for sec_file in &[
         LICENSE_FILE,

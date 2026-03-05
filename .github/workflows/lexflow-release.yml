@@ -66,6 +66,9 @@ jobs:
           workspaces: ./src-tauri -> target
           shared-key: preflight
 
+      - name: Remove local cargo config (CI uses default linker)
+        run: rm -f src-tauri/.cargo/config.toml
+
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
@@ -184,19 +187,8 @@ jobs:
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
-      - name: Install lld (llvm) and ensure ld64.lld in PATH
-        shell: bash
-        run: |
-          brew update || true
-          brew install llvm || true
-          BREW_PREFIX=$(brew --prefix)
-          if [ -f "$BREW_PREFIX/opt/llvm/bin/ld.lld" ]; then
-            sudo ln -sf "$BREW_PREFIX/opt/llvm/bin/ld.lld" /usr/local/bin/ld64.lld 2>/dev/null || true
-            sudo ln -sf "$BREW_PREFIX/opt/llvm/bin/ld.lld" /opt/homebrew/bin/ld64.lld 2>/dev/null || true
-          fi
-          echo "$BREW_PREFIX/opt/llvm/bin" | sudo tee /etc/paths.d/llvm > /dev/null || true
-          export PATH="$BREW_PREFIX/opt/llvm/bin:$PATH"
-          which ld64.lld || echo "WARNING: ld64.lld not found, will use default linker"
+      - name: Remove local cargo config (CI uses default linker)
+        run: rm -f src-tauri/.cargo/config.toml
 
       - name: Rust cache
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
@@ -290,6 +282,10 @@ jobs:
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
+      - name: Remove local cargo config (CI uses default linker)
+        shell: powershell
+        run: Remove-Item -Force -ErrorAction SilentlyContinue src-tauri/.cargo/config.toml
+
       - name: Build Windows MSI (Lite)
         shell: powershell
         run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi
@@ -368,6 +364,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
+
+      - name: Remove local cargo config (CI uses default linker)
+        shell: powershell
+        run: Remove-Item -Force -ErrorAction SilentlyContinue src-tauri/.cargo/config.toml
 
       - name: Write WebView2 offline config
         shell: powershell
