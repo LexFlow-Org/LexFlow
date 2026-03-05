@@ -16,7 +16,8 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
