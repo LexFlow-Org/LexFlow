@@ -266,7 +266,17 @@ jobs:
           fi
 
       - name: Inject release signing
-        run: python3 scripts/inject-signing.py
+        run: |
+          GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+          KS="src-tauri/gen/android/app/release.keystore"
+          if [ ! -f "$KS" ] || [ ! -f "$GRADLE" ]; then
+            echo "Keystore or Gradle not found, skipping"
+            exit 0
+          fi
+          SIGNING='    signingConfigs {\n        create("release") {\n            storeFile = file("release.keystore")\n            storePassword = System.getenv("ANDROID_STORE_PASSWORD") ?: ""\n            keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: ""\n            keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: ""\n        }\n    }\n'
+          sed -i "s|buildTypes {|${SIGNING}\n    buildTypes {|" "$GRADLE"
+          sed -i 's|getByName("release") {|getByName("release") {\n                signingConfig = signingConfigs.getByName("release")|' "$GRADLE"
+          echo "Gradle signing configured"
 
       - name: Build Android
         env:
@@ -282,9 +292,59 @@ jobs:
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: python3 scripts/sign-apk.py
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
+          APK=$(find src-tauri/gen/android -name "*universal-release.apk" 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            APK=$(find src-tauri/gen/android -name "*release.apk" ! -name "*unsigned*" | head -1)
+          fi
+          if [ -z "$APK" ]; then echo "::error::No release APK found"; exit 1; fi
+          echo "Source APK: $APK"
+          ALIGNED="/tmp/lexflow-aligned.apk"
+          "$BT/zipalign" -f -p 4 "$APK" "$ALIGNED"
+          "$BT/zipalign" -c -p 4 "$ALIGNED"
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          if [ "$VERSION" = "$TAG" ]; then VERSION="1.0.0"; fi
+          FINAL="/tmp/LexFlow-v${VERSION}-universal.apk"
+          "$BT/apksigner" sign \
+            --ks src-tauri/gen/android/app/release.keystore \
+            --ks-pass "env:ANDROID_STORE_PASSWORD" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --key-pass "env:ANDROID_KEY_PASSWORD" \
+            --v1-signing-enabled true --v2-signing-enabled true \
+            --v3-signing-enabled true --v4-signing-enabled true \
+            --out "$FINAL" "$ALIGNED"
+          "$BT/apksigner" verify --verbose "$FINAL"
+          echo "APK signed and verified"
+          echo "APK_FINAL=$FINAL" >> "$GITHUB_ENV"
+          AAB=$(find src-tauri/gen/android -name "*release.aab" 2>/dev/null | head -1)
+          if [ -n "$AAB" ]; then
+            AAB_FINAL="/tmp/LexFlow-v${VERSION}-universal.aab"
+            cp "$AAB" "$AAB_FINAL"
+            echo "AAB_FINAL=$AAB_FINAL" >> "$GITHUB_ENV"
+          fi
 
-      - name: Upload APK and AAB to release
+      - name: Upload artifacts to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 scripts/upload-artifacts.py ${{ github.ref_name }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          for _i in $(seq 1 30); do
+            gh release view "$TAG" > /dev/null 2>&1 && break
+            echo "Waiting for release... ($_i/30)"
+            sleep 15
+          done
+          if [ -f "${APK_FINAL:-}" ]; then
+            gh release upload "$TAG" "$APK_FINAL" --clobber
+            cp "$APK_FINAL" /tmp/app-universal-release.apk
+            gh release upload "$TAG" /tmp/app-universal-release.apk --clobber
+            echo "APK uploaded"
+          fi
+          if [ -f "${AAB_FINAL:-}" ]; then
+            gh release upload "$TAG" "$AAB_FINAL" --clobber
+            cp "$AAB_FINAL" /tmp/app-universal-release.aab
+            gh release upload "$TAG" /tmp/app-universal-release.aab --clobber
+            echo "AAB uploaded"
+          fi

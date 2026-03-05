@@ -110,6 +110,7 @@ export const testNotification = () => safeInvoke('test_notification');
 
 // Licensing
 export const checkLicense = () => safeInvoke('check_license');
+export const verifyLicense = () => safeInvoke('verify_license');
 export const activateLicense = (key, clientName) =>
   safeInvoke('activate_license', { key, _clientName: clientName || null });
 
