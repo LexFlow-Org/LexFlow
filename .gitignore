@@ -2,7 +2,7 @@
 node_modules/
 client/node_modules/
 
-# Build output — Tauri
+# Build output -- Tauri
 src-tauri/target/
 src-tauri/gen/
 client/dist/
@@ -13,18 +13,22 @@ client/dist/
 *.blockmap
 *.ipa
 *.apk
+*.aab
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# Environment
+# Environment & Secrets -- NEVER commit
 .env
-.env.local
-.env.android
-.env.keys
+.env.*
 *.keystore
 *.jks
+*.p12
+*.pfx
+*.pem
+*.key
+keystore_base64.txt
 
 # Editor / IDE
 .vscode/
@@ -38,13 +42,17 @@ npm-debug.log*
 
 # Temp
 *.tmp
+*.bak
 
-# License key registry (encrypted local file — NEVER commit)
+# License key registry (encrypted local files -- NEVER commit)
 scripts/.lexflow-issued-keys.enc
 scripts/.lexflow-registry-salt
 scripts/lexflow-keys-export.csv
-*.bak
+
+# Generated platform icons
 src-tauri/icons/android/
 src-tauri/icons/ios/
 
+# Python
 __pycache__/
+*.pyc
