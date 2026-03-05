@@ -1,30 +1,13 @@
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================================
 #  LexFlow -- Release Pipeline v2.0
-# ═══════════════════════════════════════════════════════════════════════════════
-#
+# ============================================================================
 #  Trigger:  push tag v*  OR  workflow_dispatch
-#
 #  Jobs:
-#    1. build-macos      → Universal DMG (Intel + Apple Silicon)
-#    2. build-windows    → MSI x64 (offline WebView2)
-#    3. build-windows-no-webview2 → MSI x64 lite (senza WebView2)
-#    4. build-android    → APK + AAB (arm64 + armv7), firmato
-#
-#  Security:
-#    - Actions pinnate a SHA (supply-chain hardening)
-#    - Permessi GITHUB_TOKEN minimi per-job
-#    - Nessun permesso globale (least privilege)
-#    - Concurrency: una sola release alla volta
-#    - Timeout espliciti su ogni job
-#
-#  Secrets richiesti (GitHub → Settings → Secrets → Actions):
-#    ANDROID_KEYSTORE_BASE64
-#    ANDROID_STORE_PASSWORD
-#    ANDROID_KEY_ALIAS
-#    ANDROID_KEY_PASSWORD
-#    TAURI_SIGNING_PRIVATE_KEY           (opzionale, per Tauri updater)
-#    TAURI_SIGNING_PRIVATE_KEY_PASSWORD  (opzionale)
-# ═══════════════════════════════════════════════════════════════════════════════
+#    1. build-macos      - Universal DMG (Intel + Apple Silicon)
+#    2. build-windows    - MSI x64 (offline WebView2)
+#    3. build-windows-no-webview2 - MSI x64 lite (senza WebView2)
+#    4. build-android    - APK + AAB (arm64 + armv7), firmato
+# ============================================================================
 
 name: "LexFlow Release"
 
@@ -43,28 +26,24 @@ env:
   NODE_VERSION: "22"
   RUST_BACKTRACE: 1
 
-# ─────────────────────────────────────────────────────────────────────────────
 jobs:
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  #  macOS — Universal DMG (Intel + Apple Silicon)
-  # ═══════════════════════════════════════════════════════════════════════════
+  # macOS -- Universal DMG
   build-macos:
-    name: "🍎 macOS Universal DMG"
+    name: "macOS Universal DMG"
     runs-on: macos-latest
     timeout-minutes: 30
     permissions:
       contents: write
-
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Remove local cargo config (CI override)
+      - name: Remove local cargo config
         run: rm -f src-tauri/.cargo/config.toml
 
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -75,7 +54,7 @@ jobs:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
         with:
           workspaces: ./src-tauri -> target
           shared-key: macos-universal
@@ -85,8 +64,8 @@ jobs:
           npm ci
           cd client && npm ci --legacy-peer-deps
 
-      - name: Build & Release macOS DMG
-        uses: tauri-apps/tauri-action@42503132eed58b227e498e20a4381e47d0c498f6 # v0.5.18
+      - name: Build macOS DMG
+        uses: tauri-apps/tauri-action@42503132eed58b227e498e20a4381e47d0c498f6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -94,32 +73,21 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "LexFlow ${{ github.ref_name }}"
-          releaseBody: |
-            ## LexFlow ${{ github.ref_name }}
-
-            | Piattaforma | Formato | Architettura | Note |
-            |-------------|---------|--------------|------|
-            | **macOS**   | `.dmg`  | Universal (Intel + Apple Silicon) | |
-            | **Windows** | `.msi`  | x64 — con WebView2 offline | Per PC senza WebView2 |
-            | **Windows** | `.msi` (`-no-webview2`) | x64 — senza WebView2 | Installer leggero |
-            | **Android** | `.apk` / `.aab` | arm64-v8a + armeabi-v7a | |
+          releaseBody: "Release LexFlow ${{ github.ref_name }}"
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin --bundles dmg
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  #  Windows — MSI x64 (con WebView2 offline installer)
-  # ═══════════════════════════════════════════════════════════════════════════
+  # Windows -- MSI x64 (con WebView2 offline)
   build-windows:
-    name: "🪟 Windows MSI (x64)"
+    name: "Windows MSI (x64)"
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
       contents: write
-
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Remove local cargo config
         shell: powershell
@@ -128,8 +96,8 @@ jobs:
             Remove-Item "src-tauri/.cargo/config.toml" -Force
           }
 
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -140,7 +108,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
         with:
           workspaces: ./src-tauri -> target
           shared-key: windows-x64
@@ -163,8 +131,8 @@ jobs:
           npm ci
           cd client && npm ci --legacy-peer-deps
 
-      - name: Build & Release Windows MSI
-        uses: tauri-apps/tauri-action@42503132eed58b227e498e20a4381e47d0c498f6 # v0.5.18
+      - name: Build Windows MSI
+        uses: tauri-apps/tauri-action@42503132eed58b227e498e20a4381e47d0c498f6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "8"
@@ -176,20 +144,17 @@ jobs:
           prerelease: false
           args: --target x86_64-pc-windows-msvc --bundles msi --config src-tauri/tauri.webview2.conf.json
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  #  Windows — MSI Lite (senza WebView2 — per chi ce l'ha già)
-  # ═══════════════════════════════════════════════════════════════════════════
+  # Windows -- MSI Lite (senza WebView2)
   build-windows-no-webview2:
-    name: "🪟 Windows MSI Lite (no WebView2)"
+    name: "Windows MSI Lite (no WebView2)"
     runs-on: windows-latest
     needs: build-windows
     timeout-minutes: 45
     permissions:
       contents: write
-
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Remove local cargo config
         shell: powershell
@@ -198,8 +163,8 @@ jobs:
             Remove-Item "src-tauri/.cargo/config.toml" -Force
           }
 
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -210,7 +175,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
         with:
           workspaces: ./src-tauri -> target
           shared-key: windows-x64-lite
@@ -230,7 +195,7 @@ jobs:
         shell: powershell
         run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi
 
-      - name: Rinomina e carica MSI lite
+      - name: Rename and upload MSI lite
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -241,43 +206,40 @@ jobs:
             $newName = $msi.Name -replace '\.msi$', '-no-webview2.msi'
             $newPath = Join-Path $msi.DirectoryName $newName
             Rename-Item $msi.FullName $newName
-            Write-Host "Renamed: $($msi.Name) → $newName"
+            Write-Host "Renamed -> $newName"
             gh release upload "${{ github.ref_name }}" "$newPath" --clobber
           }
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  #  Android — APK + AAB (arm64 + armv7) — firmato
-  # ═══════════════════════════════════════════════════════════════════════════
+  # Android -- APK + AAB (arm64 + armv7) firmato
   build-android:
-    name: "🤖 Android APK + AAB"
+    name: "Android APK + AAB"
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: write
-
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Remove local cargo config
         run: rm -f src-tauri/.cargo/config.toml
 
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Java 17
-        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
         with:
           distribution: zulu
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
 
       - name: Setup Android NDK
-        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779
         id: setup-ndk
         with:
           ndk-version: r27c
@@ -288,7 +250,7 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
         with:
           workspaces: ./src-tauri -> target
           shared-key: android
@@ -309,18 +271,14 @@ jobs:
           python3 << 'PYEOF'
           from PIL import Image, ImageDraw
           from pathlib import Path
-
           master = Image.open("assets/icon-master.png").convert("RGBA")
           res = Path("src-tauri/gen/android/app/src/main/res")
-
           sizes = {
               "mipmap-mdpi": 48, "mipmap-hdpi": 72, "mipmap-xhdpi": 96,
               "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192,
           }
-
           def resize(img, s):
               return img.resize((s, s), Image.LANCZOS)
-
           def rounded(img, s):
               img = resize(img, s)
               r = int(s * 0.22)
@@ -329,14 +287,13 @@ jobs:
               out = Image.new("RGBA", (s, s), (0,0,0,0))
               out.paste(img, (0,0), mask)
               return out
-
           for dpi, s in sizes.items():
               d = res / dpi
               d.mkdir(parents=True, exist_ok=True)
               resize(master, s).save(d / "ic_launcher.png")
               resize(master, s).save(d / "ic_launcher_foreground.png")
               rounded(master, s).save(d / "ic_launcher_round.png")
-              print(f"  ✓ {dpi} ({s}×{s})")
+              print(f"  ok {dpi} ({s}x{s})")
           print("Icons done")
           PYEOF
 
@@ -353,7 +310,7 @@ jobs:
         working-directory: src-tauri/gen/android
         run: |
           for i in 1 2 3 4 5; do
-            echo "→ Attempt $i"
+            echo "-> Attempt $i"
             ./gradlew --version && break
             echo "  retry in 15s..." && sleep 15
           done
@@ -364,9 +321,9 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > src-tauri/gen/android/app/release.keystore
-            echo "✓ Keystore decoded"
+            echo "Keystore decoded"
           else
-            echo "⚠ No keystore — build will be unsigned"
+            echo "WARNING: No keystore -- build will be unsigned"
           fi
 
       - name: Inject release signing
@@ -393,7 +350,7 @@ jobs:
           c = c.replace('getByName("release") {',
               'getByName("release") {\n                signingConfig = signingConfigs.getByName("release")', 1)
           g.write_text(c)
-          print("✓ Gradle signing configured")
+          print("Gradle signing configured")
           PYEOF
 
       - name: Build Android
@@ -405,7 +362,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: npx tauri android build
 
-      - name: Sign APK (zipalign + apksigner v1–v4)
+      - name: Sign APK
         env:
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -415,19 +372,13 @@ jobs:
           BT=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
           ZIPALIGN="$BT/zipalign"
           APKSIGNER="$BT/apksigner"
-
-          # Find release APK
           APK=$(find src-tauri/gen/android -name "*universal-release.apk" 2>/dev/null | head -1)
           [ -z "$APK" ] && APK=$(find src-tauri/gen/android -name "*release.apk" ! -name "*unsigned*" | head -1)
           [ -z "$APK" ] && { echo "::error::No release APK"; exit 1; }
-          echo "Source: $APK ($(du -h "$APK" | cut -f1))"
-
-          # Zipalign
+          echo "Source: $APK"
           ALIGNED="/tmp/lexflow-aligned.apk"
           "$ZIPALIGN" -f -p 4 "$APK" "$ALIGNED"
           "$ZIPALIGN" -c -p 4 "$ALIGNED"
-
-          # Sign
           TAG="${{ github.ref_name }}"
           VERSION="${TAG#v}"
           [ "$VERSION" = "$TAG" ] && VERSION="1.0.0"
@@ -440,14 +391,10 @@ jobs:
             --v1-signing-enabled true --v2-signing-enabled true \
             --v3-signing-enabled true --v4-signing-enabled true \
             --out "$FINAL" "$ALIGNED"
-
-          # Verify
           "$APKSIGNER" verify --verbose "$FINAL" 2>&1 | tee /tmp/verify.txt
           grep -q "^Verifies$" /tmp/verify.txt || { echo "::error::Verify failed"; exit 1; }
-          echo "✓ APK signed & verified"
+          echo "APK signed and verified"
           echo "APK_FINAL=$FINAL" >> "$GITHUB_ENV"
-
-          # AAB
           AAB=$(find src-tauri/gen/android -name "*release.aab" 2>/dev/null | head -1)
           if [ -n "$AAB" ]; then
             AAB_FINAL="/tmp/LexFlow-v${VERSION}-universal.aab"
@@ -460,23 +407,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.ref_name }}"
-          # Wait for release (created by macOS job)
           for i in $(seq 1 30); do
             gh release view "$TAG" &>/dev/null && break
             echo "  Waiting for release... ($i/30)"
             sleep 15
           done
-
           if [ -f "${APK_FINAL:-}" ]; then
             gh release upload "$TAG" "$APK_FINAL" --clobber
             cp "$APK_FINAL" /tmp/app-universal-release.apk
             gh release upload "$TAG" /tmp/app-universal-release.apk --clobber
-            echo "✓ APK uploaded"
+            echo "APK uploaded"
           fi
-
           if [ -f "${AAB_FINAL:-}" ]; then
             gh release upload "$TAG" "$AAB_FINAL" --clobber
             cp "$AAB_FINAL" /tmp/app-universal-release.aab
             gh release upload "$TAG" /tmp/app-universal-release.aab --clobber
-            echo "✓ AAB uploaded"
+            echo "AAB uploaded"
           fi
