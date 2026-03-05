@@ -122,7 +122,7 @@ fn get_platform_uid() -> String {
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 fn double_sha256_key(seed: &str) -> Zeroizing<Vec<u8>> {
     let h1 = <Sha256 as Digest>::digest(seed.as_bytes());
-    let h2 = <Sha256 as Digest>::digest(&h1);
+    let h2 = <Sha256 as Digest>::digest(h1);
     Zeroizing::new(h2.to_vec())
 }
 
@@ -475,13 +475,12 @@ fn decrypt_data(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
     // downgrade path where an attacker could craft files with empty AAD.
     let legacy_payload = Payload { msg: ciphertext, aad: b"" };
     cipher.decrypt(nonce, legacy_payload).map_err(|_| "Auth failed".into())
-        .map(|dec| {
+        .inspect(|_dec| {
             // Reset clean counter — legacy path is still needed.
             LEGACY_AAD_CLEAN_COUNTER.store(0, std::sync::atomic::Ordering::Relaxed);
             LEGACY_AAD_EVER_USED.store(true, std::sync::atomic::Ordering::Relaxed);
             eprintln!("SECURITY WARNING: File decifrato con fallback legacy (senza AAD). \
                 RE-CIFRATURA AUTOMATICA in corso. Questo fallback sarà rimosso in v4.0.0.");
-            dec
         })
 }
 
@@ -535,7 +534,7 @@ fn lockout_hmac(data: &str) -> String {
     hex::encode(mac.finalize().into_bytes())
 }
 
-fn lockout_load(data_dir: &PathBuf) -> (u32, Option<std::time::SystemTime>) {
+fn lockout_load(data_dir: &std::path::Path) -> (u32, Option<std::time::SystemTime>) {
     let path = data_dir.join(LOCKOUT_FILE);
     let text = match fs::read_to_string(&path) {
         Ok(t) => t,
@@ -566,7 +565,7 @@ fn lockout_load(data_dir: &PathBuf) -> (u32, Option<std::time::SystemTime>) {
     (attempts, Some(end))
 }
 
-fn lockout_save(data_dir: &PathBuf, attempts: u32, locked_until: Option<std::time::SystemTime>) {
+fn lockout_save(data_dir: &std::path::Path, attempts: u32, locked_until: Option<std::time::SystemTime>) {
     let secs = locked_until
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs())
@@ -576,7 +575,7 @@ fn lockout_save(data_dir: &PathBuf, attempts: u32, locked_until: Option<std::tim
     let _ = fs::write(data_dir.join(LOCKOUT_FILE), format!("{}:{}", data_part, hmac));
 }
 
-fn lockout_clear(data_dir: &PathBuf) {
+fn lockout_clear(data_dir: &std::path::Path) {
     let _ = fs::remove_file(data_dir.join(LOCKOUT_FILE));
 }
 
@@ -603,7 +602,7 @@ fn zeroize_password(password: String) {
 /// Centralized lockout check — replaces 3 duplicated lockout code blocks.
 /// Returns Ok(()) if not locked, or Err(json) with remaining time if locked.
 fn check_lockout(state: &State<AppState>, sec_dir: &std::path::Path) -> Result<(), Value> {
-    let (disk_attempts, disk_locked_until) = lockout_load(&sec_dir.to_path_buf());
+    let (disk_attempts, disk_locked_until) = lockout_load(sec_dir);
     // Sync in-memory from disk on first call after restart
     {
         let mut att = state.failed_attempts.lock().unwrap_or_else(|e| e.into_inner());
@@ -636,7 +635,7 @@ fn record_failed_attempt(state: &State<AppState>, sec_dir: &std::path::Path) {
         *state.locked_until.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now() + Duration::from_secs(LOCKOUT_SECS));
         Some(t)
     } else { None };
-    lockout_save(&sec_dir.to_path_buf(), *att, locked_sys);
+    lockout_save(sec_dir, *att, locked_sys);
     // SECURITY FIX (Security Audit G7): forensic logging of failed attempts.
     // Since vault is locked during auth, we can't write to the encrypted audit log.
     // Instead we log to stderr (captured by tauri-plugin-log → log file).
@@ -651,7 +650,7 @@ fn record_failed_attempt(state: &State<AppState>, sec_dir: &std::path::Path) {
 fn clear_lockout(state: &State<AppState>, sec_dir: &std::path::Path) {
     *state.failed_attempts.lock().unwrap_or_else(|e| e.into_inner()) = 0;
     *state.locked_until.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    lockout_clear(&sec_dir.to_path_buf());
+    lockout_clear(sec_dir);
 }
 
 /// Centralized atomic write with fsync — replaces 5+ duplicated patterns.
@@ -863,7 +862,7 @@ fn reset_vault(state: State<AppState>, password: String) -> Value {
             }
         }
     }
-    let _ = {
+    {
         // SECURITY NOTE (Audit 2026-03-04): The zero-overwrite below is a best-effort
         // secure wipe. On modern filesystems with copy-on-write semantics (APFS, Btrfs,
         // ZFS) and on SSDs with wear leveling / TRIM, overwriting a file does NOT
@@ -894,7 +893,7 @@ fn reset_vault(state: State<AppState>, password: String) -> Value {
         }
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::create_dir_all(&dir);
-    };
+    }
     *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
     // SECURITY FIX (Gemini Audit v2): safe zeroing — no more UB
     zeroize_password(password);
@@ -1349,6 +1348,7 @@ fn save_bio(state: State<AppState>, pwd: String) -> Result<bool, String> {
 
 /// Shared post-biometric vault unlock: retrieve keyring password, authenticate, unlock vault.
 #[cfg(not(target_os = "android"))]
+#[allow(dead_code)]
 fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
     let user = whoami::username();
     let saved_pwd = keyring::Entry::new(BIO_SERVICE, &user)
@@ -2048,10 +2048,9 @@ fn check_existing_license_blocks(path: &std::path::Path, new_key: &str) -> Optio
         }
     } else {
         let existing_key = existing.get("key").and_then(|k| k.as_str()).unwrap_or("");
-        if !existing_key.is_empty() && verify_license(existing_key.to_string()).valid {
-            if extract_key_id(existing_key) != new_id {
+        if !existing_key.is_empty() && verify_license(existing_key.to_string()).valid
+            && extract_key_id(existing_key) != new_id {
                 return Some(json!({"success": false, "error": "Una licenza valida è già attiva. Non è possibile sostituirla."}));
-            }
         }
     }
     None
@@ -2066,7 +2065,7 @@ fn write_license_sentinel(sentinel_path: &std::path::Path, fingerprint: &str, ke
     mac.update(sentinel_data.as_bytes());
     let sentinel_hmac = hex::encode(mac.finalize().into_bytes());
     let encrypted_key_id = encrypt_data(&enc_key, key_id.as_bytes())
-        .map(|e| hex::encode(e)).unwrap_or_default();
+        .map(hex::encode).unwrap_or_default();
     let sentinel_content = format!("{}\n{}", sentinel_hmac, encrypted_key_id);
     let _ = atomic_write_with_sync(sentinel_path, sentinel_content.as_bytes());
 }
@@ -2473,7 +2472,7 @@ fn send_notification(app: AppHandle, title: String, body: String) {
 #[tauri::command]
 fn test_notification(app: AppHandle) -> bool {
     let ah = app.clone();
-    match app.run_on_main_thread(move || {
+    app.run_on_main_thread(move || {
         use tauri_plugin_notification::NotificationExt;
         if let Err(e) = ah.notification().builder()
             .title("LexFlow — Test Notifica")
@@ -2482,10 +2481,7 @@ fn test_notification(app: AppHandle) -> bool {
         {
             eprintln!("[LexFlow] Test notification failed: {:?}", e);
         }
-    }) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    }).is_ok()
 }
 
 #[tauri::command]
@@ -2514,7 +2510,7 @@ fn sync_notification_schedule(app: AppHandle, state: State<AppState>, schedule: 
 }
 
 /// Decrypt notification schedule with local machine key
-fn read_notification_schedule(data_dir: &PathBuf) -> Option<Value> {
+fn read_notification_schedule(data_dir: &std::path::Path) -> Option<Value> {
     let path = data_dir.join(NOTIF_SCHEDULE_FILE);
     if !path.exists() { return None; }
     // SECURITY FIX (Level-8 C5): size guard before reading into RAM.
@@ -2749,7 +2745,7 @@ fn sync_notifications(app: &AppHandle, data_dir: &std::path::Path) {
         eprintln!("[LexFlow Sync] All pending notifications cancelled ✓");
     }
 
-    let schedule_data = match read_notification_schedule(&data_dir.to_path_buf()) {
+    let schedule_data = match read_notification_schedule(&data_dir) {
         Some(v) => v,
         None => { eprintln!("[LexFlow Sync] No schedule file"); return; }
     };
@@ -3097,17 +3093,21 @@ fn setup_notification_permissions(app: &tauri::App, data_dir_for_scheduler: &std
 /// Sleeps 60s when vault is locked, 30s when unlocked, emits warning 30s before lock.
 fn autolock_loop(ah: AppHandle) {
     loop {
-        let state = ah.state::<AppState>();
-        let is_unlocked = state.vault_key.lock()
-            .map(|k| k.is_some()).unwrap_or(false);
+        let is_unlocked = {
+            let state = ah.state::<AppState>();
+            state.vault_key.lock()
+                .map(|k| k.is_some()).unwrap_or(false)
+        };
         if !is_unlocked {
-            drop(state);
             std::thread::sleep(Duration::from_secs(60));
             continue;
         }
-        let minutes = *state.autolock_minutes.lock().unwrap_or_else(|e| e.into_inner());
-        let last = *state.last_activity.lock().unwrap_or_else(|e| e.into_inner());
-        drop(state);
+        let (minutes, last) = {
+            let state = ah.state::<AppState>();
+            let m = *state.autolock_minutes.lock().unwrap_or_else(|e| e.into_inner());
+            let l = *state.last_activity.lock().unwrap_or_else(|e| e.into_inner());
+            (m, l)
+        };
         std::thread::sleep(Duration::from_secs(30));
         if minutes == 0 { continue; }
         let elapsed = Instant::now().duration_since(last);
@@ -3176,7 +3176,7 @@ fn migrate_security_files(data_dir: &std::path::Path, security_dir: &std::path::
 /// Setup desktop-specific features: window events, system tray, auto-lock, cron job.
 #[cfg(not(target_os = "android"))]
 fn setup_desktop(app: &mut tauri::App, data_dir_for_scheduler: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    sync_notifications(&app.handle(), data_dir_for_scheduler);
+    sync_notifications(app.handle(), data_dir_for_scheduler);
 
     #[cfg(target_os = "macos")]
     {
