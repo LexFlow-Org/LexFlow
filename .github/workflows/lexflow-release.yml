@@ -7,10 +7,7 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  id-token: write
-  attestations: write
+permissions: {}
 
 concurrency:
   group: release-${{ github.ref }}
@@ -28,6 +25,8 @@ jobs:
   pre-flight:
     name: "Pre-flight: Quality Gate & Release Draft"
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       tag: ${{ steps.get_version.outputs.TAG }}
     steps:
@@ -47,7 +46,7 @@ jobs:
           cache-dependency-path: "**/package-lock.json"
 
       - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           components: clippy, rustfmt
 
@@ -158,6 +157,10 @@ jobs:
     needs: pre-flight
     runs-on: macos-latest
     timeout-minutes: 45
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
     steps:
@@ -177,7 +180,7 @@ jobs:
           cache-dependency-path: "**/package-lock.json"
 
       - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
@@ -247,6 +250,10 @@ jobs:
     needs: pre-flight
     runs-on: windows-latest
     timeout-minutes: 45
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
     steps:
@@ -266,7 +273,7 @@ jobs:
           cache-dependency-path: "**/package-lock.json"
 
       - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           targets: x86_64-pc-windows-msvc
 
@@ -322,6 +329,10 @@ jobs:
     needs: pre-flight
     runs-on: windows-latest
     timeout-minutes: 45
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
     steps:
@@ -341,7 +352,7 @@ jobs:
           cache-dependency-path: "**/package-lock.json"
 
       - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           targets: x86_64-pc-windows-msvc
 
@@ -409,6 +420,10 @@ jobs:
     needs: pre-flight
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
     steps:
@@ -443,7 +458,7 @@ jobs:
           ndk-version: r27c
 
       - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi
 
@@ -521,6 +536,8 @@ jobs:
     name: "Publish Release"
     needs: [pre-flight, build-macos, build-windows-lite, build-windows-offline, build-android]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: always() && needs.build-macos.result == 'success' && needs.build-windows-lite.result == 'success' && needs.build-windows-offline.result == 'success' && needs.build-android.result == 'success'
     steps:
       - name: Checkout
@@ -559,6 +576,8 @@ jobs:
     name: "Rollback: Cleanup Failed Release"
     needs: [pre-flight, build-macos, build-windows-lite, build-windows-offline, build-android]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: always() && (needs.build-macos.result == 'failure' || needs.build-windows-lite.result == 'failure' || needs.build-windows-offline.result == 'failure' || needs.build-android.result == 'failure')
     steps:
       - name: Delete Draft Release
