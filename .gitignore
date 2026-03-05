@@ -18,6 +18,7 @@ client/dist/
 # OS files
 .DS_Store
 Thumbs.db
+.metadata_never_index
 
 # Environment & Secrets -- NEVER commit
 .env
