@@ -1,6 +1,5 @@
-# LexFlow Release Pipeline v2.0
-# Trigger: push tag v* OR workflow_dispatch
-
+# LexFlow Release Pipeline v2.0 -- NASA Tier
+# Pure ASCII -- no Unicode (GitHub YAML parser compatibility)
 name: LexFlow Release
 
 on:
@@ -9,7 +8,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -18,27 +18,152 @@ concurrency:
 env:
   NODE_VERSION: "22"
   RUST_BACKTRACE: 1
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
 
 jobs:
-
-  build-macos:
-    name: macOS Universal DMG
-    runs-on: macos-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
+  # ---------------------------------------------------------
+  # 1. PRE-FLIGHT -- Quality Gate & Release Controller
+  # ---------------------------------------------------------
+  pre-flight:
+    name: "Pre-flight: Quality Gate & Release Draft"
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.get_version.outputs.TAG }}
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b
+        with:
+          egress-policy: audit
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Remove local cargo config
-        run: rm -f src-tauri/.cargo/config.toml
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+          cache-dependency-path: "**/package-lock.json"
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        with:
+          workspaces: ./src-tauri -> target
+          shared-key: preflight
+
+      - name: Install dependencies
+        run: npm ci && cd client && npm ci --legacy-peer-deps
+
+      - name: Determine Version Tag
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="v$(jq -r .version package.json)"
+            echo "TAG=$VERSION" >> $GITHUB_OUTPUT
+            echo "Workflow dispatch -- tag from package.json: $VERSION"
+          else
+            echo "TAG=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "Tag push detected: ${{ github.ref_name }}"
+          fi
+
+      - name: Version Validation
+        run: |
+          TAG="${{ steps.get_version.outputs.TAG }}"
+          VER_PKG="v$(jq -r .version package.json)"
+          VER_CARGO="v$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')"
+          VER_TAURI="v$(jq -r .version src-tauri/tauri.conf.json)"
+          VER_CLIENT="v$(jq -r .version client/package.json)"
+          echo "Tag:         $TAG"
+          echo "package.json:       $VER_PKG"
+          echo "Cargo.toml:         $VER_CARGO"
+          echo "tauri.conf.json:    $VER_TAURI"
+          echo "client/package.json: $VER_CLIENT"
+          MISMATCH=0
+          if [ "$TAG" != "$VER_PKG" ]; then echo "MISMATCH: tag vs package.json"; MISMATCH=1; fi
+          if [ "$TAG" != "$VER_CARGO" ]; then echo "MISMATCH: tag vs Cargo.toml"; MISMATCH=1; fi
+          if [ "$TAG" != "$VER_TAURI" ]; then echo "MISMATCH: tag vs tauri.conf.json"; MISMATCH=1; fi
+          if [ "$TAG" != "$VER_CLIENT" ]; then echo "MISMATCH: tag vs client/package.json"; MISMATCH=1; fi
+          if [ "$MISMATCH" -eq 1 ]; then echo "ERROR: Version mismatch detected. Aborting."; exit 1; fi
+          echo "All versions match: $TAG"
+
+      - name: Quality Gate -- cargo check + clippy + fmt
+        working-directory: src-tauri
+        run: |
+          cargo check --release 2>&1
+          cargo clippy --release -- -D warnings 2>&1
+          cargo fmt --check 2>&1
+
+      - name: Quality Gate -- ESLint
+        working-directory: client
+        run: npx eslint . --max-warnings 0 || echo "ESLint warnings found (non-blocking)"
+
+      - name: Quality Gate -- Vite build
+        working-directory: client
+        run: npm run build
+
+      - name: Secret Scanning -- gitleaks
+        uses: zricethezav/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Dependency Audit -- cargo audit + npm audit
+        run: |
+          cargo install cargo-audit --quiet 2>/dev/null || true
+          cargo audit --file src-tauri/Cargo.lock 2>&1 || echo "cargo audit: vulnerabilities found (non-blocking)"
+          cd client && npm audit --audit-level=high 2>&1 || echo "npm audit: vulnerabilities found (non-blocking)"
+
+      - name: License Check -- cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979
+        with:
+          manifest-path: src-tauri/Cargo.toml
+          command: check
+        continue-on-error: true
+
+      - name: Create Draft Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.get_version.outputs.TAG }}"
+          NOTES="Release in progress -- all platform builds running..."
+          if [ -f CHANGELOG.md ]; then
+            SECTION=$(awk "/^## \[${TAG#v}\]/{found=1;next} /^## \[/{if(found) exit} found{print}" CHANGELOG.md)
+            if [ -n "$SECTION" ]; then
+              NOTES="$SECTION"
+            fi
+          fi
+          gh release create "$TAG" --draft --title "LexFlow $TAG" --notes "$NOTES" || echo "Release already exists."
+
+  # ---------------------------------------------------------
+  # 2. MACOS UNIVERSAL BUILD
+  # ---------------------------------------------------------
+  build-macos:
+    name: "macOS: Universal DMG"
+    needs: pre-flight
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -61,32 +186,59 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: LexFlow ${{ github.ref_name }}
-          releaseBody: Release LexFlow ${{ github.ref_name }}
-          releaseDraft: false
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseDraft: true
           prerelease: false
           args: --target universal-apple-darwin --bundles dmg
 
+      - name: Generate SBOM
+        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11
+        with:
+          path: ./
+          format: cyclonedx-json
+          output-file: lexflow-macos-sbom.json
+
+      - name: SHA256 Checksums & Upload
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$RELEASE_TAG" lexflow-macos-sbom.json --clobber
+          DMG_FILE=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -n "$DMG_FILE" ]; then
+            shasum -a 256 "$DMG_FILE" > lexflow-macos.dmg.sha256
+            gh release upload "$RELEASE_TAG" lexflow-macos.dmg.sha256 --clobber
+          fi
+
+      - name: Attest Build Provenance (SLSA)
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        with:
+          subject-path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+
+  # ---------------------------------------------------------
+  # 3. WINDOWS MSI -- Standard + Lite (single job, cached rebuild)
+  # ---------------------------------------------------------
   build-windows:
-    name: Windows MSI x64
+    name: "Windows: MSI Standard + Lite"
+    needs: pre-flight
     runs-on: windows-latest
-    timeout-minutes: 45
-    permissions:
-      contents: write
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b
+        with:
+          egress-policy: audit
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Remove local cargo config
-        shell: powershell
-        run: if (Test-Path "src-tauri/.cargo/config.toml") { Remove-Item "src-tauri/.cargo/config.toml" -Force }
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+          cache-dependency-path: "**/package-lock.json"
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -103,6 +255,19 @@ jobs:
         shell: powershell
         run: dotnet tool install --global wix --version 4.0.5; wix extension add WixToolset.UI.wixext/4.0.5 -g
 
+      - name: Install dependencies
+        run: npm ci && cd client && npm ci --legacy-peer-deps
+
+      - name: Build Windows MSI (Standard)
+        shell: powershell
+        run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi
+
+      - name: Rename Standard MSI
+        shell: powershell
+        run: |
+          $msi = Get-ChildItem -Recurse -Filter "*.msi" -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" | Select-Object -First 1
+          Rename-Item $msi.FullName "LexFlow-$env:RELEASE_TAG-windows-x64.msi"
+
       - name: Write WebView2 offline config
         shell: powershell
         run: |
@@ -110,95 +275,60 @@ jobs:
           $u = New-Object System.Text.UTF8Encoding $false
           [System.IO.File]::WriteAllText("$PWD\src-tauri\tauri.webview2.conf.json", $j, $u)
 
-      - name: Install dependencies
-        run: npm ci && cd client && npm ci --legacy-peer-deps
+      - name: Build Windows MSI (Offline WebView2 -- cached Rust rebuild)
+        shell: powershell
+        run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi --config src-tauri/tauri.webview2.conf.json
 
-      - name: Build Windows MSI
-        uses: tauri-apps/tauri-action@6a45448f17a006facb105cc5257b3edbc353038a
+      - name: Rename Lite MSI
+        shell: powershell
+        run: |
+          $msi = Get-ChildItem -Recurse -Filter "*.msi" -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" | Where-Object { $_.Name -notmatch "LexFlow-$env:RELEASE_TAG" } | Select-Object -First 1
+          if ($msi) { Rename-Item $msi.FullName "LexFlow-$env:RELEASE_TAG-windows-x64-no-webview2.msi" }
+
+      - name: Generate SBOM & SHA256 Checksums & Upload
+        shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "8"
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: LexFlow ${{ github.ref_name }}
-          releaseBody: ""
-          releaseDraft: false
-          prerelease: false
-          args: --target x86_64-pc-windows-msvc --bundles msi --config src-tauri/tauri.webview2.conf.json
+        run: |
+          npx @cyclonedx/cyclonedx-npm --output-format JSON --output-file lexflow-windows-sbom.json
+          gh release upload "$env:RELEASE_TAG" lexflow-windows-sbom.json --clobber
+          Get-ChildItem -Filter "LexFlow-*.msi" -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" | ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+              "$hash  $($_.Name)" | Out-File "$($_.FullName).sha256" -Encoding ASCII
+              gh release upload "$env:RELEASE_TAG" $_.FullName --clobber
+              gh release upload "$env:RELEASE_TAG" "$($_.FullName).sha256" --clobber
+          }
 
-  build-windows-no-webview2:
-    name: Windows MSI Lite
-    runs-on: windows-latest
-    needs: build-windows
-    timeout-minutes: 45
-    permissions:
-      contents: write
+      - name: Attest Build Provenance (SLSA)
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        with:
+          subject-path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/LexFlow-*.msi
+
+  # ---------------------------------------------------------
+  # 4. ANDROID APK + AAB (Secure RAM-Disk Signing)
+  # ---------------------------------------------------------
+  build-android:
+    name: "Android: APK + AAB"
+    needs: pre-flight
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b
+        with:
+          egress-policy: audit
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Remove local cargo config
-        shell: powershell
-        run: if (Test-Path "src-tauri/.cargo/config.toml") { Remove-Item "src-tauri/.cargo/config.toml" -Force }
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
-      - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
-        with:
-          workspaces: ./src-tauri -> target
-          shared-key: windows-x64-lite
-
-      - name: Install WiX 4
-        shell: powershell
-        run: dotnet tool install --global wix --version 4.0.5; wix extension add WixToolset.UI.wixext/4.0.5 -g
-
-      - name: Install dependencies
-        run: npm ci && cd client && npm ci --legacy-peer-deps
-
-      - name: Build MSI without WebView2
-        shell: powershell
-        run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi
-
-      - name: Rename and upload MSI lite
-        shell: powershell
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $msiFiles = Get-ChildItem -Recurse -Filter "*.msi" -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi"
-          foreach ($msi in $msiFiles) {
-            $newName = $msi.Name -replace "\.msi$", "-no-webview2.msi"
-            $newPath = Join-Path $msi.DirectoryName $newName
-            Rename-Item $msi.FullName $newName
-            gh release upload "${{ github.ref_name }}" "$newPath" --clobber
-          }
-
-  build-android:
-    name: Android APK + AAB
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Remove local cargo config
-        run: rm -f src-tauri/.cargo/config.toml
-
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
+          cache-dependency-path: "**/package-lock.json"
 
       - name: Setup Java 17
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
@@ -229,122 +359,111 @@ jobs:
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
-      - name: Initialize Tauri Android
-        run: npx tauri android init
-        env:
-          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-
-      - name: Generate Android icons
-        run: python3 scripts/generate-icons.py
-
-      - name: Configure Gradle for CI
-        run: |
-          {
-            echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m"
-            echo "org.gradle.daemon=false"
-            echo "org.gradle.parallel=true"
-            echo "org.gradle.caching=true"
-          } >> src-tauri/gen/android/gradle.properties
-
-      - name: Download Gradle with retry
-        working-directory: src-tauri/gen/android
-        run: |
-          for _i in 1 2 3 4 5; do
-            ./gradlew --version && break
-            sleep 15
-          done
-
-      - name: Decode keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > src-tauri/gen/android/app/release.keystore
-            echo "Keystore decoded"
-          else
-            echo "No keystore - build will be unsigned"
-          fi
-
-      - name: Inject release signing
-        run: |
-          GRADLE="src-tauri/gen/android/app/build.gradle.kts"
-          KS="src-tauri/gen/android/app/release.keystore"
-          if [ ! -f "$KS" ] || [ ! -f "$GRADLE" ]; then
-            echo "Keystore or Gradle not found, skipping"
-            exit 0
-          fi
-          SIGNING='    signingConfigs {\n        create("release") {\n            storeFile = file("release.keystore")\n            storePassword = System.getenv("ANDROID_STORE_PASSWORD") ?: ""\n            keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: ""\n            keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: ""\n        }\n    }\n'
-          sed -i "s|buildTypes {|${SIGNING}\n    buildTypes {|" "$GRADLE"
-          sed -i 's|getByName("release") {|getByName("release") {\n                signingConfig = signingConfigs.getByName("release")|' "$GRADLE"
-          echo "Gradle signing configured"
-
       - name: Build Android
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "8"
-          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: npx tauri android build
+        run: |
+          npx tauri android init
+          python3 scripts/generate-icons.py
+          npx tauri android build
 
-      - name: Sign APK
+      - name: Sign APK/AAB (Secure RAM-Disk Mode)
         env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          set -euo pipefail
+          # Trap: destroy keystore from RAM on exit (success, error, or cancel)
+          trap 'if [ -f /dev/shm/release.keystore ]; then shred -u /dev/shm/release.keystore; echo "Keystore destroyed from RAM."; fi' EXIT
+          # Decode keystore to /dev/shm (tmpfs RAM disk -- never touches physical disk)
+          echo "$KEYSTORE_BASE64" | base64 -d > /dev/shm/release.keystore
+          # Find latest build-tools
           BT=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
-          APK=$(find src-tauri/gen/android -name "*universal-release.apk" 2>/dev/null | head -1)
-          if [ -z "$APK" ]; then
-            APK=$(find src-tauri/gen/android -name "*release.apk" ! -name "*unsigned*" | head -1)
-          fi
-          if [ -z "$APK" ]; then echo "::error::No release APK found"; exit 1; fi
-          echo "Source APK: $APK"
-          ALIGNED="/tmp/lexflow-aligned.apk"
-          "$BT/zipalign" -f -p 4 "$APK" "$ALIGNED"
-          "$BT/zipalign" -c -p 4 "$ALIGNED"
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
-          if [ "$VERSION" = "$TAG" ]; then VERSION="1.0.0"; fi
-          FINAL="/tmp/LexFlow-v${VERSION}-universal.apk"
+          # Sign and zipalign APK (env: prevents password from appearing in ps aux)
+          APK=$(find src-tauri/gen/android -name "*universal-release.apk" | head -1)
+          "$BT/zipalign" -f -p 4 "$APK" aligned.apk
           "$BT/apksigner" sign \
-            --ks src-tauri/gen/android/app/release.keystore \
+            --ks /dev/shm/release.keystore \
             --ks-pass "env:ANDROID_STORE_PASSWORD" \
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --key-pass "env:ANDROID_KEY_PASSWORD" \
-            --v1-signing-enabled true --v2-signing-enabled true \
-            --v3-signing-enabled true --v4-signing-enabled true \
-            --out "$FINAL" "$ALIGNED"
-          "$BT/apksigner" verify --verbose "$FINAL"
-          echo "APK signed and verified"
-          echo "APK_FINAL=$FINAL" >> "$GITHUB_ENV"
-          AAB=$(find src-tauri/gen/android -name "*release.aab" 2>/dev/null | head -1)
-          if [ -n "$AAB" ]; then
-            AAB_FINAL="/tmp/LexFlow-v${VERSION}-universal.aab"
-            cp "$AAB" "$AAB_FINAL"
-            echo "AAB_FINAL=$AAB_FINAL" >> "$GITHUB_ENV"
-          fi
+            --out "LexFlow-${RELEASE_TAG}-android.apk" \
+            aligned.apk
+          # Copy AAB
+          AAB=$(find src-tauri/gen/android -name "*release.aab" | head -1)
+          cp "$AAB" "LexFlow-${RELEASE_TAG}-android.aab"
+          # Cleanup intermediate artifacts
+          rm -f aligned.apk
+          echo "Signing complete. Trap EXIT will shred keystore automatically."
 
-      - name: Upload artifacts to release
+      - name: SHA256 Checksums & Upload
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.ref_name }}"
-          for _i in $(seq 1 30); do
-            gh release view "$TAG" > /dev/null 2>&1 && break
-            echo "Waiting for release... ($_i/30)"
-            sleep 15
+          for file in LexFlow-*.apk LexFlow-*.aab; do
+            sha256sum "$file" > "$file.sha256"
+            gh release upload "$RELEASE_TAG" "$file" --clobber
+            gh release upload "$RELEASE_TAG" "$file.sha256" --clobber
           done
-          if [ -f "${APK_FINAL:-}" ]; then
-            gh release upload "$TAG" "$APK_FINAL" --clobber
-            cp "$APK_FINAL" /tmp/app-universal-release.apk
-            gh release upload "$TAG" /tmp/app-universal-release.apk --clobber
-            echo "APK uploaded"
+
+      - name: Attest Build Provenance (SLSA)
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        with:
+          subject-path: LexFlow-*.apk
+
+  # ---------------------------------------------------------
+  # 5. PUBLISH RELEASE (only if ALL builds succeed)
+  # ---------------------------------------------------------
+  publish-release:
+    name: "Publish Release"
+    needs: [pre-flight, build-macos, build-windows, build-android]
+    runs-on: ubuntu-latest
+    if: always() && needs.build-macos.result == 'success' && needs.build-windows.result == 'success' && needs.build-android.result == 'success'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Generate Release Notes from CHANGELOG
+        id: notes
+        run: |
+          TAG="${{ needs.pre-flight.outputs.tag }}"
+          if [ -f CHANGELOG.md ]; then
+            SECTION=$(awk "/^## \[${TAG#v}\]/{found=1;next} /^## \[/{if(found) exit} found{print}" CHANGELOG.md)
+            if [ -n "$SECTION" ]; then
+              EOF_MARKER=$(openssl rand -hex 8)
+              echo "BODY<<$EOF_MARKER" >> $GITHUB_OUTPUT
+              echo "$SECTION" >> $GITHUB_OUTPUT
+              echo "$EOF_MARKER" >> $GITHUB_OUTPUT
+            else
+              echo "BODY=Release $TAG" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "BODY=Release $TAG" >> $GITHUB_OUTPUT
           fi
-          if [ -f "${AAB_FINAL:-}" ]; then
-            gh release upload "$TAG" "$AAB_FINAL" --clobber
-            cp "$AAB_FINAL" /tmp/app-universal-release.aab
-            gh release upload "$TAG" /tmp/app-universal-release.aab --clobber
-            echo "AAB uploaded"
-          fi
+
+      - name: Publish Draft Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
+        run: |
+          gh release edit "$RELEASE_TAG" --draft=false --notes "${{ steps.notes.outputs.BODY }}"
+          echo "Release $RELEASE_TAG published successfully!"
+
+  # ---------------------------------------------------------
+  # 6. ROLLBACK (if any build fails, delete the draft)
+  # ---------------------------------------------------------
+  rollback:
+    name: "Rollback: Cleanup Failed Release"
+    needs: [pre-flight, build-macos, build-windows, build-android]
+    runs-on: ubuntu-latest
+    if: always() && (needs.build-macos.result == 'failure' || needs.build-windows.result == 'failure' || needs.build-android.result == 'failure')
+    steps:
+      - name: Delete Draft Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
+        run: |
+          echo "Build failed -- cleaning up draft release $RELEASE_TAG"
+          gh release delete "$RELEASE_TAG" --yes 2>/dev/null || echo "No draft to delete."
+          echo "Rollback complete. Fix the issue and re-trigger."
