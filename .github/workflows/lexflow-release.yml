@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  attestations: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -180,6 +181,20 @@ jobs:
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
+      - name: Install lld (llvm) and ensure ld64.lld in PATH
+        shell: bash
+        run: |
+          brew update || true
+          brew install llvm || true
+          BREW_PREFIX=$(brew --prefix)
+          if [ -f "$BREW_PREFIX/opt/llvm/bin/ld.lld" ]; then
+            sudo ln -sf "$BREW_PREFIX/opt/llvm/bin/ld.lld" /usr/local/bin/ld64.lld 2>/dev/null || true
+            sudo ln -sf "$BREW_PREFIX/opt/llvm/bin/ld.lld" /opt/homebrew/bin/ld64.lld 2>/dev/null || true
+          fi
+          echo "$BREW_PREFIX/opt/llvm/bin" | sudo tee /etc/paths.d/llvm > /dev/null || true
+          export PATH="$BREW_PREFIX/opt/llvm/bin:$PATH"
+          which ld64.lld || echo "WARNING: ld64.lld not found, will use default linker"
+
       - name: Rust cache
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
         with:
@@ -225,13 +240,13 @@ jobs:
           subject-path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
 
   # ---------------------------------------------------------
-  # 3. WINDOWS MSI -- Standard + Lite (single job, cached rebuild)
+  # 3a. WINDOWS MSI LITE -- Standard (no bundled WebView2)
   # ---------------------------------------------------------
-  build-windows:
-    name: "Windows: MSI Standard + Lite"
+  build-windows-lite:
+    name: "Windows: MSI Lite (no WebView2)"
     needs: pre-flight
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
     steps:
@@ -259,7 +274,7 @@ jobs:
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
         with:
           workspaces: ./src-tauri -> target
-          shared-key: windows-x64
+          shared-key: windows-lite
 
       - name: Install WiX 4
         shell: powershell
@@ -268,19 +283,80 @@ jobs:
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
-      - name: Build Windows MSI (Standard)
+      - name: Build Windows MSI (Lite)
         shell: powershell
         run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi
 
-      - name: Stage Standard MSI
+      - name: Stage Lite MSI
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "staging"
           $msi = Get-ChildItem -Recurse -Filter "*.msi" -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" | Select-Object -First 1
           Copy-Item $msi.FullName "staging/LexFlow-$env:RELEASE_TAG-windows-x64.msi"
-          Write-Host "Standard MSI staged: LexFlow-$env:RELEASE_TAG-windows-x64.msi ($([math]::Round($msi.Length / 1MB, 1)) MB)"
-          # Remove original so it does not interfere with the next build
-          Remove-Item $msi.FullName -Force
+          Write-Host "Lite MSI staged: LexFlow-$env:RELEASE_TAG-windows-x64.msi ($([math]::Round($msi.Length / 1MB, 1)) MB)"
+
+      - name: Generate SBOM & SHA256 Checksums & Upload
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx @cyclonedx/cyclonedx-npm --output-format JSON --output-file lexflow-windows-lite-sbom.json
+          gh release upload "$env:RELEASE_TAG" lexflow-windows-lite-sbom.json --clobber
+          Get-ChildItem -Filter "LexFlow-*.msi" -Path "staging" | ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+              "$hash  $($_.Name)" | Out-File "$($_.FullName).sha256" -Encoding ASCII
+              gh release upload "$env:RELEASE_TAG" $_.FullName --clobber
+              gh release upload "$env:RELEASE_TAG" "$($_.FullName).sha256" --clobber
+          }
+
+      - name: Attest Build Provenance (SLSA)
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        with:
+          subject-path: staging/LexFlow-*.msi
+
+  # ---------------------------------------------------------
+  # 3b. WINDOWS MSI -- Offline WebView2 (bundled installer)
+  # ---------------------------------------------------------
+  build-windows-offline:
+    name: "Windows: MSI Offline WebView2"
+    needs: pre-flight
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        with:
+          workspaces: ./src-tauri -> target
+          shared-key: windows-offline
+
+      - name: Install WiX 4
+        shell: powershell
+        run: dotnet tool install --global wix --version 4.0.5; wix extension add WixToolset.UI.wixext/4.0.5 -g
+
+      - name: Install dependencies
+        run: npm ci && cd client && npm ci --legacy-peer-deps
 
       - name: Write WebView2 offline config
         shell: powershell
@@ -289,32 +365,30 @@ jobs:
           $u = New-Object System.Text.UTF8Encoding $false
           [System.IO.File]::WriteAllText("$PWD\src-tauri\tauri.webview2.conf.json", $j, $u)
 
-      - name: Build Windows MSI (Offline WebView2 -- cached Rust rebuild)
+      - name: Build Windows MSI (Offline WebView2)
         shell: powershell
         run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi --config src-tauri/tauri.webview2.conf.json
 
-      - name: Stage Lite MSI (with embedded WebView2)
+      - name: Stage Offline MSI
         shell: powershell
         run: |
+          New-Item -ItemType Directory -Force -Path "staging"
           $msi = Get-ChildItem -Recurse -Filter "*.msi" -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" | Select-Object -First 1
           if ($msi) {
             Copy-Item $msi.FullName "staging/LexFlow-$env:RELEASE_TAG-windows-x64-offline-webview2.msi"
-            Write-Host "Lite MSI staged: LexFlow-$env:RELEASE_TAG-windows-x64-offline-webview2.msi ($([math]::Round($msi.Length / 1MB, 1)) MB)"
+            Write-Host "Offline MSI staged: LexFlow-$env:RELEASE_TAG-windows-x64-offline-webview2.msi ($([math]::Round($msi.Length / 1MB, 1)) MB)"
           } else {
             Write-Error "No MSI found after offline WebView2 build!"
             exit 1
           }
-          # Print size comparison
-          Write-Host "--- MSI Size Comparison ---"
-          Get-ChildItem "staging/*.msi" | ForEach-Object { Write-Host "$($_.Name): $([math]::Round($_.Length / 1MB, 1)) MB" }
 
       - name: Generate SBOM & SHA256 Checksums & Upload
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx @cyclonedx/cyclonedx-npm --output-format JSON --output-file lexflow-windows-sbom.json
-          gh release upload "$env:RELEASE_TAG" lexflow-windows-sbom.json --clobber
+          npx @cyclonedx/cyclonedx-npm --output-format JSON --output-file lexflow-windows-offline-sbom.json
+          gh release upload "$env:RELEASE_TAG" lexflow-windows-offline-sbom.json --clobber
           Get-ChildItem -Filter "LexFlow-*.msi" -Path "staging" | ForEach-Object {
               $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
               "$hash  $($_.Name)" | Out-File "$($_.FullName).sha256" -Encoding ASCII
@@ -384,6 +458,9 @@ jobs:
           npm ci && cd client && npm ci --legacy-peer-deps
           pip3 install Pillow --quiet
 
+      - name: Remove local cargo config (CI safety)
+        run: rm -f src-tauri/.cargo/config.toml
+
       - name: Build Android
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
@@ -442,9 +519,9 @@ jobs:
   # ---------------------------------------------------------
   publish-release:
     name: "Publish Release"
-    needs: [pre-flight, build-macos, build-windows, build-android]
+    needs: [pre-flight, build-macos, build-windows-lite, build-windows-offline, build-android]
     runs-on: ubuntu-latest
-    if: always() && needs.build-macos.result == 'success' && needs.build-windows.result == 'success' && needs.build-android.result == 'success'
+    if: always() && needs.build-macos.result == 'success' && needs.build-windows-lite.result == 'success' && needs.build-windows-offline.result == 'success' && needs.build-android.result == 'success'
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -480,9 +557,9 @@ jobs:
   # ---------------------------------------------------------
   rollback:
     name: "Rollback: Cleanup Failed Release"
-    needs: [pre-flight, build-macos, build-windows, build-android]
+    needs: [pre-flight, build-macos, build-windows-lite, build-windows-offline, build-android]
     runs-on: ubuntu-latest
-    if: always() && (needs.build-macos.result == 'failure' || needs.build-windows.result == 'failure' || needs.build-android.result == 'failure')
+    if: always() && (needs.build-macos.result == 'failure' || needs.build-windows-lite.result == 'failure' || needs.build-windows-offline.result == 'failure' || needs.build-android.result == 'failure')
     steps:
       - name: Delete Draft Release
         env:
