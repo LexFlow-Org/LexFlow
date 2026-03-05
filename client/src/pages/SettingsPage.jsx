@@ -43,132 +43,11 @@ const AUTOLOCK_OPTIONS = [
   { value: 0, label: 'Mai' },
 ];
 
-/** Shared pwd+error+showPwd state used by all password modals */
-function usePwdState() {
+/* ── Factory Reset Modal ── */
+function FactoryResetModal({ onClose }) {
   const [pwd, setPwd] = useState('');
   const [error, setError] = useState('');
   const [showPwd, setShowPwd] = useState(false);
-  const pwdChange = e => { setPwd(e.target.value); setError(''); };
-  const toggle = () => setShowPwd(v => !v);
-  return { pwd, setPwd, error, setError, showPwd, pwdChange, toggle };
-}
-
-
-/* ── Shared Modal Sub-Components ── */
-
-/** Header gradient bar with icon, title, subtitle, close button */
-function ModalHeader({ id, icon: Icon, iconBg, iconBorder, iconColor, title, subtitle, onClose }) {
-  const gradient = iconColor === 'text-red-400'
-    ? 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)'
-    : 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)';
-  return (
-    <div className="px-8 pt-8 pb-5" style={{ background: gradient }}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 ${iconBg} rounded-2xl flex items-center justify-center border ${iconBorder}`}>
-            <Icon size={22} className={iconColor} />
-          </div>
-          <div>
-            <h3 id={id} className="text-xl font-bold text-white">{title}</h3>
-            <p className="text-xs text-text-dim mt-0.5">{subtitle}</p>
-          </div>
-        </div>
-        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
-          <X size={20} className="group-hover:rotate-90 transition-transform" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-
-ModalHeader.propTypes = {
-  id: PropTypes.string.isRequired,
-  icon: PropTypes.elementType.isRequired,
-  iconBg: PropTypes.string.isRequired,
-  iconBorder: PropTypes.string.isRequired,
-  iconColor: PropTypes.string.isRequired,
-  title: PropTypes.string.isRequired,
-  subtitle: PropTypes.string.isRequired,
-  onClose: PropTypes.func.isRequired,
-};
-/** Password input with KeyRound icon and show/hide toggle */
-function PasswordField({ value, onChange, showPwd, onToggle, placeholder = 'Password…', autoFocus = false, onKeyDown }) {
-  return (
-    <div className="relative">
-      <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
-      <input
-        type={showPwd ? 'text' : 'password'}
-        className="w-full py-3 pl-10 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange}
-        autoFocus={autoFocus}
-        onKeyDown={onKeyDown}
-      />
-      <button type="button" onClick={onToggle}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors">
-        {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-      </button>
-    </div>
-  );
-}
-
-PasswordField.propTypes = {
-  value: PropTypes.string.isRequired,
-  onChange: PropTypes.func.isRequired,
-  showPwd: PropTypes.bool.isRequired,
-  onToggle: PropTypes.func.isRequired,
-  placeholder: PropTypes.string,
-  autoFocus: PropTypes.bool,
-  onKeyDown: PropTypes.func,
-};
-
-/** Standard footer: Annulla + action button */
-function ModalFooter({ onClose, onAction, actionLabel, actionClass, disabled }) {
-  return (
-    <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
-      <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
-      <button onClick={onAction} disabled={disabled}
-        className={`px-6 py-3 text-xs font-bold uppercase tracking-widest ${actionClass || 'btn-primary'} ${disabled ? 'opacity-50' : ''}`}>
-        {actionLabel}
-      </button>
-    </div>
-  );
-}
-
-
-ModalFooter.propTypes = {
-  onClose: PropTypes.func.isRequired,
-  onAction: PropTypes.func.isRequired,
-  actionLabel: PropTypes.string.isRequired,
-  actionClass: PropTypes.string,
-  disabled: PropTypes.bool,
-};
-
-/** Wrapper: ModalOverlay + container + ModalHeader + body + ModalFooter */
-function ModalShell({ labelledBy, headerProps, footerProps, children }) {
-  return (
-    <ModalOverlay onClose={footerProps.onClose} labelledBy={labelledBy} zIndex={200}>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <ModalHeader {...headerProps} />
-        <div className="px-8 py-6 space-y-4">
-          {children}
-        </div>
-        <ModalFooter {...footerProps} />
-      </div>
-    </ModalOverlay>
-  );
-}
-ModalShell.propTypes = {
-  labelledBy: PropTypes.string.isRequired,
-  headerProps: PropTypes.object.isRequired,
-  footerProps: PropTypes.object.isRequired,
-  children: PropTypes.node.isRequired,
-};
-/* ── Factory Reset Modal ── */
-function FactoryResetModal({ onClose }) {
-  const { pwd, error, setError, showPwd, pwdChange, toggle } = usePwdState();
 
   const doReset = async () => {
     if (!pwd) { setError('Password richiesta.'); return; }
@@ -178,18 +57,53 @@ function FactoryResetModal({ onClose }) {
   };
 
   return (
-    <ModalShell labelledBy="factory-reset-title"
-      headerProps={{ id: 'factory-reset-title', icon: LogOut, iconBg: 'bg-red-500/10', iconBorder: 'border-red-500/20', iconColor: 'text-red-400', title: 'Factory Reset', subtitle: 'Tutti i dati verranno eliminati', onClose }}
-      footerProps={{ onClose, onAction: doReset, actionLabel: 'Conferma Reset', actionClass: 'rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all' }}>
-      <p className="text-text-muted text-xs leading-relaxed">
-        Stai per cancellare <span className="text-white font-bold">tutti i dati del Vault</span>.
-        Inserisci la password per confermare. <span className="font-semibold">Azione irreversibile.</span>
-      </p>
-      <PasswordField value={pwd} onChange={pwdChange}
-        showPwd={showPwd} onToggle={toggle} placeholder="Password vault…" autoFocus
-        onKeyDown={async (e) => { if (e.key === 'Enter' && pwd) doReset(); }} />
-      {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
-    </ModalShell>
+    <ModalOverlay onClose={onClose} labelledBy="factory-reset-title" zIndex={200}>
+      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
+        <div className="px-8 pt-8 pb-5" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center border border-red-500/20">
+                <LogOut size={22} className="text-red-400" />
+              </div>
+              <div>
+                <h3 id="factory-reset-title" className="text-xl font-bold text-white">Factory Reset</h3>
+                <p className="text-xs text-text-dim mt-0.5">Tutti i dati verranno eliminati</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+              <X size={20} className="group-hover:rotate-90 transition-transform" />
+            </button>
+          </div>
+        </div>
+        <div className="px-8 py-6 space-y-4">
+          <p className="text-text-muted text-xs leading-relaxed">
+            Stai per cancellare <span className="text-white font-bold">tutti i dati del Vault</span>.
+            Inserisci la password per confermare. <span className="font-semibold">Azione irreversibile.</span>
+          </p>
+          <div className="relative">
+            <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
+            <input
+              type={showPwd ? 'text' : 'password'}
+              className="w-full py-3 pl-10 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+              placeholder="Password vault…"
+              value={pwd}
+              onChange={e => { setPwd(e.target.value); setError(''); }}
+              autoFocus
+              onKeyDown={async (e) => { if (e.key === 'Enter' && pwd) doReset(); }}
+            />
+            <button type="button" onClick={() => setShowPwd(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors">
+              {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+          {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
+          <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+          <button onClick={doReset} className="px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest">Conferma Reset</button>
+        </div>
+      </div>
+    </ModalOverlay>
   );
 }
 
@@ -197,8 +111,10 @@ FactoryResetModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── Export Backup Modal ── */
 function ExportBackupModal({ onClose }) {
-  const { pwd, error, setError, showPwd, pwdChange, toggle } = usePwdState();
+  const [pwd, setPwd] = useState('');
   const [pwdConfirm, setPwdConfirm] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const doExport = async () => {
@@ -226,21 +142,63 @@ function ExportBackupModal({ onClose }) {
   };
 
   return (
-    <ModalShell labelledBy="export-backup-title"
-      headerProps={{ id: 'export-backup-title', icon: Download, iconBg: 'bg-primary/10', iconBorder: 'border-primary/20', iconColor: 'text-primary', title: 'Esporta Backup', subtitle: 'Crea un file .lex cifrato', onClose }}
-      footerProps={{ onClose, onAction: doExport, actionLabel: loading ? 'Esporto…' : 'Esporta', disabled: loading }}>
-      <p className="text-text-muted text-xs leading-relaxed">
-        Scegli una password per proteggere il file di backup. Ti servirà per importarlo su un altro dispositivo.
-      </p>
-      <div className="space-y-3">
-        <PasswordField value={pwd} onChange={pwdChange}
-          showPwd={showPwd} onToggle={toggle} placeholder="Password backup…" autoFocus />
-        <PasswordField value={pwdConfirm} onChange={e => { setPwdConfirm(e.target.value); setError(''); }}
-          showPwd={showPwd} onToggle={toggle} placeholder="Conferma password…"
-          onKeyDown={e => { if (e.key === 'Enter') doExport(); }} />
+    <ModalOverlay onClose={onClose} labelledBy="export-backup-title" zIndex={200}>
+      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
+        <div className="px-8 pt-8 pb-5" style={{ background: 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
+                <Download size={22} className="text-primary" />
+              </div>
+              <div>
+                <h3 id="export-backup-title" className="text-xl font-bold text-white">Esporta Backup</h3>
+                <p className="text-xs text-text-dim mt-0.5">Crea un file .lex cifrato</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+              <X size={20} className="group-hover:rotate-90 transition-transform" />
+            </button>
+          </div>
+        </div>
+        <div className="px-8 py-6 space-y-4">
+          <p className="text-text-muted text-xs leading-relaxed">
+            Scegli una password per proteggere il file di backup. Ti servirà per importarlo su un altro dispositivo.
+          </p>
+          <div className="space-y-3">
+            <div className="relative">
+              <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
+              <input type={showPwd ? 'text' : 'password'}
+                className="w-full py-3 pl-10 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+                placeholder="Password backup…"
+                value={pwd}
+                onChange={e => { setPwd(e.target.value); setError(''); }}
+                autoFocus />
+              <button type="button" onClick={() => setShowPwd(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors">
+                {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <div className="relative">
+              <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
+              <input type={showPwd ? 'text' : 'password'}
+                className="w-full py-3 pl-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+                placeholder="Conferma password…"
+                value={pwdConfirm}
+                onChange={e => { setPwdConfirm(e.target.value); setError(''); }}
+                onKeyDown={e => { if (e.key === 'Enter') doExport(); }} />
+            </div>
+          </div>
+          {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
+          <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+          <button onClick={doExport} disabled={loading}
+            className={`btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
+            {loading ? 'Esporto…' : 'Esporta'}
+          </button>
+        </div>
       </div>
-      {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
-    </ModalShell>
+    </ModalOverlay>
   );
 }
 
@@ -248,7 +206,9 @@ ExportBackupModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── Import Backup Modal ── */
 function ImportBackupModal({ onClose }) {
-  const { pwd, error, setError, showPwd, pwdChange, toggle } = usePwdState();
+  const [pwd, setPwd] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const doImport = async () => {
@@ -275,18 +235,54 @@ function ImportBackupModal({ onClose }) {
   };
 
   return (
-    <ModalShell labelledBy="import-backup-title"
-      headerProps={{ id: 'import-backup-title', icon: Upload, iconBg: 'bg-primary/10', iconBorder: 'border-primary/20', iconColor: 'text-primary', title: 'Importa Backup', subtitle: 'Sovrascrive i dati attuali', onClose }}
-      footerProps={{ onClose, onAction: doImport, actionLabel: loading ? 'Importo…' : 'Importa', disabled: loading }}>
-      <p className="text-text-muted text-xs leading-relaxed">
-        Inserisci la password con cui è stato cifrato il file di backup.
-        {' '}<span className="text-white font-semibold">I dati attuali verranno sovrascritti.</span>
-      </p>
-      <PasswordField value={pwd} onChange={pwdChange}
-        showPwd={showPwd} onToggle={toggle} placeholder="Password backup…" autoFocus
-        onKeyDown={e => { if (e.key === 'Enter') doImport(); }} />
-      {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
-    </ModalShell>
+    <ModalOverlay onClose={onClose} labelledBy="import-backup-title" zIndex={200}>
+      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
+        <div className="px-8 pt-8 pb-5" style={{ background: 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
+                <Upload size={22} className="text-primary" />
+              </div>
+              <div>
+                <h3 id="import-backup-title" className="text-xl font-bold text-white">Importa Backup</h3>
+                <p className="text-xs text-text-dim mt-0.5">Sovrascrive i dati attuali</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+              <X size={20} className="group-hover:rotate-90 transition-transform" />
+            </button>
+          </div>
+        </div>
+        <div className="px-8 py-6 space-y-4">
+          <p className="text-text-muted text-xs leading-relaxed">
+            Inserisci la password con cui è stato cifrato il file di backup.
+            {' '}<span className="text-white font-semibold">I dati attuali verranno sovrascritti.</span>
+          </p>
+          <div className="relative">
+            <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
+            <input type={showPwd ? 'text' : 'password'}
+              className="w-full py-3 pl-10 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+              placeholder="Password backup…"
+              value={pwd}
+              onChange={e => { setPwd(e.target.value); setError(''); }}
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') doImport(); }} />
+            <button type="button" onClick={() => setShowPwd(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors">
+              {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+          {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
+          <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+          <button onClick={doImport} disabled={loading}
+            className={`btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
+            {loading ? 'Importo…' : 'Importa'}
+          </button>
+        </div>
+      </div>
+    </ModalOverlay>
   );
 }
 
@@ -294,25 +290,42 @@ ImportBackupModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── Biometric Reset Confirm Modal ── */
 function BioResetConfirmModal({ onClose }) {
-  const handleConfirm = () => {
-    onClose();
-    api.clearBio()
-      .then(() => toast.success("Biometria resettata"))
-      .catch(() => toast.error("Errore nel reset biometria"));
-  };
-
   return (
     <ModalOverlay onClose={onClose} labelledBy="bio-reset-title" zIndex={200}>
       <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <ModalHeader id="bio-reset-title" icon={RefreshCw} iconBg="bg-red-500/10" iconBorder="border-red-500/20" iconColor="text-red-400"
-          title="Resetta Biometria" subtitle="Azione irreversibile" onClose={onClose} />
-        <div className="px-8 py-6">
-          <p className="text-text-muted text-xs leading-relaxed">
-            Cancellare le credenziali biometriche salvate? Dovrai reinserire la password e riconfigurare la biometria.
-          </p>
+        <div className="px-8 pt-8 pb-5" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)' }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center border border-red-500/20">
+              <RefreshCw size={22} className="text-red-400" />
+            </div>
+            <div>
+              <h3 id="bio-reset-title" className="text-xl font-bold text-white">Resetta Biometria</h3>
+              <p className="text-xs text-text-dim mt-0.5">Azione irreversibile</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+            <X size={20} className="group-hover:rotate-90 transition-transform" />
+          </button>
         </div>
-        <ModalFooter onClose={onClose} onAction={handleConfirm} actionLabel="Conferma"
-          actionClass="rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all" />
+      </div>
+      <div className="px-8 py-6">
+        <p className="text-text-muted text-xs leading-relaxed">
+          Cancellare le credenziali biometriche salvate? Dovrai reinserire la password e riconfigurare la biometria.
+        </p>
+      </div>
+      <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
+        <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+        <button onClick={() => {
+          onClose();
+          api.clearBio()
+            .then(() => toast.success("Biometria resettata"))
+            .catch(() => toast.error("Errore nel reset biometria"));
+        }}
+          className="px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest">
+          Conferma
+        </button>
+      </div>
       </div>
     </ModalOverlay>
   );
@@ -352,6 +365,14 @@ export default function SettingsPage({ onLock }) {
     api.getAppVersion().then(setAppVersion);
     api.isMac().then(isMac => setPlatform(isMac ? 'macOS' : 'Windows'));
     api.getSettings().then(applySettings);
+    // Listen for corrupted settings file event from backend
+    const unsubscribe = api.onSettingsCorrupted?.((payload) => {
+      toast.error(
+        `⚠️ Il file impostazioni era corrotto ed è stato ripristinato ai valori predefiniti. Backup salvato in: ${payload?.backup_path || '(sconosciuto)'}`,
+        { duration: 8000 }
+      );
+    });
+    return () => { unsubscribe?.(); };
   }, []);
 
   const buildFullSettings = useCallback(() => ({

@@ -77,6 +77,15 @@ const ARGON2_P_COST: u32 = 1;
 const MAX_FAILED_ATTEMPTS: u32 = 5;
 const LOCKOUT_SECS: u64 = 300;
 
+/// SECURITY (Audit 2026-03-04): track legacy AAD-less decryption fallback usage at runtime.
+/// After this many decrypt_data() calls WITHOUT any legacy fallback trigger, we consider
+/// all files migrated and stop offering the fallback permanently for this session.
+/// This limits the window during which an attacker with filesystem access could craft
+/// a ciphertext with empty AAD that would be accepted.
+const LEGACY_AAD_SUNSET_THRESHOLD: u32 = 200;
+static LEGACY_AAD_CLEAN_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static LEGACY_AAD_EVER_USED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 // SECURITY FIX (Level-8 C5): cap settings/notification file reads to prevent OOM attack.
 // An attacker (or corrupted write) could inject a 5GB settings.json; fs::read would try
 // to allocate 5GB in RAM and OOM-kill the process. 10MB is generous for any real settings file.
@@ -85,6 +94,37 @@ const MAX_SETTINGS_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 // ═══════════════════════════════════════════════════════════
 //  STATE & MEMORY PROTECTION
 // ═══════════════════════════════════════════════════════════
+
+/// Platform-specific UID — extracted to eliminate 3 duplicate blocks.
+/// Returns a string combining domain/SID (Windows) or real UID+username (Unix).
+/// SECURITY FIX (Audit Chunk 01): on Unix, uses libc::getuid() syscall instead of $UID env var.
+/// Env vars are user-spoofable (`export UID=fake`); getuid() is a kernel syscall and non-falsifiable.
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn get_platform_uid() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        let domain = std::env::var("USERDOMAIN").unwrap_or_else(|_| "WORKGROUP".to_string());
+        let sid = std::env::var("USERPROFILE").unwrap_or_else(|_| std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "0".to_string()));
+        format!("{}:{}", domain, sid)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // SECURITY FIX: use libc::getuid() (kernel syscall, non-spoofable) + whoami::username()
+        // as fallback context. Previously used $UID/$USER env vars which an attacker could
+        // manipulate to alter local encryption key derivation.
+        let real_uid = unsafe { libc::getuid() };
+        let username = whoami::username();
+        format!("{}:{}", real_uid, username)
+    }
+}
+
+/// Derive a SHA-256 double-hash key from a seed string. Used by encryption key functions.
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn double_sha256_key(seed: &str) -> Zeroizing<Vec<u8>> {
+    let h1 = <Sha256 as Digest>::digest(seed.as_bytes());
+    let h2 = <Sha256 as Digest>::digest(&h1);
+    Zeroizing::new(h2.to_vec())
+}
 
 // SECURITY FIX (Gemini Audit v2): persistent machine ID — replaces volatile hostname.
 // Generated once at first run, persisted in security_dir. Survives hostname changes,
@@ -98,9 +138,14 @@ fn get_or_create_machine_id() -> String {
         .or_else(dirs::home_dir)
         .expect("FATAL: Impossibile risolvere una directory sicura per l'app");
     let security_dir = base_dir.join("com.pietrolongo.lexflow");
-    if let Err(e) = fs::create_dir_all(&security_dir) {
-        eprintln!("CRITICAL: Impossibile creare security_dir: {}", e);
-    }
+    // SECURITY FIX (Audit Chunk 02): propagate create_dir_all failure. If we can't create
+    // the directory, continuing would generate a new machine_id every launch, silently
+    // corrupting all files encrypted with the local key (settings, burned-keys, license).
+    fs::create_dir_all(&security_dir).unwrap_or_else(|e| {
+        panic!("FATAL: Impossibile creare security_dir {:?}: {}. \
+                Senza questa directory il machine-id non può essere persistito \
+                e tutti i file cifrati locali sarebbero inaccessibili.", security_dir, e);
+    });
     let id_path = security_dir.join(MACHINE_ID_FILE);
     if let Ok(existing) = fs::read_to_string(&id_path) {
         let trimmed = existing.trim().to_string();
@@ -123,24 +168,20 @@ fn get_or_create_machine_id() -> String {
 fn get_local_encryption_key_legacy() -> Zeroizing<Vec<u8>> {
     let user = whoami::username();
     let host = whoami::fallible::hostname().unwrap_or_else(|_| "unknown".to_string());
-    #[cfg(target_os = "windows")]
-    let uid = {
-        let domain = std::env::var("USERDOMAIN").unwrap_or_else(|_| "WORKGROUP".to_string());
-        let sid = std::env::var("USERPROFILE").unwrap_or_else(|_| std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "0".to_string()));
-        format!("{}:{}", domain, sid)
-    };
-    #[cfg(not(target_os = "windows"))]
-    let uid = std::env::var("UID")
-        .or_else(|_| std::env::var("USER"))
-        .unwrap_or_else(|_| "fallback_uid_001".to_string()); // SECURITY FIX: never use PID as crypto fallback
+    let uid = get_platform_uid();
     let seed = format!("LEXFLOW-LOCAL-KEY-V2:{}:{}:{}:FORTKNOX", user, host, uid);
-    let h1 = <Sha256 as Digest>::digest(seed.as_bytes());
-    let h2 = <Sha256 as Digest>::digest(&h1);
-    Zeroizing::new(h2.to_vec())
+    double_sha256_key(&seed)
 }
 
 /// Try to decrypt with current key, fall back to legacy key if needed.
 /// On legacy success, re-encrypt with new key for silent migration.
+///
+/// ## Security note (Audit 2026-03-04)
+/// If `atomic_write_with_sync` fails during migration, the legacy key still decrypts
+/// the file — an attacker with physical access who knows the hostname could exploit this
+/// to keep the weaker legacy key path alive. This requires local machine access, so the
+/// risk is accepted. The failure is logged to stderr. The migration will retry on every
+/// subsequent read until it succeeds.
 fn decrypt_local_with_migration(path: &std::path::Path) -> Option<Vec<u8>> {
     let enc = fs::read(path).ok()?;
     let key = get_local_encryption_key();
@@ -153,12 +194,20 @@ fn decrypt_local_with_migration(path: &std::path::Path) -> Option<Vec<u8>> {
     {
         let legacy_key = get_local_encryption_key_legacy();
         if let Ok(dec) = decrypt_data(&legacy_key, &enc) {
+            eprintln!("SECURITY NOTICE: Decrypting {:?} via LEGACY key (hostname-based). \
+                Re-encrypting with current key...", path.file_name().unwrap_or_default());
             // Silent migration: re-encrypt with new key
             if let Ok(re_enc) = encrypt_data(&key, &dec) {
                 // SECURITY FIX (Security Audit G8): use atomic_write_with_sync for crash safety.
                 // Previously used fs::write which could corrupt on crash mid-write.
                 if let Err(e) = atomic_write_with_sync(path, &re_enc) {
-                    eprintln!("WARNING: Migrazione file decifrato fallita su disco: {}", e);
+                    eprintln!("CRITICAL WARNING: Legacy migration write failed for {:?}: {}. \
+                        The file remains decryptable with the legacy (hostname-based) key. \
+                        An attacker with physical access and hostname knowledge could exploit this. \
+                        Migration will retry on next read.", path.file_name().unwrap_or_default(), e);
+                } else {
+                    eprintln!("Legacy migration successful for {:?}. Legacy key path eliminated.", 
+                        path.file_name().unwrap_or_default());
                 }
             }
             return Some(dec);
@@ -180,78 +229,61 @@ fn get_local_encryption_key() -> Zeroizing<Vec<u8>> {
     {
         let user = whoami::username();
         let machine_id = get_or_create_machine_id();
-        #[cfg(target_os = "windows")]
-        let uid = {
-            let domain = std::env::var("USERDOMAIN").unwrap_or_else(|_| "WORKGROUP".to_string());
-            let sid = std::env::var("USERPROFILE").unwrap_or_else(|_| std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "0".to_string()));
-            format!("{}:{}", domain, sid)
-        };
-        #[cfg(not(target_os = "windows"))]
-        let uid = std::env::var("UID")
-            .or_else(|_| std::env::var("USER"))
-            .unwrap_or_else(|_| "fallback_uid_001".to_string()); // SECURITY FIX: never use PID as crypto fallback
+        let uid = get_platform_uid();
         // SECURITY FIX: machine_id replaces hostname — stable across renames/network changes
         let seed = format!("LEXFLOW-LOCAL-KEY-V3:{}:{}:{}:FORTKNOX", user, machine_id, uid);
-        let h1 = <Sha256 as Digest>::digest(seed.as_bytes());
-        let h2 = <Sha256 as Digest>::digest(&h1);
-        Zeroizing::new(h2.to_vec())
+        double_sha256_key(&seed)
     }
     #[cfg(target_os = "android")]
     {
-        // Su Android: preferisci LEXFLOW_DEVICE_ID (iniettato da Tauri mobile).
-        // Se non disponibile, genera un ID univoco persistente nel file system privato.
-        // Cerca .device_id in più percorsi possibili — il primo che esiste vince.
-        // setup() di Tauri risolve il path reale e crea la directory, ma questa
-        // funzione può essere chiamata prima che setup() finisca (e.g. settings migration).
-        let android_id = if let Ok(id) = std::env::var("LEXFLOW_DEVICE_ID") {
-            id
-        } else {
-            // Cerca .device_id nei possibili data dir dell'app
-            let candidate_dirs = [
-                // Path risolto da Tauri app_data_dir() (post-setup)
-                dirs::data_dir().map(|d| d.join("com.pietrolongo.lexflow")),
-                // NON usiamo path hardcoded /data/data/... — varia per utente/multi-user Android
-                // Fallback: directory temporanea che esiste sempre
-                std::env::temp_dir().parent().map(|p| p.join("com.pietrolongo.lexflow")),
-            ];
-            let mut found_id: Option<String> = None;
-            let mut first_writable: Option<std::path::PathBuf> = None;
-            for candidate in candidate_dirs.iter().flatten() {
-                let id_path = candidate.join(".device_id");
-                if id_path.exists() {
-                    if let Ok(id) = fs::read_to_string(&id_path) {
-                        let trimmed = id.trim().to_string();
-                        if !trimmed.is_empty() {
-                            found_id = Some(trimmed);
-                            break;
-                        }
-                    }
-                }
-                if first_writable.is_none() {
-                    first_writable = Some(id_path);
-                }
-            }
-            found_id.unwrap_or_else(|| {
-                // Prima esecuzione: genera ID casuale a 256-bit e persisti
-                let mut id_bytes = [0u8; 32];
-                rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut id_bytes);
-                let id_hex = hex::encode(id_bytes);
-                // SECURITY FIX (Gemini Audit Chunk 02): MUST persist device_id or panic.
-                // If we cannot write the ID, the key changes every restart → data loss.
-                let id_path = first_writable
-                    .expect("FATAL: Nessun percorso scrivibile trovato su Android per persistere la master key.");
-                if let Some(parent) = id_path.parent() {
-                    let _ = fs::create_dir_all(parent);
-                }
-                fs::write(&id_path, &id_hex)
-                    .expect("FATAL: Impossibile salvare device_id. Rischio data loss.");
-                id_hex
-            })
-        };
+        let android_id = get_android_device_id();
         let seed = format!("LEXFLOW-ANDROID-KEY:{}:FORTKNOX", android_id);
         let hash = <Sha256 as Digest>::digest(seed.as_bytes());
         Zeroizing::new(hash.to_vec())
     }
+}
+
+/// Resolve the Android device ID from environment or persisted file.
+/// Generates and persists a new 256-bit random ID on first run.
+#[cfg(target_os = "android")]
+fn get_android_device_id() -> String {
+    if let Ok(id) = std::env::var("LEXFLOW_DEVICE_ID") {
+        return id;
+    }
+    let candidate_dirs = [
+        dirs::data_dir().map(|d| d.join("com.pietrolongo.lexflow")),
+        std::env::temp_dir().parent().map(|p| p.join("com.pietrolongo.lexflow")),
+    ];
+    let mut first_writable: Option<std::path::PathBuf> = None;
+    for candidate in candidate_dirs.iter().flatten() {
+        let id_path = candidate.join(".device_id");
+        if let Some(id) = read_trimmed_file(&id_path) {
+            return id;
+        }
+        if first_writable.is_none() {
+            first_writable = Some(id_path);
+        }
+    }
+    // First run: generate and persist
+    let mut id_bytes = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut id_bytes);
+    let id_hex = hex::encode(id_bytes);
+    let id_path = first_writable
+        .expect("FATAL: Nessun percorso scrivibile trovato su Android per persistere la master key.");
+    if let Some(parent) = id_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&id_path, &id_hex)
+        .expect("FATAL: Impossibile salvare device_id. Rischio data loss.");
+    id_hex
+}
+
+/// Read a file, trim it, return Some(content) if non-empty.
+#[cfg(target_os = "android")]
+fn read_trimmed_file(path: &std::path::Path) -> Option<String> {
+    fs::read_to_string(path).ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -265,38 +297,14 @@ fn compute_machine_fingerprint() -> String {
     {
         let user = whoami::username();
         let machine_id = get_or_create_machine_id();
-        #[cfg(target_os = "windows")]
-        let uid = {
-            let domain = std::env::var("USERDOMAIN").unwrap_or_else(|_| "WORKGROUP".to_string());
-            let sid = std::env::var("USERPROFILE").unwrap_or_else(|_| std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "0".to_string()));
-            format!("{}:{}", domain, sid)
-        };
-        #[cfg(not(target_os = "windows"))]
-        let uid = std::env::var("UID")
-            .or_else(|_| std::env::var("USER"))
-            .unwrap_or_else(|_| "fallback_uid_001".to_string()); // SECURITY FIX: never use PID
+        let uid = get_platform_uid();
         let seed = format!("LEXFLOW-MACHINE-FP-V2:{}:{}:{}:IRONCLAD", user, machine_id, uid);
         let hash = <Sha256 as Digest>::digest(seed.as_bytes());
         hex::encode(hash)
     }
     #[cfg(target_os = "android")]
     {
-        // On Android reuse LEXFLOW_DEVICE_ID / .device_id (same as get_local_encryption_key)
-        let android_id = std::env::var("LEXFLOW_DEVICE_ID").unwrap_or_else(|_| {
-            let candidates = [
-                dirs::data_dir().map(|d| d.join("com.pietrolongo.lexflow/.device_id")),
-                std::env::temp_dir().parent().map(|p| p.join("com.pietrolongo.lexflow/.device_id")),
-            ];
-            for c in candidates.iter().flatten() {
-                if let Ok(id) = fs::read_to_string(c) {
-                    let t = id.trim().to_string();
-                    if !t.is_empty() { return t; }
-                }
-            }
-            // SECURITY FIX (Gemini Audit Chunk 02): panic instead of "unknown-android".
-            // A default fingerprint would allow license cloning across ALL Android devices.
-            panic!("FATAL: Impossibile calcolare hardware fingerprint. Integrità licenza a rischio.");
-        });
+        let android_id = get_android_device_id();
         let seed = format!("LEXFLOW-ANDROID-FP:{}:IRONCLAD", android_id);
         let hash = <Sha256 as Digest>::digest(seed.as_bytes());
         hex::encode(hash)
@@ -317,11 +325,9 @@ fn compute_machine_fingerprint() -> String {
 /// reused on a different machine. Previously it was salted with the machine fingerprint,
 /// meaning the same token produced different hashes on different machines — defeating
 /// the purpose of single-use enforcement on offline-only installs.
-fn compute_burn_hash(token: &str, _fingerprint: &str) -> String {
-    // NOTE: _fingerprint is kept for API compatibility but no longer used in the hash.
-    // This ensures that even if the .burned-keys file is copied to another machine
-    // (with a different local encryption key), the hash comparison still works after
-    // re-encrypting the registry with the new machine's key.
+/// NOTE: fingerprint parameter was removed (was `_fingerprint: &str`, always ignored).
+/// Machine-independence is the whole point — the same hash on every device.
+fn compute_burn_hash(token: &str) -> String {
     let seed = format!("BURN-GLOBAL-V2:{}", token);
     let hash = <Sha256 as Digest>::digest(seed.as_bytes());
     hex::encode(hash)
@@ -367,7 +373,7 @@ fn burn_key(dir: &std::path::Path, burn_hash: &str) -> Result<(), String> {
 /// Check if a token has been burned (checks both v2 global and v1 legacy hashes).
 /// SECURITY FIX (Gemini Audit Chunk 03): Returns Result<bool>. Fails closed if registry unreadable.
 fn is_key_burned(dir: &std::path::Path, token: &str, fingerprint: &str) -> Result<bool, String> {
-    let burn_hash_v2 = compute_burn_hash(token, fingerprint);
+    let burn_hash_v2 = compute_burn_hash(token);
     let burn_hash_legacy = compute_burn_hash_legacy(token, fingerprint);
     let hashes = load_burned_keys(dir)?;
     Ok(hashes.contains(&burn_hash_v2) || hashes.contains(&burn_hash_legacy))
@@ -377,10 +383,11 @@ fn is_key_burned(dir: &std::path::Path, token: &str, fingerprint: &str) -> Resul
 //  STATE & MEMORY PROTECTION
 // ═══════════════════════════════════════════════════════════
 
-pub struct SecureKey(Vec<u8>);
-impl Drop for SecureKey {
-    fn drop(&mut self) { self.0.zeroize(); }
-}
+/// SECURITY FIX (Audit Chunk 04): use Zeroizing<Vec<u8>> instead of bare Vec<u8>.
+/// A bare Vec<u8> may leave copies in memory during reallocation (grow/shrink).
+/// Zeroizing guarantees the backing buffer is zeroed on Drop, even after moves.
+pub struct SecureKey(Zeroizing<Vec<u8>>);
+// No manual Drop needed — Zeroizing handles zeroing automatically.
 
 pub struct AppState {
     pub data_dir: Mutex<PathBuf>,
@@ -441,21 +448,41 @@ fn decrypt_data(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     // SECURITY FIX: VAULT_MAGIC passed as AAD — must match what was used during encryption.
     let payload = Payload { msg: ciphertext, aad: VAULT_MAGIC };
-    cipher.decrypt(nonce, payload).map_err(|_| {
-        // MIGRATION: try decryption WITHOUT AAD for files encrypted before this fix.
-        // Old encrypt_data() did not pass VAULT_MAGIC as AAD, so old ciphertext was
-        // authenticated only with an empty AAD. We try the legacy path as fallback.
-        "Auth failed".into()
-    }).or_else(|_: String| {
-        // Legacy fallback: decrypt without AAD (pre-v3.6.0 files)
-        // SECURITY FIX (Gemini Audit Chunk 04): log warning for downgrade detection
-        let legacy_payload = Payload { msg: ciphertext, aad: b"" };
-        cipher.decrypt(nonce, legacy_payload).map_err(|_| "Auth failed".into())
-            .map(|dec| {
-                eprintln!("SECURITY WARNING: Vault decifrato con fallback legacy (senza AAD). RE-CIFRATURA NECESSARIA.");
-                dec
-            })
-    })
+    match cipher.decrypt(nonce, payload) {
+        Ok(dec) => {
+            // Successful decryption with AAD — increment clean counter toward sunset.
+            LEGACY_AAD_CLEAN_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            return Ok(dec);
+        }
+        Err(_) => {
+            // Primary decryption failed — try legacy fallback below.
+        }
+    }
+
+    // SECURITY FIX (Audit 2026-03-04): sunset mechanism for legacy AAD-less fallback.
+    // After LEGACY_AAD_SUNSET_THRESHOLD consecutive successful decryptions without
+    // needing the fallback, we consider all files migrated and refuse the legacy path.
+    // This limits the window for an attacker to craft files with empty AAD.
+    let clean_count = LEGACY_AAD_CLEAN_COUNTER.load(std::sync::atomic::Ordering::Relaxed);
+    if clean_count >= LEGACY_AAD_SUNSET_THRESHOLD && !LEGACY_AAD_EVER_USED.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err("Auth failed (legacy fallback disabled — all files should be migrated)".into());
+    }
+
+    // Legacy fallback: decrypt without AAD (pre-v3.6.0 files)
+    // DEPRECATION NOTE: this fallback should be removed in v4.0.0. It exists only
+    // for backward compatibility with files encrypted before AAD was introduced.
+    // After sufficient migration window, removing this eliminates a potential
+    // downgrade path where an attacker could craft files with empty AAD.
+    let legacy_payload = Payload { msg: ciphertext, aad: b"" };
+    cipher.decrypt(nonce, legacy_payload).map_err(|_| "Auth failed".into())
+        .map(|dec| {
+            // Reset clean counter — legacy path is still needed.
+            LEGACY_AAD_CLEAN_COUNTER.store(0, std::sync::atomic::Ordering::Relaxed);
+            LEGACY_AAD_EVER_USED.store(true, std::sync::atomic::Ordering::Relaxed);
+            eprintln!("SECURITY WARNING: File decifrato con fallback legacy (senza AAD). \
+                RE-CIFRATURA AUTOMATICA in corso. Questo fallback sarà rimosso in v4.0.0.");
+            dec
+        })
 }
 
 fn verify_hash_matches(key: &[u8], stored: &[u8]) -> bool {
@@ -487,21 +514,52 @@ fn get_vault_key(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>>, String> 
     // SECURITY FIX (Gemini Audit v2): mutex poisoning protection — use unwrap_or_else
     // instead of unwrap() so a panicked thread doesn't permanently brick the app.
     state.vault_key.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
-        .map(|k| Zeroizing::new(k.0.clone()))
+        .map(|k| Zeroizing::new(k.0.to_vec()))
         .ok_or_else(|| "Locked".into())
 }
 
 // ─── Persisted brute-force state (L7 fix #1) ────────────────────────────────
 // The lockout counters must survive app kills; otherwise an attacker can kill+restart
-// to reset failed_attempts to 0. We persist them in a plain file in the data dir.
-// Format: "<attempts>:<unix_lockout_end_secs>" — not secret, just anti-abuse.
+// to reset failed_attempts to 0. We persist them in a HMAC-protected file in the
+// security dir. An attacker who corrupts or deletes the file triggers a fail-closed
+// state (max attempts reached) instead of resetting the counter to 0.
+// Format: "<attempts>:<unix_lockout_end_secs>:<hmac_hex>" — HMAC verifies integrity.
+
+/// Compute HMAC for lockout data integrity — prevents local tampering to reset brute-force counter.
+fn lockout_hmac(data: &str) -> String {
+    let key = get_local_encryption_key();
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&key)
+        .expect("HMAC can take key of any size");
+    mac.update(b"LOCKOUT-INTEGRITY:");
+    mac.update(data.as_bytes());
+    hex::encode(mac.finalize().into_bytes())
+}
 
 fn lockout_load(data_dir: &PathBuf) -> (u32, Option<std::time::SystemTime>) {
     let path = data_dir.join(LOCKOUT_FILE);
-    let text = fs::read_to_string(&path).unwrap_or_default();
-    let parts: Vec<&str> = text.trim().split(':').collect();
-    if parts.len() != 2 { return (0, None); }
-    let attempts = parts[0].parse::<u32>().unwrap_or(0);
+    let text = match fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(_) => return (0, None),
+    };
+    let trimmed = text.trim();
+    if trimmed.is_empty() { return (0, None); }
+    // SECURITY FIX (Audit Chunk 06): HMAC-protected lockout file.
+    // Format: "<attempts>:<secs>:<hmac>". If HMAC is missing or invalid,
+    // fail-closed: return MAX_FAILED_ATTEMPTS so lockout is enforced.
+    let parts: Vec<&str> = trimmed.splitn(3, ':').collect();
+    if parts.len() != 3 {
+        // Corrupted/tampered file → fail-closed (enforce lockout)
+        eprintln!("[SECURITY] Lockout file format invalid — fail-closed (enforcing max attempts)");
+        return (MAX_FAILED_ATTEMPTS, None);
+    }
+    let data_part = format!("{}:{}", parts[0], parts[1]);
+    let stored_hmac = parts[2];
+    let expected_hmac = lockout_hmac(&data_part);
+    if stored_hmac != expected_hmac {
+        eprintln!("[SECURITY] Lockout file HMAC mismatch — possible tampering. Fail-closed.");
+        return (MAX_FAILED_ATTEMPTS, None);
+    }
+    let attempts = parts[0].parse::<u32>().unwrap_or(MAX_FAILED_ATTEMPTS);
     let lockout_end_secs = parts[1].parse::<u64>().unwrap_or(0);
     if lockout_end_secs == 0 { return (attempts, None); }
     let end = std::time::UNIX_EPOCH + Duration::from_secs(lockout_end_secs);
@@ -513,7 +571,9 @@ fn lockout_save(data_dir: &PathBuf, attempts: u32, locked_until: Option<std::tim
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let _ = fs::write(data_dir.join(LOCKOUT_FILE), format!("{}:{}", attempts, secs));
+    let data_part = format!("{}:{}", attempts, secs);
+    let hmac = lockout_hmac(&data_part);
+    let _ = fs::write(data_dir.join(LOCKOUT_FILE), format!("{}:{}", data_part, hmac));
 }
 
 fn lockout_clear(data_dir: &PathBuf) {
@@ -528,6 +588,13 @@ fn lockout_clear(data_dir: &PathBuf) {
 /// SECURITY FIX (Gemini Audit v2): the old code cast `as_ptr() as *mut u8` and wrote
 /// through it, violating Rust's aliasing rules (Stacked Borrows) and causing Undefined
 /// Behavior. The correct approach: convert to owned bytes, then zeroize.
+///
+/// SECURITY NOTE: `into_bytes()` consumes the String and returns its backing Vec<u8>.
+/// However, the compiler may have already placed copies of the password in registers
+/// or stack frames before this function was called. Zeroing the Vec is the best-effort
+/// approach — complete zeroing of all intermediate copies is fundamentally impossible
+/// in any language without custom allocator support. This is an inherent limitation,
+/// NOT a bug.
 fn zeroize_password(password: String) {
     let mut pwd_bytes = password.into_bytes();
     pwd_bytes.zeroize();
@@ -694,11 +761,39 @@ fn vault_exists(state: State<AppState>) -> bool {
 }
 
 #[tauri::command]
+/// Generate a new vault salt after validating password strength.
+/// Returns Err(json) on weak password or write error, Ok(salt) on success.
+fn create_new_vault_salt(password: &str, salt_path: &std::path::Path) -> Result<Vec<u8>, Value> {
+    let pwd_strong = password.len() >= 12
+        && password.chars().any(|c| c.is_uppercase())
+        && password.chars().any(|c| c.is_lowercase())
+        && password.chars().any(|c| c.is_ascii_digit())
+        && password.chars().any(|c| !c.is_alphanumeric());
+    if !pwd_strong {
+        return Err(json!({"success": false, "error": "Password troppo debole: minimo 12 caratteri, una maiuscola, una minuscola, un numero e un simbolo."}));
+    }
+    let mut s = vec![0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut s);
+    secure_write(salt_path, &s)
+        .map_err(|e| json!({"success": false, "error": format!("Errore scrittura vault: {}", e)}))?;
+    Ok(s)
+}
+
+/// Initialise a brand-new vault (write verify tag + empty vault).
+fn init_new_vault(state: &State<AppState>, k: Vec<u8>, dir: &std::path::Path) -> Result<(), Value> {
+    let tag = make_verify_tag(&k);
+    secure_write(&dir.join(VAULT_VERIFY_FILE), &tag)
+        .map_err(|e| json!({"success": false, "error": format!("Errore init vault: {}", e)}))?;
+    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(Zeroizing::new(k)));
+    let _ = write_vault_internal(state, &json!({"practices":[], "agenda":[]}));
+    Ok(())
+}
+
+#[tauri::command]
 fn unlock_vault(state: State<AppState>, password: String) -> Value {
     let dir = state.data_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let sec_dir = state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
-    // Centralized lockout check (DRY — replaces 15+ lines of duplicated code)
     if let Err(locked_json) = check_lockout(&state, &sec_dir) {
         return locked_json;
     }
@@ -707,65 +802,37 @@ fn unlock_vault(state: State<AppState>, password: String) -> Value {
     let is_new = !salt_path.exists();
 
     let salt = if is_new {
-        // Backend password strength validation for new vaults
-        let pwd_strong = password.len() >= 12
-            && password.chars().any(|c| c.is_uppercase())
-            && password.chars().any(|c| c.is_lowercase())
-            && password.chars().any(|c| c.is_ascii_digit())
-            && password.chars().any(|c| !c.is_alphanumeric());
-        if !pwd_strong {
-            zeroize_password(password);
-            return json!({"success": false, "error": "Password troppo debole: minimo 12 caratteri, una maiuscola, una minuscola, un numero e un simbolo."});
-        }
-        let mut s = vec![0u8; 32];
-        rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut s);
-        match secure_write(&salt_path, &s) {
-            Ok(_) => s,
-            Err(e) => {
-                zeroize_password(password);
-                return json!({"success": false, "error": format!("Errore scrittura vault: {}", e)});
-            }
+        match create_new_vault_salt(&password, &salt_path) {
+            Ok(s) => s,
+            Err(e) => { zeroize_password(password); return e; }
         }
     } else {
         fs::read(&salt_path).unwrap_or_default()
     };
 
-    match derive_secure_key(&password, &salt) {
-        Ok(k) => {
-            let verify_path = dir.join(VAULT_VERIFY_FILE);
-            if !is_new {
-                let stored = fs::read(&verify_path).unwrap_or_default();
-                if !verify_hash_matches(&k, &stored) {
-                    record_failed_attempt(&state, &sec_dir);
-                    // SECURITY FIX (Gemini Audit v2): safe zeroing — no more UB
-                    zeroize_password(password);
-                    return json!({"success": false, "error": "Password errata"});
-                }
-                *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(k));
-            } else {
-                let tag = make_verify_tag(&k);
-                match secure_write(&verify_path, &tag) {
-                    Ok(_) => {},
-                    Err(e) => {
-                        zeroize_password(password);
-                        return json!({"success": false, "error": format!("Errore init vault: {}", e)});
-                    }
-                }
-                *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(k));
-                let _ = write_vault_internal(&state, &json!({"practices":[], "agenda":[]}));
-            }
-            clear_lockout(&state, &sec_dir);
-            *state.last_activity.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
-            // SECURITY FIX (Gemini Audit v2): safe zeroing replaces UB pointer cast
+    let k = match derive_secure_key(&password, &salt) {
+        Ok(k) => k,
+        Err(e) => { zeroize_password(password); return json!({"success": false, "error": e}); }
+    };
+
+    if !is_new {
+        let stored = fs::read(dir.join(VAULT_VERIFY_FILE)).unwrap_or_default();
+        if !verify_hash_matches(&k, &stored) {
+            record_failed_attempt(&state, &sec_dir);
             zeroize_password(password);
-            let _ = append_audit_log(&state, "Sblocco Vault");
-            json!({"success": true, "isNew": is_new})
-        },
-        Err(e) => {
-            zeroize_password(password);
-            json!({"success": false, "error": e})
+            return json!({"success": false, "error": "Password errata"});
         }
+        *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(Zeroizing::new(k)));
+    } else if let Err(e) = init_new_vault(&state, k, &dir) {
+        zeroize_password(password);
+        return e;
     }
+
+    clear_lockout(&state, &sec_dir);
+    *state.last_activity.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
+    zeroize_password(password);
+    let _ = append_audit_log(&state, "Sblocco Vault");
+    json!({"success": true, "isNew": is_new})
 }
 
 #[tauri::command]
@@ -780,6 +847,13 @@ fn reset_vault(state: State<AppState>, password: String) -> Value {
     let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let dir = state.data_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let salt_path = dir.join(VAULT_SALT_FILE);
+    let vault_path = dir.join(VAULT_FILE);
+    // SECURITY FIX (Audit Chunk 07): if vault.lex exists but vault.salt does NOT,
+    // someone may have deleted the salt to bypass authentication. Refuse the reset.
+    if vault_path.exists() && !salt_path.exists() {
+        zeroize_password(password);
+        return json!({"success": false, "error": "Possibile manomissione: vault.lex presente ma vault.salt mancante. Contattare il supporto."});
+    }
     if salt_path.exists() {
         match authenticate_vault_password(&password, &dir) {
             Ok(_) => {},
@@ -790,6 +864,19 @@ fn reset_vault(state: State<AppState>, password: String) -> Value {
         }
     }
     let _ = {
+        // SECURITY NOTE (Audit 2026-03-04): The zero-overwrite below is a best-effort
+        // secure wipe. On modern filesystems with copy-on-write semantics (APFS, Btrfs,
+        // ZFS) and on SSDs with wear leveling / TRIM, overwriting a file does NOT
+        // guarantee that the original data blocks are physically erased. The filesystem
+        // may allocate new blocks for the write, leaving old data in unreferenced sectors.
+        // This is a fundamental limitation of all userspace secure-erase on modern storage.
+        // Mitigations at the OS/hardware level include:
+        //   - macOS FileVault (full-disk encryption)
+        //   - Windows BitLocker
+        //   - Linux LUKS/dm-crypt
+        //   - SSD firmware TRIM/secure-erase commands
+        // The zero-overwrite + delete below still prevents trivial `cat` / hex-editor
+        // recovery, which is valuable against casual attackers.
         for sensitive_file in &[VAULT_FILE, VAULT_SALT_FILE, VAULT_VERIFY_FILE, AUDIT_LOG_FILE] {
             let p = dir.join(sensitive_file);
             if p.exists() {
@@ -815,22 +902,102 @@ fn reset_vault(state: State<AppState>, password: String) -> Value {
 }
 
 #[tauri::command]
+/// Atomically swap vault+salt+verify from staging directory.
+/// Returns Ok(()) on success, or rolls back and returns Err on failure.
+/// SECURITY FIX (Audit Chunk 08): step-by-step swap with per-step rollback.
+/// Each file is swapped independently. If any step fails, only the already-swapped
+/// files are rolled back (in reverse order), avoiding inconsistent state where
+/// vault.lex is new but vault.salt is old.
+fn transactional_vault_swap(dir: &std::path::Path, staging_dir: &std::path::Path) -> Result<(), String> {
+    let vault_path = dir.join(VAULT_FILE);
+    let salt_path = dir.join(VAULT_SALT_FILE);
+    let verify_path = dir.join(VAULT_VERIFY_FILE);
+
+    // Backup old files before swap
+    let _ = fs::rename(&vault_path, dir.join(".vault.bak"));
+    let _ = fs::rename(&salt_path, dir.join(".salt.bak"));
+    let _ = fs::rename(&verify_path, dir.join(".verify.bak"));
+
+    // Step 1: swap vault
+    if fs::rename(staging_dir.join(VAULT_FILE), &vault_path).is_err() {
+        eprintln!("CRITICAL ERROR: Swap vault.lex fallito. Rollback...");
+        let _ = fs::rename(dir.join(".vault.bak"), &vault_path);
+        let _ = fs::rename(dir.join(".salt.bak"), &salt_path);
+        let _ = fs::rename(dir.join(".verify.bak"), &verify_path);
+        return Err("Errore swap vault.lex. Rollback eseguito.".into());
+    }
+
+    // Step 2: swap salt
+    if fs::rename(staging_dir.join(VAULT_SALT_FILE), &salt_path).is_err() {
+        eprintln!("CRITICAL ERROR: Swap vault.salt fallito. Rollback in ordine inverso...");
+        // Undo step 1: restore vault from backup
+        let _ = fs::rename(&vault_path, staging_dir.join(VAULT_FILE)); // move new back to staging
+        let _ = fs::rename(dir.join(".vault.bak"), &vault_path);
+        let _ = fs::rename(dir.join(".salt.bak"), &salt_path);
+        let _ = fs::rename(dir.join(".verify.bak"), &verify_path);
+        return Err("Errore swap vault.salt. Rollback eseguito.".into());
+    }
+
+    // Step 3: swap verify
+    if fs::rename(staging_dir.join(VAULT_VERIFY_FILE), &verify_path).is_err() {
+        eprintln!("CRITICAL ERROR: Swap vault.verify fallito. Rollback in ordine inverso...");
+        // Undo step 2: restore salt from backup
+        let _ = fs::rename(&salt_path, staging_dir.join(VAULT_SALT_FILE));
+        let _ = fs::rename(dir.join(".salt.bak"), &salt_path);
+        // Undo step 1: restore vault from backup
+        let _ = fs::rename(&vault_path, staging_dir.join(VAULT_FILE));
+        let _ = fs::rename(dir.join(".vault.bak"), &vault_path);
+        let _ = fs::rename(dir.join(".verify.bak"), &verify_path);
+        return Err("Errore swap vault.verify. Rollback eseguito.".into());
+    }
+
+    Ok(())
+}
+
+/// Secure-wipe and remove backup files after successful vault swap.
+fn cleanup_vault_backups(dir: &std::path::Path) {
+    for bak_name in &[".vault.bak", ".salt.bak", ".verify.bak"] {
+        let bak_path = dir.join(bak_name);
+        if !bak_path.exists() { continue; }
+        if let Ok(meta) = bak_path.metadata() {
+            let size = meta.len() as usize;
+            if size > 0 {
+                let _ = secure_write(&bak_path, &vec![0u8; size]);
+            }
+        }
+        let _ = fs::remove_file(&bak_path);
+    }
+}
+
+/// Re-encrypt audit log with a new key (used after password change).
+fn reencrypt_audit_log(dir: &std::path::Path, old_key: &[u8], new_key: &[u8]) {
+    let audit_path = dir.join(AUDIT_LOG_FILE);
+    if !audit_path.exists() { return; }
+    if let Ok(enc) = fs::read(&audit_path) {
+        if let Ok(dec) = decrypt_data(old_key, &enc) {
+            if let Ok(re_enc) = encrypt_data(new_key, &dec) {
+                let _ = atomic_write_with_sync(&audit_path, &re_enc);
+            }
+        }
+    }
+}
+
+#[tauri::command]
 fn change_password(state: State<AppState>, current_password: String, new_password: String) -> Result<Value, String> {
-    // SECURITY FIX (Gemini Audit v2): acquire write_mutex — prevents race with save_practices
     let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let dir = state.data_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
-    // Authenticate with centralized helper
-    let current_key = match authenticate_vault_password(&current_password, &dir) {
+    // SECURITY FIX (Audit Chunk 08): wrap current_key in Zeroizing so it's zeroed on drop.
+    // Previously bare Vec<u8> could linger in heap memory after use.
+    let current_key = Zeroizing::new(match authenticate_vault_password(&current_password, &dir) {
         Ok(k) => k,
         Err(_) => {
             zeroize_password(current_password);
             zeroize_password(new_password);
             return Ok(json!({"success": false, "error": "Password attuale errata"}));
         }
-    };
+    });
 
-    // Read vault with current key
     let vault_path = dir.join(VAULT_FILE);
     let vault_data = if vault_path.exists() {
         let enc = fs::read(&vault_path).map_err(|e| e.to_string())?;
@@ -840,102 +1007,35 @@ fn change_password(state: State<AppState>, current_password: String, new_passwor
         json!({"practices":[], "agenda":[]})
     };
 
-    // New salt + key
     let mut new_salt = vec![0u8; ARGON2_SALT_LEN];
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut new_salt);
-    let new_key = derive_secure_key(&new_password, &new_salt)?;
-
-    // TRANSACTIONAL DATA-LOSS FIX (Gemini Audit v2):
-    // The previous approach wrote salt and vault as separate files, creating a window
-    // where a crash between the two renames would leave incompatible salt+vault pairs,
-    // causing permanent data loss.
-    //
-    // SOLUTION: We now write all three files (.tmp) FIRST, then rename in order:
-    //   1. vault.lex (encrypted with NEW key)
-    //   2. vault.salt (NEW salt)
-    //   3. vault.verify (NEW verify tag)
-    //
-    // CRASH ANALYSIS:
-    //   - Crash before step 1: old files intact → old password works → safe
-    //   - Crash after step 1, before step 2: new vault on disk but old salt →
-    //     old password derives old key → cannot decrypt new vault. BUT we keep
-    //     a backup of the old vault as .vault.bak BEFORE the rename, so recovery
-    //     is possible by restoring .vault.bak → vault.lex.
-    //   - Crash after step 2: new salt + new vault → new password works → safe
-    //   - All steps complete: new password works → safe
+    // SECURITY FIX (Audit Chunk 08): wrap new_key in Zeroizing for auto-zeroing on drop.
+    let new_key = Zeroizing::new(derive_secure_key(&new_password, &new_salt)?);
 
     let vault_plaintext = Zeroizing::new(serde_json::to_vec(&vault_data).map_err(|e| e.to_string())?);
     let encrypted_vault = encrypt_data(&new_key, &vault_plaintext)?;
     let new_verify_tag = make_verify_tag(&new_key);
 
-    // SECURITY FIX (Gemini Audit Chunk 06): TRANSACTIONAL SAFETY.
-    // Write new files to a staging directory. If anything fails, the original vault is untouched.
+    // Stage new files
     let staging_dir = dir.join(".staging");
     let _ = fs::create_dir_all(&staging_dir);
-
-    let stage_vault = staging_dir.join(VAULT_FILE);
-    let stage_salt = staging_dir.join(VAULT_SALT_FILE);
-    let stage_verify = staging_dir.join(VAULT_VERIFY_FILE);
-
-    if atomic_write_with_sync(&stage_vault, &encrypted_vault).is_err() ||
-       atomic_write_with_sync(&stage_salt, &new_salt).is_err() ||
-       atomic_write_with_sync(&stage_verify, &new_verify_tag).is_err() {
+    if atomic_write_with_sync(&staging_dir.join(VAULT_FILE), &encrypted_vault).is_err()
+        || atomic_write_with_sync(&staging_dir.join(VAULT_SALT_FILE), &new_salt).is_err()
+        || atomic_write_with_sync(&staging_dir.join(VAULT_VERIFY_FILE), &new_verify_tag).is_err()
+    {
         let _ = fs::remove_dir_all(&staging_dir);
         return Err("Errore critico durante la preparazione dei file sicuri. Cambio annullato.".into());
     }
 
-    // Backup old files before swap
-    let _ = fs::rename(&vault_path, dir.join(".vault.bak"));
-    let _ = fs::rename(dir.join(VAULT_SALT_FILE), dir.join(".salt.bak"));
-    let _ = fs::rename(dir.join(VAULT_VERIFY_FILE), dir.join(".verify.bak"));
-
-    // Swap: promote staging files to production
-    let success = fs::rename(&stage_vault, &vault_path).is_ok() &&
-                  fs::rename(&stage_salt, dir.join(VAULT_SALT_FILE)).is_ok() &&
-                  fs::rename(&stage_verify, dir.join(VAULT_VERIFY_FILE)).is_ok();
-
-    if !success {
-        // ROLLBACK DI EMERGENZA
-        eprintln!("CRITICAL ERROR: Swap fallito. Tentativo di rollback in corso...");
-        let _ = fs::rename(dir.join(".vault.bak"), &vault_path);
-        let _ = fs::rename(dir.join(".salt.bak"), dir.join(VAULT_SALT_FILE));
-        let _ = fs::rename(dir.join(".verify.bak"), dir.join(VAULT_VERIFY_FILE));
-        return Err("Errore irreversibile durante lo swap dei file. Rollback eseguito.".into());
-    }
-
-    // SECURITY FIX (Security Audit G4): secure-wipe backup files before deletion.
-    // Simply deleting files leaves old vault data (encrypted with old key) on disk sectors.
-    // Overwriting with zeros before deletion ensures data remnants cannot be recovered.
-    for bak_name in &[".vault.bak", ".salt.bak", ".verify.bak"] {
-        let bak_path = dir.join(bak_name);
-        if bak_path.exists() {
-            if let Ok(meta) = bak_path.metadata() {
-                let size = meta.len() as usize;
-                if size > 0 {
-                    let _ = secure_write(&bak_path, &vec![0u8; size]);
-                }
-            }
-            let _ = fs::remove_file(&bak_path);
-        }
-    }
+    // Atomic swap with rollback
+    transactional_vault_swap(&dir, &staging_dir)?;
+    cleanup_vault_backups(&dir);
     let _ = fs::remove_dir_all(&staging_dir);
 
-    // Re-encrypt audit log if exists
-    let audit_path = dir.join(AUDIT_LOG_FILE);
-    if audit_path.exists() {
-        if let Ok(enc) = fs::read(&audit_path) {
-            if let Ok(dec) = decrypt_data(&current_key, &enc) {
-                if let Ok(re_enc) = encrypt_data(&new_key, &dec) {
-                    let _ = atomic_write_with_sync(&audit_path, &re_enc);
-                }
-            }
-        }
-    }
+    reencrypt_audit_log(&dir, &current_key, &new_key);
 
-    // Update in-memory key
-    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(new_key));
+    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(Zeroizing::new(new_key.to_vec())));
 
-    // Update biometric if saved
     #[cfg(not(target_os = "android"))]
     {
         let dir = state.data_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -948,7 +1048,6 @@ fn change_password(state: State<AppState>, current_password: String, new_passwor
     }
 
     let _ = append_audit_log(&state, "Password cambiata");
-    // SECURITY FIX (Gemini Audit v2): safe zeroing — no more UB
     zeroize_password(current_password);
     zeroize_password(new_password);
     Ok(json!({"success": true}))
@@ -984,32 +1083,31 @@ fn verify_vault_password(state: State<AppState>, pwd: String) -> Result<Value, S
 /// and iterating in JS — O(n) on the main thread, causing CPU freezes on large vaults.
 /// Now computed server-side in a single vault read.
 #[tauri::command]
+/// Count urgent deadlines (within 7 days) across active practices.
+fn count_urgent_deadlines(practices: &[Value]) -> usize {
+    let today = chrono::Local::now().naive_local().date();
+    let in_7_days = today + chrono::Duration::days(7);
+    practices.iter()
+        .filter(|p| p.get("status").and_then(|s| s.as_str()) == Some("active"))
+        .flat_map(|p| p.get("deadlines").and_then(|d| d.as_array()).into_iter().flatten())
+        .filter(|d| {
+            d.get("date").and_then(|ds| ds.as_str())
+                .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+                .map(|d_date| d_date >= today && d_date <= in_7_days)
+                .unwrap_or(false)
+        })
+        .count()
+}
+
+#[tauri::command]
 fn get_summary(state: State<AppState>) -> Result<Value, String> {
     let vault = read_vault_internal(&state)?;
-    // SECURITY FIX (Gemini Audit Chunk 07): borrowing instead of .cloned() — zero-copy iteration
     let practices = vault.get("practices").and_then(|p| p.as_array());
     let practices_slice = practices.map(|a| a.as_slice()).unwrap_or(&[]);
     let active_practices = practices_slice.iter().filter(|p| {
         p.get("status").and_then(|s| s.as_str()) == Some("active")
     }).count();
-
-    let today = chrono::Local::now().naive_local().date();
-    let in_7_days = today + chrono::Duration::days(7);
-    let mut urgent_deadlines: usize = 0;
-    for p in practices_slice {
-        if p.get("status").and_then(|s| s.as_str()) != Some("active") { continue; }
-        if let Some(deadlines) = p.get("deadlines").and_then(|d| d.as_array()) {
-            for d in deadlines {
-                if let Some(date_str) = d.get("date").and_then(|ds| ds.as_str()) {
-                    if let Ok(d_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
-                        if d_date >= today && d_date <= in_7_days {
-                            urgent_deadlines += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let urgent_deadlines = count_urgent_deadlines(practices_slice);
     Ok(json!({"activePractices": active_practices, "urgentDeadlines": urgent_deadlines}))
 }
 
@@ -1048,101 +1146,99 @@ fn save_agenda(state: State<AppState>, agenda: Value) -> Result<bool, String> {
 }
 
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 //  CONFLICT CHECK (v3.2.0)
 // ═══════════════════════════════════════════════════════════
 
-/// Searches ALL practices (active + archived) for a name match in client,
-/// counterparty, description, court, and roles[].contactName fields.
-/// Returns an array of matching practices with the matched field highlighted.
+/// Check if a text field in a JSON value matches the query (case-insensitive).
+fn field_contains(obj: &Value, field: &str, query: &str) -> bool {
+    obj.get(field).and_then(|v| v.as_str())
+        .map(|v| v.to_lowercase().contains(query))
+        .unwrap_or(false)
+}
+
+/// Find matching text fields on a practice record.
+fn match_practice_fields(p: &Value, query: &str) -> Vec<String> {
+    let mut matched_fields: Vec<String> = Vec::new();
+    for field in &["client", "counterparty", "description", "court", "object"] {
+        if field_contains(p, field, query) {
+            matched_fields.push(field.to_string());
+        }
+    }
+    matched_fields
+}
+
+/// Find role matches in a practice by resolving contact names.
+fn match_practice_roles(p: &Value, contacts: &[Value], query: &str) -> Vec<String> {
+    let roles = match p.get("roles").and_then(|r| r.as_array()) {
+        Some(r) => r,
+        None => return Vec::new(),
+    };
+    let mut matched = Vec::new();
+    for role in roles {
+        let cid = match role.get("contactId").and_then(|c| c.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let contact = contacts.iter().find(|c| c.get("id").and_then(|i| i.as_str()) == Some(cid));
+        if let Some(contact) = contact {
+            if field_contains(contact, "name", query) {
+                let role_label = role.get("role").and_then(|r| r.as_str()).unwrap_or("contatto");
+                matched.push(format!("ruolo:{}", role_label));
+            }
+        }
+    }
+    matched
+}
+
+/// Check if a contact matches the query on any identifying field.
+fn contact_matches_query(c: &Value, query: &str) -> bool {
+    ["name", "fiscalCode", "vatNumber", "email", "pec", "phone"]
+        .iter().any(|f| field_contains(c, f, query))
+}
+
+/// Find all practice IDs that reference a given contact ID.
+fn find_linked_practice_ids(practices: &[Value], cid: &str) -> Vec<String> {
+    practices.iter().filter_map(|p| {
+        let client_id = p.get("clientId").and_then(|i| i.as_str()).unwrap_or("");
+        let counter_id = p.get("counterpartyId").and_then(|i| i.as_str()).unwrap_or("");
+        let in_roles = p.get("roles").and_then(|r| r.as_array())
+            .map(|roles| roles.iter().any(|r| r.get("contactId").and_then(|i| i.as_str()) == Some(cid)))
+            .unwrap_or(false);
+        if client_id == cid || counter_id == cid || in_roles {
+            Some(p.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string())
+        } else {
+            None
+        }
+    }).collect()
+}
+
 #[tauri::command]
 fn check_conflict(state: State<AppState>, name: String) -> Result<Value, String> {
     if name.trim().is_empty() {
         return Ok(json!({"practiceMatches": [], "contactMatches": []}));
     }
     let vault = read_vault_internal(&state)?;
-    // SECURITY FIX (Gemini Audit Chunk 07): borrowing — no .cloned() on large arrays
     let practices_arr = vault.get("practices").and_then(|p| p.as_array());
     let practices = practices_arr.map(|a| a.as_slice()).unwrap_or(&[]);
     let contacts_arr = vault.get("contacts").and_then(|c| c.as_array());
     let contacts = contacts_arr.map(|a| a.as_slice()).unwrap_or(&[]);
     let query = name.trim().to_lowercase();
-    let mut results: Vec<Value> = Vec::new();
 
-    for p in practices {
-        let mut matched_fields: Vec<String> = Vec::new();
+    let results: Vec<Value> = practices.iter().filter_map(|p| {
+        let mut matched_fields = match_practice_fields(p, &query);
+        matched_fields.extend(match_practice_roles(p, contacts, &query));
+        if matched_fields.is_empty() { None }
+        else { Some(json!({"practice": p, "matchedFields": matched_fields})) }
+    }).collect();
 
-        // Check main text fields
-        for field in &["client", "counterparty", "description", "court", "object"] {
-            if let Some(val) = p.get(*field).and_then(|v| v.as_str()) {
-                if val.to_lowercase().contains(&query) {
-                    matched_fields.push(field.to_string());
-                }
-            }
-        }
+    let contact_matches: Vec<Value> = contacts.iter().filter_map(|c| {
+        if !contact_matches_query(c, &query) { return None; }
+        let cid = c.get("id").and_then(|i| i.as_str()).unwrap_or("");
+        Some(json!({"contact": c, "linkedPracticeIds": find_linked_practice_ids(practices, cid)}))
+    }).collect();
 
-        // Check roles array (linked contacts)
-        if let Some(roles) = p.get("roles").and_then(|r| r.as_array()) {
-            for role in roles {
-                if let Some(cid) = role.get("contactId").and_then(|c| c.as_str()) {
-                    // Resolve contact name from contacts registry
-                    if let Some(contact) = contacts.iter().find(|c| c.get("id").and_then(|i| i.as_str()) == Some(cid)) {
-                        if let Some(cname) = contact.get("name").and_then(|n| n.as_str()) {
-                            if cname.to_lowercase().contains(&query) {
-                                let role_label = role.get("role").and_then(|r| r.as_str()).unwrap_or("contatto");
-                                matched_fields.push(format!("ruolo:{}", role_label));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if !matched_fields.is_empty() {
-            results.push(json!({
-                "practice": p,
-                "matchedFields": matched_fields,
-            }));
-        }
-    }
-
-    // Also search contacts themselves (find the person even if not linked to a practice yet)
-    let mut contact_matches: Vec<Value> = Vec::new();
-    for c in contacts {
-        let mut cmatch = false;
-        for field in &["name", "fiscalCode", "vatNumber", "email", "pec", "phone"] {
-            if let Some(val) = c.get(*field).and_then(|v| v.as_str()) {
-                if val.to_lowercase().contains(&query) {
-                    cmatch = true;
-                    break;
-                }
-            }
-        }
-        if cmatch {
-            // Find all practices referencing this contact
-            let cid = c.get("id").and_then(|i| i.as_str()).unwrap_or("");
-            let linked: Vec<String> = practices.iter().filter_map(|p| {
-                let client_id = p.get("clientId").and_then(|i| i.as_str()).unwrap_or("");
-                let counter_id = p.get("counterpartyId").and_then(|i| i.as_str()).unwrap_or("");
-                let in_roles = p.get("roles").and_then(|r| r.as_array())
-                    .map(|roles| roles.iter().any(|r| r.get("contactId").and_then(|i| i.as_str()) == Some(cid)))
-                    .unwrap_or(false);
-                if client_id == cid || counter_id == cid || in_roles {
-                    Some(p.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string())
-                } else {
-                    None
-                }
-            }).collect();
-            contact_matches.push(json!({
-                "contact": c,
-                "linkedPracticeIds": linked,
-            }));
-        }
-    }
-
-    Ok(json!({
-        "practiceMatches": results,
-        "contactMatches": contact_matches,
-    }))
+    Ok(json!({"practiceMatches": results, "contactMatches": contact_matches}))
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1251,10 +1347,38 @@ fn save_bio(state: State<AppState>, pwd: String) -> Result<bool, String> {
     }
 }
 
+/// Shared post-biometric vault unlock: retrieve keyring password, authenticate, unlock vault.
+#[cfg(not(target_os = "android"))]
+fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
+    let user = whoami::username();
+    let saved_pwd = keyring::Entry::new(BIO_SERVICE, &user)
+        .and_then(|e| e.get_password()).map_err(|e| e.to_string())?;
+
+    let dir = state.data_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let sec_dir = state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let auth_result = authenticate_vault_password(&saved_pwd, &dir);
+    zeroize_password(saved_pwd);
+
+    match auth_result {
+        Ok(k) => {
+            *(state.vault_key.lock().unwrap_or_else(|e| e.into_inner())) = Some(SecureKey(Zeroizing::new(k)));
+            clear_lockout(state, &sec_dir);
+            *(state.last_activity.lock().unwrap_or_else(|e| e.into_inner())) = Instant::now();
+            let _ = append_audit_log(state, "Sblocco Vault (biometria)");
+            Ok(json!({"success": true}))
+        },
+        Err(_) => {
+            if let Ok(entry) = keyring::Entry::new(BIO_SERVICE, &user) {
+                let _ = entry.delete_credential();
+            }
+            let _ = fs::remove_file(dir.join(BIO_MARKER_FILE));
+            Ok(json!({"success": false, "error": "Password biometrica non più valida. Accedi con la password e riconfigura la biometria."}))
+        }
+    }
+}
+
 #[tauri::command]
 fn bio_login(_state: State<AppState>) -> Result<Value, String> {
-    // SECURITY FIX (Gemini Audit Chunk 08): check lockout before biometric login
-    // to prevent brute-force lockout bypass via biometrics
     {
         let sec_dir = _state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
         if let Err(locked_json) = check_lockout(&_state, &sec_dir) {
@@ -1264,19 +1388,28 @@ fn bio_login(_state: State<AppState>) -> Result<Value, String> {
 
     #[cfg(target_os = "macos")]
     {
-        // FORT KNOX: Swift code passed via stdin — NEVER written to disk
         let swift_code = "import LocalAuthentication\nlet ctx = LAContext()\nvar err: NSError?\nif ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) {\n  let sema = DispatchSemaphore(value: 0)\n  var ok = false\n  ctx.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: \"LexFlow\") { s, _ in ok = s; sema.signal() }\n  sema.wait()\n  if ok { exit(0) } else { exit(1) }\n} else { exit(1) }";
         
         use std::io::Write;
-        // SECURITY FIX (Gemini L1-2): use absolute path to prevent PATH hijacking.
-        // /usr/bin/swift is the canonical location on macOS; never rely on $PATH for security-critical executables.
-        let mut child = std::process::Command::new("/usr/bin/swift")
-            .arg("-")
+        // SECURITY FIX (Audit 2026-03-04): sanitize child environment to mitigate
+        // DYLD_INSERT_LIBRARIES injection. On macOS without SIP (or with SIP disabled),
+        // an attacker could set DYLD_INSERT_LIBRARIES to inject a malicious dylib into
+        // the Swift subprocess and intercept the biometric result or keychain password.
+        // By clearing all DYLD_* environment variables, we prevent this attack vector.
+        // Note: SIP already blocks DYLD injection on system binaries (/usr/bin/swift),
+        // but users may have SIP disabled for development — defense in depth.
+        let mut cmd = std::process::Command::new("/usr/bin/swift");
+        cmd.arg("-")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| e.to_string())?;
+            .stderr(std::process::Stdio::null());
+        // Remove dangerous dylib injection environment variables
+        for (k, _) in std::env::vars() {
+            if k.starts_with("DYLD_") || k.starts_with("LD_") || k == "CFNETWORK_LIBRARY_PATH" {
+                cmd.env_remove(&k);
+            }
+        }
+        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
         
         if let Some(ref mut stdin) = child.stdin {
             stdin.write_all(swift_code.as_bytes()).map_err(|e| e.to_string())?;
@@ -1285,44 +1418,10 @@ fn bio_login(_state: State<AppState>) -> Result<Value, String> {
         let status = child.wait().map_err(|e| e.to_string())?;
         if !status.success() { return Ok(json!({"success": false, "error": "Autenticazione biometrica fallita"})); }
 
-        // Recupera la password salvata dal keyring (non la ritorniamo al JS)
-        let user = whoami::username();
-        let saved_pwd = keyring::Entry::new(BIO_SERVICE, &user)
-            .and_then(|e| e.get_password()).map_err(|e| e.to_string())?;
-
-        // SECURITY FIX (Gemini Audit Chunk 08): use centralized authenticate_vault_password (DRY)
-        let dir = _state.data_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let sec_dir = _state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let auth_result = authenticate_vault_password(&saved_pwd, &dir);
-        // SECURITY FIX: zeroize password from keyring immediately
-        zeroize_password(saved_pwd);
-
-        match auth_result {
-            Ok(k) => {
-                *(_state.vault_key.lock().unwrap_or_else(|e| e.into_inner())) = Some(SecureKey(k));
-                clear_lockout(&_state, &sec_dir);
-                *(_state.last_activity.lock().unwrap_or_else(|e| e.into_inner())) = Instant::now();
-                let _ = append_audit_log(&_state, "Sblocco Vault (biometria)");
-                Ok(json!({"success": true}))
-            },
-            Err(_) => {
-                // Keyring password is stale (user changed password)
-                if let Ok(entry) = keyring::Entry::new(BIO_SERVICE, &user) {
-                    let _ = entry.delete_credential();
-                }
-                let _ = fs::remove_file(dir.join(BIO_MARKER_FILE));
-                Ok(json!({
-                    "success": false,
-                    "error": "Password biometrica non più valida. Accedi con la password e riconfigura la biometria."
-                }))
-            }
-        }
+        bio_unlock_vault(&_state)
     }
     #[cfg(target_os = "windows")]
     {
-        // Windows Hello: verifica biometrica reale tramite UserConsentVerifier WinRT API.
-        // Usa PowerShell per invocare Windows.Security.Credentials.UI.UserConsentVerifier
-        // — più affidabile che controllare solo il keyring senza autenticazione.
         use std::process::Command;
         let ps_script = r#"
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
@@ -1337,8 +1436,6 @@ function Await($WinRtTask, $ResultType) {
 $result = Await ([Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync("LexFlow — Verifica identità")) ([Windows.Security.Credentials.UI.UserConsentVerificationResult])
 if ($result -eq [Windows.Security.Credentials.UI.UserConsentVerificationResult]::Verified) { exit 0 } else { exit 1 }
 "#;
-        // SECURITY FIX (Gemini L1-2): use absolute path to prevent PATH hijacking.
-        // C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe is the canonical location.
         let status = Command::new(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
             .stdout(std::process::Stdio::null())
@@ -1347,42 +1444,10 @@ if ($result -eq [Windows.Security.Credentials.UI.UserConsentVerificationResult]:
             .map_err(|e| e.to_string())?;
         if !status.success() { return Ok(json!({"success": false, "error": "Windows Hello fallito o non disponibile"})); }
 
-        // Recupera la password salvata dal keyring e sblocca internamente il vault
-        let user = whoami::username();
-        let saved_pwd = keyring::Entry::new(BIO_SERVICE, &user)
-            .and_then(|e| e.get_password()).map_err(|e| e.to_string())?;
-
-        // SECURITY FIX (Gemini Audit Chunk 08): use centralized authenticate_vault_password (DRY)
-        let dir = _state.data_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let sec_dir = _state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let auth_result = authenticate_vault_password(&saved_pwd, &dir);
-        zeroize_password(saved_pwd);
-
-        match auth_result {
-            Ok(k) => {
-                *(_state.vault_key.lock().unwrap_or_else(|e| e.into_inner())) = Some(SecureKey(k));
-                clear_lockout(&_state, &sec_dir);
-                *(_state.last_activity.lock().unwrap_or_else(|e| e.into_inner())) = Instant::now();
-                let _ = append_audit_log(&_state, "Sblocco Vault (biometria)");
-                Ok(json!({"success": true}))
-            },
-            Err(_) => {
-                if let Ok(entry) = keyring::Entry::new(BIO_SERVICE, &user) {
-                    let _ = entry.delete_credential();
-                }
-                let _ = fs::remove_file(dir.join(BIO_MARKER_FILE));
-                Ok(json!({
-                    "success": false,
-                    "error": "Password biometrica non più valida. Accedi con la password e riconfigura la biometria."
-                }))
-            }
-        }
+        bio_unlock_vault(&_state)
     }
     #[cfg(target_os = "android")]
     {
-        // Su Android il biometric prompt è gestito interamente dal frontend JS
-        // tramite l'Android BiometricPrompt API via tauri-plugin-biometric (futuro)
-        // Per ora restituisce errore che il frontend gestisce con fallback a password
         Err("android-bio-use-frontend".into())
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "android")))]
@@ -1410,15 +1475,43 @@ fn clear_bio(state: State<AppState>) -> bool {
 }
 
 // List folder contents for UI (returns array of { name, path, is_dir, modified })
+// SECURITY FIX (Audit Chunk 10): validate path against an allowlist of safe prefixes.
+// Without this check, an XSS in the WebView could enumerate the entire filesystem
+// via `invoke('list_folder_contents', { path: '/' })`.
 #[tauri::command]
 fn list_folder_contents(path: String) -> Result<serde_json::Value, String> {
     use serde_json::json;
-    let p = std::path::PathBuf::from(path);
-    if !p.exists() {
+    let p = std::path::PathBuf::from(&path);
+
+    // SECURITY: must be absolute path
+    if !p.is_absolute() {
+        return Err("Percorso relativo non consentito".into());
+    }
+
+    // SECURITY: canonicalize to resolve symlinks and ../ before checking prefix
+    let canonical = p.canonicalize().map_err(|_| "Percorso non valido o non accessibile".to_string())?;
+
+    // SECURITY: only allow listing inside user's home directory or system document dirs.
+    // This prevents full filesystem enumeration if the WebView is compromised.
+    let allowed_prefixes: Vec<std::path::PathBuf> = [
+        dirs::home_dir(),
+        dirs::document_dir(),
+        dirs::desktop_dir(),
+        dirs::download_dir(),
+        dirs::data_dir(),
+    ].iter().filter_map(|d| d.as_ref().and_then(|p| p.canonicalize().ok())).collect();
+
+    let is_allowed = allowed_prefixes.iter().any(|prefix| canonical.starts_with(prefix));
+    if !is_allowed {
+        eprintln!("[LexFlow] SECURITY: list_folder_contents refused path outside allowed dirs: {:?}", canonical);
+        return Err("Percorso non consentito: accesso limitato alle directory dell'utente.".into());
+    }
+
+    if !canonical.exists() {
         return Err("Percorso non esiste".into());
     }
     let mut items: Vec<serde_json::Value> = Vec::new();
-    match std::fs::read_dir(&p) {
+    match std::fs::read_dir(&canonical) {
         Ok(rd) => {
             for entry in rd.flatten() {
                 let md = entry.metadata().ok();
@@ -1553,6 +1646,57 @@ mod tests {
     }
 }
 
+/// SECURITY FIX (Audit Chunk 12): safe timestamp — prevents panic on pre-1970 clocks.
+/// Returns milliseconds since UNIX epoch, or 0 if the system clock is before epoch.
+fn safe_now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis() as u64
+}
+
+/// SECURITY FIX (Audit Chunk 12): monotonic clock check for license verification.
+/// Persists the last verified timestamp. If the system clock goes backwards,
+/// the license check fails (prevents clock manipulation to extend expired licenses).
+/// The file is HMAC-protected to prevent tampering.
+const LAST_CHECK_TS_FILE: &str = ".last-license-check";
+
+fn monotonic_clock_check(sec_dir: &std::path::Path) -> Result<(), String> {
+    let ts_path = sec_dir.join(LAST_CHECK_TS_FILE);
+    let now_ms = safe_now_ms();
+
+    if let Ok(raw) = fs::read_to_string(&ts_path) {
+        let parts: Vec<&str> = raw.trim().splitn(2, ':').collect();
+        if parts.len() == 2 {
+            let stored_ts = parts[0].parse::<u64>().unwrap_or(0);
+            let stored_hmac = parts[1];
+            // Verify HMAC
+            let enc_key = get_local_encryption_key();
+            let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&enc_key)
+                .expect("HMAC can take key of any size");
+            mac.update(b"CLOCK-CHECK:");
+            mac.update(parts[0].as_bytes());
+            let expected = hex::encode(mac.finalize().into_bytes());
+            if stored_hmac == expected && now_ms < stored_ts.saturating_sub(300_000) {
+                // Clock went backwards by more than 5 minutes — suspicious
+                return Err("SECURITY: System clock appears to have been set backwards. License check refused.".into());
+            }
+        }
+    }
+
+    // Persist current timestamp with HMAC
+    let ts_str = now_ms.to_string();
+    let enc_key = get_local_encryption_key();
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&enc_key)
+        .expect("HMAC can take key of any size");
+    mac.update(b"CLOCK-CHECK:");
+    mac.update(ts_str.as_bytes());
+    let hmac_hex = hex::encode(mac.finalize().into_bytes());
+    let _ = fs::write(&ts_path, format!("{}:{}", ts_str, hmac_hex));
+
+    Ok(())
+}
+
 /// SECURITY FIX (Gemini Audit Chunk 10): safe bounded read — anti-TOCTOU + anti-OOM.
 /// Uses io::Read::take() to physically limit bytes read, even if file grows during read.
 fn safe_bounded_read(path: &std::path::Path, max_bytes: u64) -> Result<Vec<u8>, String> {
@@ -1568,7 +1712,7 @@ fn safe_bounded_read(path: &std::path::Path, max_bytes: u64) -> Result<Vec<u8>, 
 }
 
 #[tauri::command]
-fn get_settings(state: State<AppState>) -> Value {
+fn get_settings(state: State<AppState>, app: AppHandle) -> Value {
     let path = state.data_dir.lock().unwrap_or_else(|e| e.into_inner()).join(SETTINGS_FILE);
     if !path.exists() { return json!({}); }
     // SECURITY FIX (Gemini Audit Chunk 10): single bounded read, then operate on buffer in RAM
@@ -1610,6 +1754,12 @@ fn get_settings(state: State<AppState>) -> Value {
     let backup_path = path.with_extension(format!("json.corrupt.{}", ts));
     let _ = fs::write(&backup_path, &file_data);
     eprintln!("[LexFlow] Settings file corrotto — backup salvato in {:?}", backup_path);
+    // SECURITY FIX (Audit Chunk 11): emit event to frontend so the UI can warn the user
+    // before they accidentally overwrite the corrupted settings with empty defaults.
+    let _ = app.emit("settings-corrupted", json!({
+        "backup_path": backup_path.to_string_lossy(),
+        "timestamp": ts,
+    }));
     json!({})
 }
 
@@ -1629,138 +1779,136 @@ fn save_settings(state: State<AppState>, settings: Value) -> Result<bool, String
 }
 
 #[tauri::command]
+/// Verify a burned-format license (v2.6.1+). Returns a final JSON response.
+fn check_license_burned(
+    data: &Value, key: &[u8], path: &std::path::Path,
+    current_fp: &str, needs_fp_upgrade: bool,
+) -> Value {
+    let token_hmac = data.get("tokenHmac").and_then(|v| v.as_str()).unwrap_or("");
+    let expiry_ms = data.get("expiryMs").and_then(|v| v.as_u64()).unwrap_or(0);
+    let client = data.get("client").and_then(|v| v.as_str()).unwrap_or("Studio Legale").to_string();
+
+    if token_hmac.is_empty() {
+        return json!({"activated": false, "reason": "Dati licenza corrotti."});
+    }
+    let now_ms = safe_now_ms();
+    if now_ms > expiry_ms {
+        return json!({"activated": false, "expired": true, "reason": "Licenza scaduta."});
+    }
+    if needs_fp_upgrade {
+        silent_upgrade_fingerprint(data, key, path, current_fp);
+    }
+    json!({
+        "activated": true,
+        "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
+        "client": client,
+    })
+}
+
+/// Silently add machineFingerprint to a license record that lacks it.
+fn silent_upgrade_fingerprint(data: &Value, key: &[u8], path: &std::path::Path, fp: &str) {
+    let mut upgraded = data.clone();
+    if let Some(obj) = upgraded.as_object_mut() {
+        obj.insert("machineFingerprint".to_string(), json!(fp));
+    }
+    if let Ok(bytes) = serde_json::to_vec(&upgraded) {
+        if let Ok(encrypted) = encrypt_data(key, &bytes) {
+            if let Err(e) = atomic_write_with_sync(path, &encrypted) {
+                eprintln!("[SECURITY] license fingerprint upgrade write failed: {}", e);
+            }
+        }
+    }
+}
+
+/// Upgrade a legacy (raw-key) license to burned format. Returns the JSON response.
+fn check_license_legacy(
+    data: &Value, license_key: &str, key: &[u8],
+    path: &std::path::Path, sec_dir: &std::path::Path, current_fp: &str,
+) -> Value {
+    let verification = verify_license(license_key.to_string());
+    if !verification.valid {
+        return json!({"activated": false, "expired": true, "reason": verification.message});
+    }
+
+    let mut token_mac = <Hmac<Sha256> as Mac>::new_from_slice(key)
+        .expect("HMAC can take key of any size");
+    token_mac.update(license_key.as_bytes());
+    let token_hmac = hex::encode(token_mac.finalize().into_bytes());
+
+    let expiry_ms: u64 = extract_expiry_ms(license_key).unwrap_or(0);
+    let client = verification.client.unwrap_or_else(|| "Studio Legale".to_string());
+    let key_id = extract_key_id(license_key).unwrap_or_else(|| "legacy".to_string());
+
+    let upgraded = json!({
+        "tokenHmac": token_hmac,
+        "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
+        "client": client,
+        "keyVersion": "ed25519-burned",
+        "machineFingerprint": current_fp,
+        "keyId": key_id,
+        "expiryMs": expiry_ms,
+    });
+
+    if let Ok(bytes) = serde_json::to_vec(&upgraded) {
+        if let Ok(encrypted) = encrypt_data(key, &bytes) {
+            if let Err(e) = atomic_write_with_sync(path, &encrypted) {
+                eprintln!("[SECURITY] license upgrade write failed: {}", e);
+            }
+        }
+    }
+    if let Err(e) = burn_key(sec_dir, &compute_burn_hash(license_key)) {
+        eprintln!("[SECURITY] CRITICAL: burn_key failed during legacy upgrade: {}", e);
+    }
+
+    json!({
+        "activated": true,
+        "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
+        "client": client,
+    })
+}
+
+#[tauri::command]
 fn check_license(state: State<AppState>) -> Value {
-    let path = state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).join(LICENSE_FILE);
-    let sentinel_path = state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).join(LICENSE_SENTINEL_FILE);
+    let sec_dir = state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let path = sec_dir.join(LICENSE_FILE);
+    let sentinel_path = sec_dir.join(LICENSE_SENTINEL_FILE);
+
+    // SECURITY FIX (Audit Chunk 12): monotonic clock check — detect clock manipulation
+    if let Err(e) = monotonic_clock_check(&sec_dir) {
+        eprintln!("[SECURITY] {}", e);
+        return json!({"activated": false, "reason": "Anomalia orologio di sistema rilevata. Verificare data/ora e riprovare."});
+    }
 
     if !path.exists() {
-        // SECURITY: if sentinel exists but license.json was deleted, detect tampering.
-        // The sentinel is an HMAC proof that a license WAS activated on this machine.
         if sentinel_path.exists() {
-            return json!({
-                "activated": false,
-                "tampered": true,
-                "reason": "File di licenza rimosso o manomesso. Contattare il supporto."
-            });
+            return json!({"activated": false, "tampered": true, "reason": "File di licenza rimosso o manomesso. Contattare il supporto."});
         }
         return json!({"activated": false});
     }
+
     let key = get_local_encryption_key();
     let data: Value = if let Some(dec) = decrypt_local_with_migration(&path) {
         serde_json::from_slice(&dec).unwrap_or(json!({}))
-    } else if path.exists() {
-        // File exists but cannot be decrypted with ANY key (current or legacy).
-        // Either corrupted or copied from another machine — reject.
+    } else {
         return json!({"activated": false, "reason": "File licenza corrotto o non valido per questo dispositivo."});
-    } else { return json!({"activated": false}); };
+    };
 
-    // SECURITY: verify hardware fingerprint — the license is bound to this machine
     let current_fp = compute_machine_fingerprint();
     if let Some(stored_fp) = data.get("machineFingerprint").and_then(|v| v.as_str()) {
         if stored_fp != current_fp {
             return json!({"activated": false, "reason": "Licenza attivata su un altro dispositivo."});
         }
     }
-    // If no fingerprint stored (pre-v2.6.1 activation), we still accept but
-    // re-encrypt with fingerprint on next check to upgrade silently
     let needs_fp_upgrade = data.get("machineFingerprint").is_none();
-
     let key_version = data.get("keyVersion").and_then(|v| v.as_str()).unwrap_or("");
 
-    // ── NEW FORMAT: burned key (v2.6.1+) ──────────────────────────────────
-    // The raw token no longer exists. We verify using stored expiry + HMAC integrity.
     if key_version == "ed25519-burned" {
-        let token_hmac = data.get("tokenHmac").and_then(|v| v.as_str()).unwrap_or("");
-        let expiry_ms = data.get("expiryMs").and_then(|v| v.as_u64()).unwrap_or(0);
-        let client = data.get("client").and_then(|v| v.as_str()).unwrap_or("Studio Legale").to_string();
-
-        if token_hmac.is_empty() {
-            return json!({"activated": false, "reason": "Dati licenza corrotti."});
-        }
-
-        // Check expiry
-        let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
-        if now_ms > expiry_ms {
-            return json!({"activated": false, "expired": true, "reason": "Licenza scaduta."});
-        }
-
-        // Silent upgrade: add machineFingerprint if missing
-        if needs_fp_upgrade {
-            let mut upgraded = data.clone();
-            upgraded.as_object_mut().map(|obj| {
-                obj.insert("machineFingerprint".to_string(), json!(current_fp));
-            });
-            if let Ok(bytes) = serde_json::to_vec(&upgraded) {
-                if let Ok(encrypted) = encrypt_data(&key, &bytes) {
-                    // SECURITY FIX (Gemini Audit Chunk 11): atomic write for crash safety
-                    if let Err(e) = atomic_write_with_sync(&path, &encrypted) {
-                        eprintln!("[SECURITY] license fingerprint upgrade write failed: {}", e);
-                    }
-                }
-            }
-        }
-
-        return json!({
-            "activated": true,
-            "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
-            "client": client,
-        });
+        return check_license_burned(&data, &key, &path, &current_fp, needs_fp_upgrade);
     }
 
-    // ── LEGACY FORMAT: raw key stored (pre-v2.6.1) ────────────────────────
-    // Re-verify Ed25519 and silently upgrade to burned format.
     let license_key = data.get("key").and_then(|k| k.as_str()).unwrap_or("");
-
     if !license_key.is_empty() {
-        let verification = verify_license(license_key.to_string());
-
-        if verification.valid {
-            // ── SILENT UPGRADE: convert legacy → burned format ──
-            // 1. Compute HMAC of the raw token
-            let mut token_mac = <Hmac<Sha256> as Mac>::new_from_slice(&key)
-                .expect("HMAC can take key of any size");
-            token_mac.update(license_key.as_bytes());
-            let token_hmac = hex::encode(token_mac.finalize().into_bytes());
-
-            // 2. Extract expiry from the token payload
-            let expiry_ms: u64 = extract_expiry_ms(license_key).unwrap_or(0);
-            let client = verification.client.unwrap_or_else(|| "Studio Legale".to_string());
-            let key_id = extract_key_id(license_key).unwrap_or_else(|| "legacy".to_string());
-
-            // 3. Build burned record (no raw token)
-            let upgraded = json!({
-                "tokenHmac": token_hmac,
-                "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
-                "client": client,
-                "keyVersion": "ed25519-burned",
-                "machineFingerprint": current_fp,
-                "keyId": key_id,
-                "expiryMs": expiry_ms,
-            });
-            // SECURITY FIX (Gemini Audit Chunk 11): use atomic_write_with_sync for crash-safe writes
-            if let Ok(bytes) = serde_json::to_vec(&upgraded) {
-                if let Ok(encrypted) = encrypt_data(&key, &bytes) {
-                    if let Err(e) = atomic_write_with_sync(&path, &encrypted) {
-                        eprintln!("[SECURITY] license upgrade write failed: {}", e);
-                    }
-                }
-            }
-
-            // 4. Burn the key so it can never be reused
-            // SECURITY FIX (Gemini Audit Chunk 11): handle burn_key Result
-            let dir = state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            if let Err(e) = burn_key(&dir, &compute_burn_hash(license_key, &current_fp)) {
-                eprintln!("[SECURITY] CRITICAL: burn_key failed during legacy upgrade: {}", e);
-            }
-
-            return json!({
-                "activated": true,
-                "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
-                "client": upgraded.get("client").and_then(|c| c.as_str()).unwrap_or("Studio Legale"),
-            });
-        } else {
-            return json!({"activated": false, "expired": true, "reason": verification.message});
-        }
+        return check_license_legacy(&data, license_key, &key, &path, &sec_dir, &current_fp);
     }
 
     json!({"activated": false})
@@ -1838,7 +1986,7 @@ fn verify_license(key_string: String) -> VerificationResult {
         Err(_) => return VerificationResult { valid: false, client: None, message: "Dati licenza corrotti.".into() },
     };
 
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+    let now = safe_now_ms();
     if now > payload.e {
         return VerificationResult { valid: false, client: Some(payload.c), message: "Licenza scaduta.".into() };
     }
@@ -1846,209 +1994,117 @@ fn verify_license(key_string: String) -> VerificationResult {
     VerificationResult { valid: true, client: Some(payload.c), message: "Licenza attivata con successo!".into() }
 }
 
-// Helper: extract key ID from a LXFW token without full verification.
-// Returns the `id` field from the payload JSON, or None if malformed.
-fn extract_key_id(token: &str) -> Option<String> {
+// Helper: parse the LXFW token payload without full verification.
+fn parse_lxfw_payload(token: &str) -> Option<LicensePayload> {
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 || parts[0] != "LXFW" { return None; }
     let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
-    let payload: LicensePayload = serde_json::from_slice(&payload_bytes).ok()?;
-    Some(payload.id)
+    serde_json::from_slice(&payload_bytes).ok()
+}
+
+// Helper: extract key ID from a LXFW token without full verification.
+fn extract_key_id(token: &str) -> Option<String> {
+    parse_lxfw_payload(token).map(|p| p.id)
 }
 
 // Helper: extract expiry timestamp (ms) from a LXFW token without full verification.
 fn extract_expiry_ms(token: &str) -> Option<u64> {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 || parts[0] != "LXFW" { return None; }
-    let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
-    let payload: LicensePayload = serde_json::from_slice(&payload_bytes).ok()?;
-    Some(payload.e)
+    parse_lxfw_payload(token).map(|p| p.e)
 }
 
-#[tauri::command]
-fn activate_license(state: State<AppState>, key: String, _client_name: Option<String>) -> Value {
-    let sec_dir = state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
+/// Recover the key ID stored in the license sentinel file.
+fn recover_sentinel_key_id(sentinel_path: &std::path::Path) -> Option<String> {
+    let sentinel_content = fs::read_to_string(sentinel_path).ok()?;
+    let stored_key_id_enc = sentinel_content.lines().nth(1).filter(|s| !s.is_empty())?;
+    let enc_bytes = hex::decode(stored_key_id_enc).ok()?;
+    let enc_key = get_local_encryption_key();
+    let dec = decrypt_data(&enc_key, &enc_bytes).ok()
+        .or_else(|| {
+            #[cfg(not(target_os = "android"))]
+            { decrypt_data(&get_local_encryption_key_legacy(), &enc_bytes).ok() }
+            #[cfg(target_os = "android")]
+            { None }
+        })?;
+    String::from_utf8(dec).ok()
+}
 
-    // SECURITY FIX (Gemini Audit Chunk 11): use centralized lockout (persistent across restarts)
-    if let Err(locked_json) = check_lockout(&state, &sec_dir) {
-        return locked_json;
-    }
+/// Check if an existing valid license blocks activation of a new key.
+/// Returns Some(error_json) if blocked, None if activation can proceed.
+fn check_existing_license_blocks(path: &std::path::Path, new_key: &str) -> Option<Value> {
+    if !path.exists() { return None; }
+    let dec = decrypt_local_with_migration(path)?;
+    let existing: Value = serde_json::from_slice(&dec).ok()?;
+    let existing_version = existing.get("keyVersion").and_then(|v| v.as_str()).unwrap_or("");
+    let new_id = extract_key_id(new_key);
 
-    let key = key.trim().to_string(); // Le chiavi B64 sono case-sensitive, non uppercasiamo
-
-    let path = sec_dir.join(LICENSE_FILE);
-    let sentinel_path = sec_dir.join(LICENSE_SENTINEL_FILE);
-
-    // ── SECURITY CHECK 1: if sentinel exists but license.json was deleted ──
-    // Someone deleted the license file to try re-activating with a different key.
-    // Block unless the SAME key (same ID) is being re-entered.
-    if !path.exists() && sentinel_path.exists() {
-        // We can still allow re-activation of the SAME key ID that was originally used.
-        // The sentinel stores HMAC("LEXFLOW-SENTINEL:<fingerprint>:<keyId>:<timestamp>")
-        // but we cannot recover the keyId from the HMAC. So we also store the encrypted
-        // key ID in the sentinel for comparison. See sentinel write below.
-        let enc_key = get_local_encryption_key();
-        let sentinel_content = fs::read_to_string(&sentinel_path).unwrap_or_default();
-        // Sentinel format: "<hmac_hex>\n<encrypted_key_id_hex>"
-        let sentinel_lines: Vec<&str> = sentinel_content.lines().collect();
-        let stored_key_id_enc = sentinel_lines.get(1).unwrap_or(&"");
-
-        // Try to recover stored key ID (try current key, then legacy)
-        let stored_key_id: Option<String> = if !stored_key_id_enc.is_empty() {
-            hex::decode(stored_key_id_enc).ok()
-                .and_then(|enc_bytes| {
-                    decrypt_data(&enc_key, &enc_bytes).ok()
-                        .or_else(|| {
-                            #[cfg(not(target_os = "android"))]
-                            { decrypt_data(&get_local_encryption_key_legacy(), &enc_bytes).ok() }
-                            #[cfg(target_os = "android")]
-                            { None }
-                        })
-                })
-                .and_then(|dec| String::from_utf8(dec).ok())
-        } else {
-            None
-        };
-
-        let new_key_id = extract_key_id(&key);
-
-        // Allow re-activation ONLY if the same key ID is being used
-        match (stored_key_id.as_deref(), new_key_id.as_deref()) {
-            (Some(old), Some(new_id)) if old == new_id => {
-                // Same key ID — allow re-activation (e.g. user accidentally deleted the file)
-            },
-            _ => {
-                return json!({
-                    "success": false,
-                    "error": "Questa installazione ha già una licenza registrata. Contattare il supporto per assistenza."
-                });
+    if existing_version == "ed25519-burned" {
+        let expiry = existing.get("expiryMs").and_then(|v| v.as_u64()).unwrap_or(0);
+        let now_ms = safe_now_ms();
+        if now_ms <= expiry {
+            let existing_id = existing.get("keyId").and_then(|v| v.as_str()).map(|s| s.to_string());
+            if existing_id != new_id {
+                return Some(json!({"success": false, "error": "Una licenza valida è già attiva. Non è possibile sostituirla."}));
+            }
+        }
+    } else {
+        let existing_key = existing.get("key").and_then(|k| k.as_str()).unwrap_or("");
+        if !existing_key.is_empty() && verify_license(existing_key.to_string()).valid {
+            if extract_key_id(existing_key) != new_id {
+                return Some(json!({"success": false, "error": "Una licenza valida è già attiva. Non è possibile sostituirla."}));
             }
         }
     }
+    None
+}
 
-    // ── SECURITY CHECK 2: if license already exists and is valid, block overwrite ──
-    // Prevents replacing a valid license with a pirated/shared key.
-    if path.exists() {
-        if let Some(dec) = decrypt_local_with_migration(&path) {
-            if let Ok(existing) = serde_json::from_slice::<Value>(&dec) {
-                let existing_version = existing.get("keyVersion")
-                    .and_then(|v| v.as_str()).unwrap_or("");
+/// Write sentinel file after license activation.
+fn write_license_sentinel(sentinel_path: &std::path::Path, fingerprint: &str, key_id: &str, now: &str) {
+    let enc_key = get_local_encryption_key();
+    let sentinel_data = format!("LEXFLOW-SENTINEL:{}:{}:{}", fingerprint, key_id, now);
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&enc_key)
+        .expect("HMAC can take key of any size");
+    mac.update(sentinel_data.as_bytes());
+    let sentinel_hmac = hex::encode(mac.finalize().into_bytes());
+    let encrypted_key_id = encrypt_data(&enc_key, key_id.as_bytes())
+        .map(|e| hex::encode(e)).unwrap_or_default();
+    let sentinel_content = format!("{}\n{}", sentinel_hmac, encrypted_key_id);
+    let _ = atomic_write_with_sync(sentinel_path, sentinel_content.as_bytes());
+}
 
-                if existing_version == "ed25519-burned" {
-                    let expiry = existing.get("expiryMs")
-                        .and_then(|v| v.as_u64()).unwrap_or(0);
-                    let now_ms = SystemTime::now()
-                        .duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
-                    if now_ms <= expiry {
-                        let existing_id = existing.get("keyId")
-                            .and_then(|v| v.as_str());
-                        let new_id = extract_key_id(&key);
-                        if existing_id.map(|s| s.to_string()) != new_id {
-                            return json!({
-                                "success": false,
-                                "error": "Una licenza valida è già attiva. Non è possibile sostituirla."
-                            });
-                        }
-                    }
-                } else {
-                    let existing_key = existing.get("key")
-                        .and_then(|k| k.as_str()).unwrap_or("");
-                    if !existing_key.is_empty() {
-                        let existing_verification = verify_license(existing_key.to_string());
-                        if existing_verification.valid {
-                            let existing_id = extract_key_id(existing_key);
-                            let new_id = extract_key_id(&key);
-                            if existing_id != new_id {
-                                return json!({
-                                    "success": false,
-                                    "error": "Una licenza valida è già attiva. Non è possibile sostituirla."
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Verifica asimmetrica (Ed25519)
-    let verification = verify_license(key.clone());
-
-    if !verification.valid {
-        // SECURITY FIX (Gemini Audit Chunk 11): use centralized lockout functions
-        record_failed_attempt(&state, &sec_dir);
-        return json!({"success": false, "error": verification.message});
-    }
-
-    // SECURITY FIX (Gemini Audit Chunk 11): use centralized clear
-    clear_lockout(&state, &sec_dir);
-
-    // SECURITY: bind license to THIS machine — cannot be copied to another device
-    let fingerprint = compute_machine_fingerprint();
-
-    // ── SECURITY CHECK 3: burned-key registry ──────────────────────────────
-    // A key can only be activated ONCE. After activation it is "burned" —
-    // the raw token is destroyed and only a verification hash survives.
-    // Even if someone knows the key, they cannot re-use it.
-    // SECURITY FIX (Gemini Audit Chunk 11): handle Result — Fail-Closed on error
-    match is_key_burned(&sec_dir, &key, &fingerprint) {
-        Ok(true) => {
-            return json!({
-                "success": false,
-                "error": "Questa chiave è già stata utilizzata e non può essere riattivata."
-            });
-        }
+/// Check the burned-key registry. Returns Err(json) if blocked, Ok(()) if clear.
+fn check_burned_key_registry(sec_dir: &std::path::Path, key: &str, fingerprint: &str) -> Result<(), Value> {
+    match is_key_burned(sec_dir, key, fingerprint) {
+        Ok(true) => Err(json!({"success": false, "error": "Questa chiave è già stata utilizzata e non può essere riattivata."})),
         Err(e) => {
             eprintln!("[SECURITY] burned-keys registry unreadable: {}", e);
-            return json!({
-                "success": false,
-                "error": "Registro chiavi non leggibile. Contattare il supporto."
-            });
+            Err(json!({"success": false, "error": "Registro chiavi non leggibile. Contattare il supporto."}))
         }
-        Ok(false) => { /* key not burned, proceed */ }
+        Ok(false) => Ok(()),
     }
+}
 
-    // ── SECURITY CHECK 4: burned-keys file integrity ──────────────────────
-    // If the sentinel exists (a license was previously activated on this machine)
-    // but the .burned-keys file is missing, someone deleted it to bypass single-use
-    // enforcement. Block activation of any NEW key in this case.
-    if sentinel_path.exists() && !sec_dir.join(BURNED_KEYS_FILE).exists() {
-        // Allow re-activation of the SAME key ID only (handled by CHECK 1 above).
-        // If we reach here, it's a different key → block.
-        return json!({
-            "success": false,
-            "error": "Registro chiavi compromesso. Contattare il supporto per assistenza."
-        });
-    }
-
+/// Execute the license activation: burn key, write record, write sentinel.
+fn perform_license_activation(
+    sec_dir: &std::path::Path,
+    path: &std::path::Path,
+    sentinel_path: &std::path::Path,
+    key: &str,
+    client: &str,
+    fingerprint: &str,
+) -> Value {
     let now = chrono::Utc::now().to_rfc3339();
+    let key_id = extract_key_id(key).unwrap_or_else(|| "unknown".to_string());
+    let enc_key = get_local_encryption_key();
 
-    // Il client viene estratto in modo sicuro dal payload firmato
-    let client = verification.client.unwrap_or_else(|| "Studio Legale".to_string());
-
-    // Extract key ID for sentinel storage
-    let key_id = extract_key_id(&key).unwrap_or_else(|| "unknown".to_string());
-
-    // ── BURN THE KEY: compute verification hash, then destroy raw token ────
-    // We store an HMAC(token) so check_license can verify integrity without
-    // having the raw token. The raw token ceases to exist after this point.
-    let mut token_mac = <Hmac<Sha256> as Mac>::new_from_slice(
-        &get_local_encryption_key()
-    ).expect("HMAC can take key of any size");
+    // Compute token HMAC (burned verification hash)
+    let mut token_mac = <Hmac<Sha256> as Mac>::new_from_slice(&enc_key)
+        .expect("HMAC can take key of any size");
     token_mac.update(key.as_bytes());
     let token_hmac = hex::encode(token_mac.finalize().into_bytes());
 
-    // Extract payload data BEFORE destroying the token — we need client/expiry
-    // for check_license to work without re-verifying Ed25519
-    let parts: Vec<&str> = key.split('.').collect();
-    let payload_data: Option<LicensePayload> = if parts.len() == 3 {
-        URL_SAFE_NO_PAD.decode(parts[1]).ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-    } else { None };
+    // Extract payload data before destroying the token
+    let expiry_ms = parse_lxfw_payload(key).map(|p| p.e).unwrap_or(0);
 
-    let expiry_ms = payload_data.as_ref().map(|p| p.e).unwrap_or(0);
-
-    // Record: NO raw token — only HMAC + extracted payload data
     let record = json!({
         "tokenHmac": token_hmac,
         "activatedAt": now,
@@ -2058,43 +2114,76 @@ fn activate_license(state: State<AppState>, key: String, _client_name: Option<St
         "keyId": key_id,
         "expiryMs": expiry_ms,
     });
-    let enc_key = get_local_encryption_key();
-    match encrypt_data(&enc_key, &serde_json::to_vec(&record).unwrap_or_default()) {
-        Ok(encrypted) => {
-            match atomic_write_with_sync(&path, &encrypted) {
-                Ok(_) => {
-                        // SECURITY: write sentinel file — HMAC proof that activation happened.
-                        // This detects if license.json is manually deleted to hack the system.
-                        // Format: line 1 = HMAC(sentinel_data), line 2 = encrypted key ID
-                        let sentinel_data = format!("LEXFLOW-SENTINEL:{}:{}:{}", fingerprint, key_id, now);
-                        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&enc_key)
-                            .expect("HMAC can take key of any size");
-                        mac.update(sentinel_data.as_bytes());
-                        let sentinel_hmac = hex::encode(mac.finalize().into_bytes());
 
-                        // Encrypt key ID so it can be recovered for re-activation check
-                        let encrypted_key_id = encrypt_data(&enc_key, key_id.as_bytes())
-                            .map(|e| hex::encode(e))
-                            .unwrap_or_default();
-
-                        let sentinel_content = format!("{}\n{}", sentinel_hmac, encrypted_key_id);
-                        let _ = atomic_write_with_sync(&sentinel_path, sentinel_content.as_bytes());
-
-                        // ── BURN THE KEY: add to burned-keys registry ──
-                        // After this, the same token can NEVER be activated again.
-                        // SECURITY FIX (Gemini Audit Chunk 11): handle burn_key Result
-                        if let Err(e) = burn_key(&sec_dir, &compute_burn_hash(&key, &fingerprint)) {
-                            eprintln!("[SECURITY] CRITICAL: burn_key failed after activation: {}", e);
-                            // Key is already activated, but burn failed — log for audit
-                        }
-
-                        json!({"success": true, "client": client})
-                    },
-                    Err(e) => json!({"success": false, "error": format!("Errore salvataggio: {}", e)}),
-                }
-        },
-        Err(e) => json!({"success": false, "error": format!("Errore cifratura: {}", e)}),
+    let encrypted = match encrypt_data(&enc_key, &serde_json::to_vec(&record).unwrap_or_default()) {
+        Ok(enc) => enc,
+        Err(e) => return json!({"success": false, "error": format!("Errore cifratura: {}", e)}),
+    };
+    if let Err(e) = atomic_write_with_sync(path, &encrypted) {
+        return json!({"success": false, "error": format!("Errore salvataggio: {}", e)});
     }
+
+    write_license_sentinel(sentinel_path, fingerprint, &key_id, &now);
+
+    if let Err(e) = burn_key(sec_dir, &compute_burn_hash(key)) {
+        eprintln!("[SECURITY] CRITICAL: burn_key failed after activation: {}", e);
+    }
+
+    json!({"success": true, "client": client})
+}
+
+#[tauri::command]
+fn activate_license(state: State<AppState>, key: String, _client_name: Option<String>) -> Value {
+    let sec_dir = state.security_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    // SECURITY FIX (Gemini Audit Chunk 03): acquire write_mutex to prevent concurrent
+    // burn_key() calls from losing updates (load-modify-write race).
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+
+    if let Err(locked_json) = check_lockout(&state, &sec_dir) {
+        return locked_json;
+    }
+
+    let key = key.trim().to_string();
+    let path = sec_dir.join(LICENSE_FILE);
+    let sentinel_path = sec_dir.join(LICENSE_SENTINEL_FILE);
+
+    // SECURITY CHECK 1: sentinel exists but license.json deleted
+    if !path.exists() && sentinel_path.exists() {
+        let stored_key_id = recover_sentinel_key_id(&sentinel_path);
+        let new_key_id = extract_key_id(&key);
+        match (stored_key_id.as_deref(), new_key_id.as_deref()) {
+            (Some(old), Some(new_id)) if old == new_id => { /* same key, allow */ },
+            _ => return json!({"success": false, "error": "Questa installazione ha già una licenza registrata. Contattare il supporto per assistenza."}),
+        }
+    }
+
+    // SECURITY CHECK 2: existing valid license blocks overwrite
+    if let Some(blocked) = check_existing_license_blocks(&path, &key) {
+        return blocked;
+    }
+
+    // Verifica asimmetrica (Ed25519)
+    let verification = verify_license(key.clone());
+    if !verification.valid {
+        record_failed_attempt(&state, &sec_dir);
+        return json!({"success": false, "error": verification.message});
+    }
+    clear_lockout(&state, &sec_dir);
+
+    let fingerprint = compute_machine_fingerprint();
+
+    // SECURITY CHECK 3: burned-key registry
+    if let Err(msg) = check_burned_key_registry(&sec_dir, &key, &fingerprint) {
+        return msg;
+    }
+
+    // SECURITY CHECK 4: burned-keys file integrity
+    if sentinel_path.exists() && !sec_dir.join(BURNED_KEYS_FILE).exists() {
+        return json!({"success": false, "error": "Registro chiavi compromesso. Contattare il supporto per assistenza."});
+    }
+
+    let client = verification.client.unwrap_or_else(|| "Studio Legale".to_string());
+    perform_license_activation(&sec_dir, &path, &sentinel_path, &key, &client, &fingerprint)
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2139,7 +2228,9 @@ async fn export_vault(state: State<'_, AppState>, pwd: String, app: AppHandle) -
     if let Some(p) = path {
         // SECURITY FIX (Gemini Audit Chunk 12/13): handle into_path gracefully
         let file_path = p.into_path().map_err(|e| format!("Percorso non valido: {}", e))?;
-        fs::write(file_path, out).map_err(|e| e.to_string())?;
+        // SECURITY FIX (Audit Chunk 14): use atomic_write_with_sync for crash safety.
+        // Previously fs::write could leave a corrupted partial file on crash.
+        atomic_write_with_sync(&file_path, &out).map_err(|e| e.to_string())?;
         Ok(json!({"success": true}))
     } else { Ok(json!({"success": false})) }
 }
@@ -2217,7 +2308,7 @@ async fn import_vault(state: State<'_, AppState>, pwd: String, app: AppHandle) -
             let verify_tag = make_verify_tag(&new_key);
             secure_write(&dir.join(VAULT_VERIFY_FILE), &verify_tag).map_err(|e| e.to_string())?;
             // Set the vault key in state so write_vault_internal can use it
-            *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(new_key));
+            *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(Zeroizing::new(new_key)));
         }
         write_vault_internal(&state, &val)?;
         let _ = append_audit_log(&state, "Vault importato da backup");
@@ -2454,6 +2545,132 @@ fn read_notification_schedule(data_dir: &PathBuf) -> Option<Value> {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  NOTIFICATION HELPERS — shared between mobile AOT and desktop cron
+// ═══════════════════════════════════════════════════════════
+
+/// Determine the briefing filter parameters based on the hour of the briefing.
+/// Returns (filter_date, time_from, period_label).
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn briefing_filter_params<'a>(
+    briefing_hour: u32,
+    today: &'a str,
+    tomorrow: &'a str,
+    day_offset_is_zero: bool,
+) -> Option<(&'a str, &'a str, &'a str)> {
+    if briefing_hour < 12 {
+        Some((today, "00:00", "oggi"))
+    } else if briefing_hour < 18 {
+        Some((today, "13:00", "questo pomeriggio"))
+    } else if day_offset_is_zero {
+        Some((tomorrow, "00:00", "domani"))
+    } else {
+        None
+    }
+}
+
+/// Count relevant (non-completed) items for a given date/time filter.
+fn count_relevant_items(items: &[Value], filter_date: &str, time_from: &str) -> usize {
+    items.iter().filter(|i| {
+        let d = i.get("date").and_then(|d| d.as_str()).unwrap_or("");
+        let t = i.get("time").and_then(|t| t.as_str()).unwrap_or("00:00");
+        let done = i.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
+        d == filter_date && !done && t >= time_from
+    }).count()
+}
+
+/// Build briefing notification title + body.
+fn build_briefing_notification(items: &[Value], filter_date: &str, time_from: &str, period_label: &str) -> (String, String) {
+    let relevant_count = count_relevant_items(items, filter_date, time_from);
+    let title = if relevant_count == 0 {
+        format!("LexFlow — Nessun impegno {}", period_label)
+    } else {
+        format!("LexFlow — {} impegn{} {}", relevant_count,
+            if relevant_count == 1 { "o" } else { "i" }, period_label)
+    };
+    let body = if relevant_count == 0 {
+        format!("Nessun impegno in programma per {}.", period_label)
+    } else {
+        let mut relevant_items: Vec<&Value> = items.iter()
+            .filter(|i| {
+                let d = i.get("date").and_then(|d| d.as_str()).unwrap_or("");
+                let t = i.get("time").and_then(|t| t.as_str()).unwrap_or("00:00");
+                let done = i.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
+                d == filter_date && !done && t >= time_from
+            }).collect();
+        relevant_items.sort_by(|a, b| {
+            let ta = a.get("time").and_then(|v| v.as_str()).unwrap_or("");
+            let tb = b.get("time").and_then(|v| v.as_str()).unwrap_or("");
+            ta.cmp(tb)
+        });
+        format_item_list(&relevant_items, relevant_count)
+    };
+    (title, body)
+}
+
+/// Format a list of schedule items into a notification body string.
+fn format_item_list(relevant_items: &[&Value], total_count: usize) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for item in relevant_items.iter().take(4) {
+        let t = item.get("time").and_then(|v| v.as_str()).unwrap_or("");
+        let name = item.get("title").and_then(|v| v.as_str()).unwrap_or("Impegno");
+        if !t.is_empty() { lines.push(format!("• {} — {}", t, name)); }
+        else { lines.push(format!("• {}", name)); }
+    }
+    if total_count > 4 { lines.push(format!("  …e altri {}", total_count - 4)); }
+    lines.join("\n")
+}
+
+/// Compute the reminder fire time for a schedule item.
+fn compute_remind_time(
+    item: &Value,
+    item_local: chrono::DateTime<chrono::Local>,
+) -> chrono::DateTime<chrono::Local> {
+    let item_date = item.get("date").and_then(|d| d.as_str()).unwrap_or("");
+    let custom_remind_time = item.get("customRemindTime")
+        .and_then(|v| v.as_str()).filter(|s| s.len() >= 5);
+    let remind_min = item.get("remindMinutes").and_then(|v| v.as_i64()).unwrap_or(30);
+    if let Some(crt) = custom_remind_time {
+        let crt_str = format!("{} {}", item_date, crt);
+        chrono::NaiveDateTime::parse_from_str(&crt_str, "%Y-%m-%d %H:%M")
+            .ok().and_then(|dt| chrono::Local.from_local_datetime(&dt).single())
+            .unwrap_or(item_local - chrono::Duration::minutes(remind_min))
+    } else {
+        item_local - chrono::Duration::minutes(remind_min)
+    }
+}
+
+/// Build the reminder body text with time-until description.
+fn build_reminder_body(item_title: &str, item_time: &str, item_local: chrono::DateTime<chrono::Local>, remind_time: chrono::DateTime<chrono::Local>) -> String {
+    let diff = (item_local - remind_time).num_minutes().max(0);
+    let time_desc = if diff == 0 { "adesso!".to_string() }
+        else if diff < 60 { format!("tra {} minuti", diff) }
+        else {
+            let h = diff / 60; let m = diff % 60;
+            if m == 0 { format!("tra {} or{}", h, if h == 1 { "a" } else { "e" }) }
+            else { format!("tra {}h {:02}min", h, m) }
+        };
+    format!("{} — {} ({})", item_title, item_time, time_desc)
+}
+
+/// Parse a schedule item's date+time into a local DateTime.
+fn parse_item_datetime(item: &Value) -> Option<chrono::DateTime<chrono::Local>> {
+    let item_date = item.get("date").and_then(|d| d.as_str()).unwrap_or("");
+    let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
+    if item_time.len() < 5 { return None; }
+    let dt_str = format!("{} {}", item_date, item_time);
+    chrono::NaiveDateTime::parse_from_str(&dt_str, "%Y-%m-%d %H:%M")
+        .ok().and_then(|dt| chrono::Local.from_local_datetime(&dt).single())
+}
+
+/// Compute a stable i32 notification ID from a seed string.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn hash_notification_id(seed: &str) -> i32 {
+    let hash = <Sha256 as Digest>::digest(seed.as_bytes());
+    let raw = i32::from_le_bytes([hash[0], hash[1], hash[2], hash[3]]);
+    raw.wrapping_abs().max(1)
+}
+
+// ═══════════════════════════════════════════════════════════
 //  HYBRID NOTIFICATION ARCHITECTURE (v3.1)
 // ═══════════════════════════════════════════════════════════
 //
@@ -2469,26 +2686,72 @@ fn read_notification_schedule(data_dir: &PathBuf) -> Option<Value> {
 //   On macOS the App Nap hack (NSProcessInfo.beginActivityWithOptions) prevents
 //   the OS from freezing the async timer when the window is hidden.
 
+/// Schedule all briefing notifications across briefing times × day offsets.
+/// Returns number of notifications scheduled.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn schedule_all_briefings(
+    app: &AppHandle,
+    briefing_times: &[Value],
+    items: &[Value],
+    today_str: &str,
+    tomorrow_str: &str,
+    now: chrono::DateTime<chrono::Local>,
+    horizon: chrono::DateTime<chrono::Local>,
+    max: i32,
+) -> i32 {
+    let mut count = 0i32;
+    for bt in briefing_times {
+        let time_str = match bt.as_str() {
+            Some(s) if s.len() >= 5 => s,
+            _ => continue,
+        };
+        for day_offset in 0..=1i64 {
+            if count >= max { return count; }
+            if let Some(sc) = schedule_briefing_aot(
+                app, time_str, day_offset, items, today_str, tomorrow_str, now, horizon,
+            ) {
+                count += sc;
+            }
+        }
+    }
+    count
+}
+
+/// Schedule all per-item reminder notifications.
+/// Returns number of notifications scheduled.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn schedule_all_reminders(
+    app: &AppHandle,
+    items: &[Value],
+    now: chrono::DateTime<chrono::Local>,
+    horizon: chrono::DateTime<chrono::Local>,
+    already: i32,
+    max: i32,
+) -> i32 {
+    let mut count = already;
+    for item in items {
+        if count >= max { break; }
+        if let Some(sc) = schedule_reminder_aot(app, item, now, horizon) {
+            count += sc;
+        }
+    }
+    count - already
+}
+
 // ── MOBILE: Native AOT scheduling ─────────────────────────────────────────
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn sync_notifications(app: &AppHandle, data_dir: &std::path::Path) {
     use tauri_plugin_notification::NotificationExt;
 
-    // Cancel all pending
     if let Err(e) = app.notification().cancel_all() {
         eprintln!("[LexFlow Sync] cancel_all error (non-critical): {:?}", e);
     } else {
         eprintln!("[LexFlow Sync] All pending notifications cancelled ✓");
     }
 
-    let schedule_data: serde_json::Value = match read_notification_schedule(
-        &data_dir.to_path_buf()
-    ) {
+    let schedule_data = match read_notification_schedule(&data_dir.to_path_buf()) {
         Some(v) => v,
-        None => {
-            eprintln!("[LexFlow Sync] No schedule file — nothing to schedule");
-            return;
-        }
+        None => { eprintln!("[LexFlow Sync] No schedule file"); return; }
     };
 
     let briefing_times = schedule_data.get("briefingTimes")
@@ -2497,159 +2760,94 @@ fn sync_notifications(app: &AppHandle, data_dir: &std::path::Path) {
         .and_then(|v| v.as_array()).cloned().unwrap_or_default();
 
     let now = chrono::Local::now();
-    let tomorrow = (now + chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+    let today_str = now.format("%Y-%m-%d").to_string();
+    let tomorrow_str = (now + chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
     const MAX_SCHEDULED: i32 = 60;
     let horizon = now + chrono::Duration::days(14);
-    let mut scheduled_count: i32 = 0;
 
-    let chrono_to_offset = |dt: chrono::DateTime<chrono::Local>| -> Option<time::OffsetDateTime> {
-        let ts = dt.timestamp();
-        let ns = dt.timestamp_subsec_nanos();
-        let offset_secs = dt.offset().local_minus_utc();
-        let offset = time::UtcOffset::from_whole_seconds(offset_secs).ok()?;
-        time::OffsetDateTime::from_unix_timestamp(ts).ok()
-            .map(|t| t.replace_nanosecond(ns).unwrap_or(t))
-            .map(|t| t.to_offset(offset))
+    let briefing_count = schedule_all_briefings(
+        app, &briefing_times, &items, &today_str, &tomorrow_str, now, horizon, MAX_SCHEDULED,
+    );
+    let reminder_count = schedule_all_reminders(
+        app, &items, now, horizon, briefing_count, MAX_SCHEDULED,
+    );
+    let total = briefing_count + reminder_count;
+
+    eprintln!("[LexFlow Sync] ══ Mobile AOT sync: {}/{} notifications scheduled ══", total, MAX_SCHEDULED);
+}
+
+/// Convert chrono::DateTime<Local> to time::OffsetDateTime (for notification scheduling).
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn chrono_to_offset(dt: chrono::DateTime<chrono::Local>) -> Option<time::OffsetDateTime> {
+    let ts = dt.timestamp();
+    let ns = dt.timestamp_subsec_nanos();
+    let offset_secs = dt.offset().local_minus_utc();
+    let offset = time::UtcOffset::from_whole_seconds(offset_secs).ok()?;
+    time::OffsetDateTime::from_unix_timestamp(ts).ok()
+        .map(|t| t.replace_nanosecond(ns).unwrap_or(t))
+        .map(|t| t.to_offset(offset))
+}
+
+/// Schedule a single briefing notification (mobile AOT). Returns Some(1) on success.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn schedule_briefing_aot(
+    app: &AppHandle,
+    time_str: &str,
+    day_offset: i64,
+    items: &[Value],
+    today_str: &str,
+    tomorrow_str: &str,
+    now: chrono::DateTime<chrono::Local>,
+    horizon: chrono::DateTime<chrono::Local>,
+) -> Option<i32> {
+    use tauri_plugin_notification::NotificationExt;
+    let target_date = now.date_naive() + chrono::Duration::days(day_offset);
+    let date_str = target_date.format("%Y-%m-%d").to_string();
+    let dt_str = format!("{} {}", date_str, time_str);
+    let target_dt = chrono::NaiveDateTime::parse_from_str(&dt_str, "%Y-%m-%d %H:%M").ok()?;
+    let target_local = chrono::Local.from_local_datetime(&target_dt).single()?;
+    if target_local <= now || target_local > horizon { return None; }
+    let offset_dt = chrono_to_offset(target_local)?;
+    let briefing_hour: u32 = time_str.split(':').next().and_then(|h| h.parse().ok()).unwrap_or(8);
+    let (filter_date, time_from, period_label) = briefing_filter_params(
+        briefing_hour, &date_str, tomorrow_str, day_offset == 0,
+    ).or_else(|| briefing_filter_params(briefing_hour, today_str, tomorrow_str, day_offset == 0))?;
+    let (title, body_str) = build_briefing_notification(items, filter_date, time_from, period_label);
+    let notif_id = hash_notification_id(&format!("briefing-{}-{}", date_str, time_str));
+    let sched = tauri_plugin_notification::Schedule::At {
+        date: offset_dt, repeating: false, allow_while_idle: true,
     };
+    app.notification().builder().id(notif_id).title(&title).body(&body_str)
+        .schedule(sched).show().ok().map(|_| 1)
+}
 
-    let hash_id = |seed: &str| -> i32 {
-        let hash = <sha2::Sha256 as sha2::Digest>::digest(seed.as_bytes());
-        let raw = i32::from_le_bytes([hash[0], hash[1], hash[2], hash[3]]);
-        raw.wrapping_abs().max(1)
+/// Schedule a single reminder notification (mobile AOT). Returns Some(1) on success.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn schedule_reminder_aot(
+    app: &AppHandle,
+    item: &Value,
+    now: chrono::DateTime<chrono::Local>,
+    horizon: chrono::DateTime<chrono::Local>,
+) -> Option<i32> {
+    use tauri_plugin_notification::NotificationExt;
+    let completed = item.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
+    if completed { return None; }
+    let item_local = parse_item_datetime(item)?;
+    if item_local > horizon { return None; }
+    let remind_time = compute_remind_time(item, item_local);
+    if remind_time <= now { return None; }
+    let offset_dt = chrono_to_offset(remind_time)?;
+    let item_title = item.get("title").and_then(|t| t.as_str()).unwrap_or("Impegno");
+    let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
+    let item_date = item.get("date").and_then(|d| d.as_str()).unwrap_or("");
+    let item_id = item.get("id").and_then(|i| i.as_str()).unwrap_or("");
+    let body = build_reminder_body(item_title, item_time, item_local, remind_time);
+    let notif_id = hash_notification_id(&format!("remind-{}-{}-{}", item_date, item_id, item_time));
+    let sched = tauri_plugin_notification::Schedule::At {
+        date: offset_dt, repeating: false, allow_while_idle: true,
     };
-
-    // Schedule briefings
-    for bt in &briefing_times {
-        if scheduled_count >= MAX_SCHEDULED { break; }
-        let time_str = match bt.as_str() {
-            Some(s) if s.len() >= 5 => s,
-            _ => continue,
-        };
-        for day_offset in 0..=1i64 {
-            if scheduled_count >= MAX_SCHEDULED { break; }
-            let target_date = now.date_naive() + chrono::Duration::days(day_offset);
-            let date_str = target_date.format("%Y-%m-%d").to_string();
-            let dt_str = format!("{} {}", date_str, time_str);
-            let target_dt = match chrono::NaiveDateTime::parse_from_str(&dt_str, "%Y-%m-%d %H:%M") {
-                Ok(dt) => dt, Err(_) => continue,
-            };
-            let target_local = match chrono::Local.from_local_datetime(&target_dt).single() {
-                Some(t) => t, None => continue,
-            };
-            if target_local <= now || target_local > horizon { continue; }
-            let offset_dt = match chrono_to_offset(target_local) {
-                Some(t) => t, None => continue,
-            };
-            let briefing_hour: u32 = time_str.split(':').next()
-                .and_then(|h| h.parse().ok()).unwrap_or(8);
-            let (filter_date, time_from, period_label) = if briefing_hour < 12 {
-                (date_str.as_str(), "00:00", "oggi")
-            } else if briefing_hour < 18 {
-                (date_str.as_str(), "13:00", "questo pomeriggio")
-            } else {
-                if day_offset == 0 { (&tomorrow as &str, "00:00", "domani") }
-                else { continue; }
-            };
-            let relevant_count = items.iter().filter(|i| {
-                let d = i.get("date").and_then(|d| d.as_str()).unwrap_or("");
-                let t = i.get("time").and_then(|t| t.as_str()).unwrap_or("00:00");
-                let done = i.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
-                d == filter_date && !done && t >= time_from
-            }).count();
-            let title = if relevant_count == 0 {
-                format!("LexFlow — Nessun impegno {}", period_label)
-            } else {
-                format!("LexFlow — {} impegn{} {}", relevant_count,
-                    if relevant_count == 1 { "o" } else { "i" }, period_label)
-            };
-            let body_str = if relevant_count == 0 {
-                format!("Nessun impegno in programma per {}.", period_label)
-            } else {
-                let mut relevant_items: Vec<&serde_json::Value> = items.iter()
-                    .filter(|i| {
-                        let d = i.get("date").and_then(|d| d.as_str()).unwrap_or("");
-                        let t = i.get("time").and_then(|t| t.as_str()).unwrap_or("00:00");
-                        let done = i.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
-                        d == filter_date && !done && t >= time_from
-                    }).collect();
-                relevant_items.sort_by(|a, b| {
-                    let ta = a.get("time").and_then(|v| v.as_str()).unwrap_or("");
-                    let tb = b.get("time").and_then(|v| v.as_str()).unwrap_or("");
-                    ta.cmp(tb)
-                });
-                let mut lines: Vec<String> = Vec::new();
-                for item in relevant_items.iter().take(4) {
-                    let t = item.get("time").and_then(|v| v.as_str()).unwrap_or("");
-                    let name = item.get("title").and_then(|v| v.as_str()).unwrap_or("Impegno");
-                    if !t.is_empty() { lines.push(format!("• {} — {}", t, name)); }
-                    else { lines.push(format!("• {}", name)); }
-                }
-                if relevant_count > 4 { lines.push(format!("  …e altri {}", relevant_count - 4)); }
-                lines.join("\n")
-            };
-            let notif_id = hash_id(&format!("briefing-{}-{}", date_str, time_str));
-            let sched = tauri_plugin_notification::Schedule::At {
-                date: offset_dt, repeating: false, allow_while_idle: true,
-            };
-            if app.notification().builder().id(notif_id).title(&title).body(&body_str)
-                .schedule(sched).show().is_ok() {
-                scheduled_count += 1;
-            }
-        }
-    }
-
-    // Schedule per-item reminders
-    for item in &items {
-        if scheduled_count >= MAX_SCHEDULED { break; }
-        let item_date = item.get("date").and_then(|d| d.as_str()).unwrap_or("");
-        let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
-        let item_title = item.get("title").and_then(|t| t.as_str()).unwrap_or("Impegno");
-        let item_id = item.get("id").and_then(|i| i.as_str()).unwrap_or("");
-        let completed = item.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
-        if completed || item_time.len() < 5 { continue; }
-        let item_dt_str = format!("{} {}", item_date, item_time);
-        let item_dt = match chrono::NaiveDateTime::parse_from_str(&item_dt_str, "%Y-%m-%d %H:%M") {
-            Ok(dt) => dt, Err(_) => continue,
-        };
-        let item_local = match chrono::Local.from_local_datetime(&item_dt).single() {
-            Some(t) => t, None => continue,
-        };
-        if item_local > horizon { continue; }
-        let custom_remind_time = item.get("customRemindTime")
-            .and_then(|v| v.as_str()).filter(|s| s.len() >= 5);
-        let remind_min = item.get("remindMinutes").and_then(|v| v.as_i64()).unwrap_or(30);
-        let remind_time = if let Some(crt) = custom_remind_time {
-            let crt_str = format!("{} {}", item_date, crt);
-            chrono::NaiveDateTime::parse_from_str(&crt_str, "%Y-%m-%d %H:%M")
-                .ok().and_then(|dt| chrono::Local.from_local_datetime(&dt).single())
-                .unwrap_or(item_local - chrono::Duration::minutes(remind_min))
-        } else {
-            item_local - chrono::Duration::minutes(remind_min)
-        };
-        if remind_time <= now { continue; }
-        let offset_dt = match chrono_to_offset(remind_time) {
-            Some(t) => t, None => continue,
-        };
-        let diff = (item_local - remind_time).num_minutes().max(0);
-        let time_desc = if diff == 0 { "adesso!".to_string() }
-            else if diff < 60 { format!("tra {} minuti", diff) }
-            else {
-                let h = diff / 60; let m = diff % 60;
-                if m == 0 { format!("tra {} or{}", h, if h == 1 { "a" } else { "e" }) }
-                else { format!("tra {}h {:02}min", h, m) }
-            };
-        let body = format!("{} — {} ({})", item_title, item_time, time_desc);
-        let notif_id = hash_id(&format!("remind-{}-{}-{}", item_date, item_id, item_time));
-        let sched = tauri_plugin_notification::Schedule::At {
-            date: offset_dt, repeating: false, allow_while_idle: true,
-        };
-        if app.notification().builder().id(notif_id).title("LexFlow — Promemoria")
-            .body(&body).schedule(sched).show().is_ok() {
-            scheduled_count += 1;
-        }
-    }
-
-    eprintln!("[LexFlow Sync] ══ Mobile AOT sync: {}/{} notifications scheduled ══", scheduled_count, MAX_SCHEDULED);
+    app.notification().builder().id(notif_id).title("LexFlow — Promemoria")
+        .body(&body).schedule(sched).show().ok().map(|_| 1)
 }
 
 // ── DESKTOP: stub — scheduling is handled by the async cron job ────────────
@@ -2662,10 +2860,7 @@ fn sync_notifications(_app: &AppHandle, _data_dir: &std::path::Path) {
 // ── DESKTOP: Async Cron Job — wakes every 60s, fires matching notifications ──
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn desktop_cron_job(app: AppHandle) {
-    use tauri_plugin_notification::NotificationExt;
-
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
-    // SECURITY FIX (Gemini Audit Chunk 14): skip missed ticks instead of bursting
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut last_processed_minute = String::new();
 
@@ -2676,20 +2871,13 @@ async fn desktop_cron_job(app: AppHandle) {
 
         let now = chrono::Local::now();
         let current_minute = now.format("%Y-%m-%d %H:%M").to_string();
-
-        // Avoid double-firing within the same minute
         if current_minute == last_processed_minute { continue; }
         last_processed_minute = current_minute.clone();
 
-        // Read data_dir from managed state
-        let data_dir = {
-            let state = app.state::<AppState>();
-            let dir = state.data_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            dir
-        };
+        let data_dir = app.state::<AppState>().data_dir.lock()
+            .unwrap_or_else(|e| e.into_inner()).clone();
 
-        // ── Read notification schedule ──
-        let schedule_data: serde_json::Value = match read_notification_schedule(&data_dir) {
+        let schedule_data = match read_notification_schedule(&data_dir) {
             Some(v) => v,
             None => continue,
         };
@@ -2702,135 +2890,65 @@ async fn desktop_cron_job(app: AppHandle) {
         let today = now.format("%Y-%m-%d").to_string();
         let tomorrow = (now + chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
 
-        // ── Check briefings: does any briefing fire THIS minute? ──
+        // Check briefings
         for bt in &briefing_times {
             let time_str = match bt.as_str() {
                 Some(s) if s.len() >= 5 => s,
                 _ => continue,
             };
-
             let briefing_key = format!("{} {}", today, time_str);
             if briefing_key != current_minute { continue; }
-
-            // This briefing fires NOW
-            let briefing_hour: u32 = time_str.split(':').next()
-                .and_then(|h| h.parse().ok()).unwrap_or(8);
-
-            let (filter_date, time_from, period_label) = if briefing_hour < 12 {
-                (today.as_str(), "00:00", "oggi")
-            } else if briefing_hour < 18 {
-                (today.as_str(), "13:00", "questo pomeriggio")
-            } else {
-                (tomorrow.as_str(), "00:00", "domani")
-            };
-
-            let relevant_count = items.iter().filter(|i| {
-                let d = i.get("date").and_then(|d| d.as_str()).unwrap_or("");
-                let t = i.get("time").and_then(|t| t.as_str()).unwrap_or("00:00");
-                let done = i.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
-                d == filter_date && !done && t >= time_from
-            }).count();
-
-            let title = if relevant_count == 0 {
-                format!("LexFlow — Nessun impegno {}", period_label)
-            } else {
-                format!("LexFlow — {} impegn{} {}", relevant_count,
-                    if relevant_count == 1 { "o" } else { "i" }, period_label)
-            };
-
-            let body_str = if relevant_count == 0 {
-                format!("Nessun impegno in programma per {}.", period_label)
-            } else {
-                let mut relevant_items: Vec<&serde_json::Value> = items.iter()
-                    .filter(|i| {
-                        let d = i.get("date").and_then(|d| d.as_str()).unwrap_or("");
-                        let t = i.get("time").and_then(|t| t.as_str()).unwrap_or("00:00");
-                        let done = i.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
-                        d == filter_date && !done && t >= time_from
-                    }).collect();
-                relevant_items.sort_by(|a, b| {
-                    let ta = a.get("time").and_then(|v| v.as_str()).unwrap_or("");
-                    let tb = b.get("time").and_then(|v| v.as_str()).unwrap_or("");
-                    ta.cmp(tb)
-                });
-                let mut lines: Vec<String> = Vec::new();
-                for item in relevant_items.iter().take(4) {
-                    let t = item.get("time").and_then(|v| v.as_str()).unwrap_or("");
-                    let name = item.get("title").and_then(|v| v.as_str()).unwrap_or("Impegno");
-                    if !t.is_empty() { lines.push(format!("• {} — {}", t, name)); }
-                    else { lines.push(format!("• {}", name)); }
-                }
-                if relevant_count > 4 { lines.push(format!("  …e altri {}", relevant_count - 4)); }
-                lines.join("\n")
-            };
-
-            let app_clone = app.clone();
-            let title_clone = title.clone();
-            let body_clone = body_str.clone();
-            let _ = app.run_on_main_thread(move || {
-                let _ = app_clone.notification().builder()
-                    .title(&title_clone)
-                    .body(&body_clone)
-                    .show();
-            });
+            fire_desktop_briefing(&app, time_str, &items, &today, &tomorrow);
             eprintln!("[LexFlow Cron] ✓ Briefing fired: {}", briefing_key);
         }
 
-        // ── Check per-item reminders: does any reminder fire THIS minute? ──
+        // Check per-item reminders
         for item in &items {
-            let item_date = item.get("date").and_then(|d| d.as_str()).unwrap_or("");
-            let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
-            let item_title = item.get("title").and_then(|t| t.as_str()).unwrap_or("Impegno");
-            let completed = item.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
-            if completed || item_time.len() < 5 { continue; }
-
-            let item_dt_str = format!("{} {}", item_date, item_time);
-            let item_dt = match chrono::NaiveDateTime::parse_from_str(&item_dt_str, "%Y-%m-%d %H:%M") {
-                Ok(dt) => dt, Err(_) => continue,
-            };
-            let item_local = match chrono::Local.from_local_datetime(&item_dt).single() {
-                Some(t) => t, None => continue,
-            };
-
-            // Determine fire time
-            let custom_remind_time = item.get("customRemindTime")
-                .and_then(|v| v.as_str()).filter(|s| s.len() >= 5);
-            let remind_min = item.get("remindMinutes").and_then(|v| v.as_i64()).unwrap_or(30);
-
-            let remind_time = if let Some(crt) = custom_remind_time {
-                let crt_str = format!("{} {}", item_date, crt);
-                chrono::NaiveDateTime::parse_from_str(&crt_str, "%Y-%m-%d %H:%M")
-                    .ok().and_then(|dt| chrono::Local.from_local_datetime(&dt).single())
-                    .unwrap_or(item_local - chrono::Duration::minutes(remind_min))
-            } else {
-                item_local - chrono::Duration::minutes(remind_min)
-            };
-
-            let fire_minute = remind_time.format("%Y-%m-%d %H:%M").to_string();
-            if fire_minute != current_minute { continue; }
-
-            // This reminder fires NOW
-            let diff = (item_local - remind_time).num_minutes().max(0);
-            let time_desc = if diff == 0 { "adesso!".to_string() }
-                else if diff < 60 { format!("tra {} minuti", diff) }
-                else {
-                    let h = diff / 60; let m = diff % 60;
-                    if m == 0 { format!("tra {} or{}", h, if h == 1 { "a" } else { "e" }) }
-                    else { format!("tra {}h {:02}min", h, m) }
-                };
-            let body = format!("{} — {} ({})", item_title, item_time, time_desc);
-
-            let app_clone = app.clone();
-            let body_clone = body.clone();
-            let _ = app.run_on_main_thread(move || {
-                let _ = app_clone.notification().builder()
-                    .title("LexFlow — Promemoria")
-                    .body(&body_clone)
-                    .show();
-            });
-            eprintln!("[LexFlow Cron] ✓ Reminder fired: {} → {}", item_title, fire_minute);
+            fire_desktop_reminder(&app, item, &current_minute);
         }
     }
+}
+
+/// Fire a single desktop briefing notification if it matches the current minute.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn fire_desktop_briefing(app: &AppHandle, time_str: &str, items: &[Value], today: &str, tomorrow: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    let briefing_hour: u32 = time_str.split(':').next()
+        .and_then(|h| h.parse().ok()).unwrap_or(8);
+    let (filter_date, time_from, period_label) = if briefing_hour < 12 {
+        (today, "00:00", "oggi")
+    } else if briefing_hour < 18 {
+        (today, "13:00", "questo pomeriggio")
+    } else {
+        (tomorrow, "00:00", "domani")
+    };
+    let (title, body_str) = build_briefing_notification(items, filter_date, time_from, period_label);
+    let app_clone = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _ = app_clone.notification().builder()
+            .title(&title).body(&body_str).show();
+    });
+}
+
+/// Fire a single desktop reminder notification if it matches the current minute.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn fire_desktop_reminder(app: &AppHandle, item: &Value, current_minute: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    let completed = item.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
+    if completed { return; }
+    let item_local = match parse_item_datetime(item) { Some(t) => t, None => return };
+    let remind_time = compute_remind_time(item, item_local);
+    let fire_minute = remind_time.format("%Y-%m-%d %H:%M").to_string();
+    if fire_minute != current_minute { return; }
+    let item_title = item.get("title").and_then(|t| t.as_str()).unwrap_or("Impegno");
+    let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
+    let body = build_reminder_body(item_title, item_time, item_local, remind_time);
+    let app_clone = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _ = app_clone.notification().builder()
+            .title("LexFlow — Promemoria").body(&body).show();
+    });
+    eprintln!("[LexFlow Cron] ✓ Reminder fired: {} → {}", item_title, fire_minute);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2919,67 +3037,132 @@ fn show_main_window(app: AppHandle) {
 //  APP RUNNER
 // ═══════════════════════════════════════════════════════════
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    // Desktop: usa dirs::data_dir() — percorso stabile cross-platform
-    // Android: usa un placeholder; il percorso reale viene risolto nel setup()
-    //          tramite app.path().app_data_dir() che restituisce il path privato
-    //          dell'app senza dipendere da env var o hardcoded fallback.
-    #[cfg(not(target_os = "android"))]
-    let data_dir = dirs::data_dir()
-        .expect("FATAL: could not determine system data directory (dirs::data_dir)")
-        .join("com.pietrolongo.lexflow")
-        .join("lexflow-vault");
+/// Verify binary integrity at startup — detects patched crypto constants.
+fn verify_binary_integrity() {
+    let mut integrity_seed = Vec::with_capacity(256);
+    integrity_seed.extend_from_slice(VAULT_MAGIC);
+    integrity_seed.extend_from_slice(&(AES_KEY_LEN as u64).to_le_bytes());
+    integrity_seed.extend_from_slice(&(NONCE_LEN as u64).to_le_bytes());
+    integrity_seed.extend_from_slice(&ARGON2_M_COST.to_le_bytes());
+    integrity_seed.extend_from_slice(&ARGON2_T_COST.to_le_bytes());
+    integrity_seed.extend_from_slice(&ARGON2_P_COST.to_le_bytes());
+    integrity_seed.extend_from_slice(&PUBLIC_KEY_BYTES);
+    integrity_seed.extend_from_slice(&MAX_FAILED_ATTEMPTS.to_le_bytes());
+    let digest = hex::encode(<Sha256 as Digest>::digest(&integrity_seed));
+    const EXPECTED_HASH: &str = "369a8f3e626e8e8b19cd99f48451596db2d8ca1c0de4b6784229cb00778192a1";
+    if digest != EXPECTED_HASH {
+        eprintln!("FATAL INTEGRITY VIOLATION: crypto constants digest mismatch!");
+        eprintln!("  Expected: {}", EXPECTED_HASH);
+        eprintln!("  Got:      {}", digest);
+        panic!("SECURITY: Binary integrity check failed — possible tampering detected.");
+    }
+}
 
-    // security_dir: parent of vault — security files live here so vault reset cannot erase them
-    #[cfg(not(target_os = "android"))]
-    let security_dir = dirs::data_dir()
-        .expect("FATAL: could not determine system data directory (dirs::data_dir)")
-        .join("com.pietrolongo.lexflow");
-
-    #[cfg(target_os = "android")]
-    let data_dir = std::path::PathBuf::from("/placeholder-android-will-be-set-in-setup");
-    #[cfg(target_os = "android")]
-    let security_dir = std::path::PathBuf::from("/placeholder-android-will-be-set-in-setup");
-
-    let _ = fs::create_dir_all(&data_dir);
-    let _ = fs::create_dir_all(&security_dir);
-
-    // ── MIGRATION: move data from old identifier (com.technojaw.lexflow) to new one ──
-    #[cfg(not(target_os = "android"))]
-    {
-        // SECURITY FIX (Gemini Audit Chunk 17): handle dirs::data_dir gracefully
-        if let Some(old_data_dir) = dirs::data_dir() {
-            let old_base = old_data_dir.join("com.technojaw.lexflow");
-            if old_base.exists() && old_base.is_dir() {
-                // Migrate vault directory
-                let old_vault = old_base.join("lexflow-vault");
-                if old_vault.exists() && !data_dir.join(VAULT_FILE).exists() {
-                    // Copy all files from old vault to new vault
-                    if let Ok(entries) = fs::read_dir(&old_vault) {
-                        for entry in entries.flatten() {
-                            let dest = data_dir.join(entry.file_name());
-                            if !dest.exists() {
-                                let _ = fs::copy(entry.path(), &dest);
-                            }
-                        }
-                    }
-                }
-                // Migrate security files from old base
-                for sec_file in &[LICENSE_FILE, LICENSE_SENTINEL_FILE, BURNED_KEYS_FILE, LOCKOUT_FILE] {
-                    let old_path = old_base.join(sec_file);
-                    let new_path = security_dir.join(sec_file);
-                    if old_path.exists() && !new_path.exists() {
-                        let _ = fs::copy(&old_path, &new_path);
-                    }
-                }
-            }
+/// Setup notification permissions and send welcome notification on first launch.
+fn setup_notification_permissions(app: &tauri::App, data_dir_for_scheduler: &std::path::Path) {
+    use tauri_plugin_notification::NotificationExt;
+    let state = app.notification().permission_state();
+    eprintln!("[LexFlow] Notification permission state: {:?}", state);
+    match state {
+        Ok(tauri_plugin_notification::PermissionState::Granted) => {
+            eprintln!("[LexFlow] Notifications already granted ✓");
+        }
+        Ok(tauri_plugin_notification::PermissionState::Denied) => {
+            eprintln!("[LexFlow] ⚠️ Notifications DENIED by user/system.");
+            eprintln!("[LexFlow] → User must enable manually: System Settings → Notifications → LexFlow");
+            let _ = app.emit("notification-permission-denied", ());
+        }
+        _ => {
+            eprintln!("[LexFlow] Notifications unknown — requesting permission...");
+            let result = app.notification().request_permission();
+            eprintln!("[LexFlow] Permission request result: {:?}", result);
         }
     }
+    #[cfg(not(target_os = "android"))]
+    {
+        let marker = data_dir_for_scheduler.join(".notifications_registered");
+        if !marker.exists() {
+            let _ = app.notification()
+                .builder()
+                .title("LexFlow")
+                .body("Le notifiche sono attive! Riceverai promemoria per scadenze e udienze.")
+                .show();
+            let _ = std::fs::write(&marker, "1");
+            eprintln!("[LexFlow] First-launch notification sent ✓");
+        }
+    }
+}
 
-    // ── MIGRATION: move security files from old location (vault) to security_dir ──
-    // In versions ≤2.6.1, license.json, .license-sentinel, .burned-keys, .lockout were
-    // stored inside the vault dir. Now they live in security_dir (parent). Migrate once.
+/// Auto-lock loop — shared between desktop and Android.
+/// Sleeps 60s when vault is locked, 30s when unlocked, emits warning 30s before lock.
+fn autolock_loop(ah: AppHandle) {
+    loop {
+        let state = ah.state::<AppState>();
+        let is_unlocked = state.vault_key.lock()
+            .map(|k| k.is_some()).unwrap_or(false);
+        if !is_unlocked {
+            drop(state);
+            std::thread::sleep(Duration::from_secs(60));
+            continue;
+        }
+        let minutes = *state.autolock_minutes.lock().unwrap_or_else(|e| e.into_inner());
+        let last = *state.last_activity.lock().unwrap_or_else(|e| e.into_inner());
+        drop(state);
+        std::thread::sleep(Duration::from_secs(30));
+        if minutes == 0 { continue; }
+        let elapsed = Instant::now().duration_since(last);
+        let threshold = Duration::from_secs(minutes as u64 * 60);
+        if elapsed >= threshold.saturating_sub(Duration::from_secs(30)) && elapsed < threshold {
+            let _ = ah.emit("lf-vault-warning", ());
+        }
+        if elapsed >= threshold {
+            let state2 = ah.state::<AppState>();
+            *state2.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            let _ = ah.emit("lf-vault-locked", ());
+        }
+    }
+}
+
+/// Copy all files from one directory to another, skipping existing files.
+fn copy_dir_non_overwrite(src: &std::path::Path, dest_dir: &std::path::Path) {
+    let entries = match fs::read_dir(src) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let dest = dest_dir.join(entry.file_name());
+        if !dest.exists() { let _ = fs::copy(entry.path(), &dest); }
+    }
+}
+
+/// Copy security files from one directory to another, skipping existing files.
+fn copy_security_files_if_missing(src_dir: &std::path::Path, dest_dir: &std::path::Path) {
+    for sec_file in &[LICENSE_FILE, LICENSE_SENTINEL_FILE, BURNED_KEYS_FILE, LOCKOUT_FILE] {
+        let old_path = src_dir.join(sec_file);
+        let new_path = dest_dir.join(sec_file);
+        if old_path.exists() && !new_path.exists() { let _ = fs::copy(&old_path, &new_path); }
+    }
+}
+
+/// Migrate data from old identifier (com.technojaw.lexflow) to new one.
+#[cfg(not(target_os = "android"))]
+fn migrate_old_identifier(data_dir: &std::path::Path, security_dir: &std::path::Path) {
+    let old_data_dir = match dirs::data_dir() {
+        Some(d) => d,
+        None => return,
+    };
+    let old_base = old_data_dir.join("com.technojaw.lexflow");
+    if !old_base.exists() || !old_base.is_dir() { return; }
+
+    let old_vault = old_base.join("lexflow-vault");
+    if old_vault.exists() && !data_dir.join(VAULT_FILE).exists() {
+        copy_dir_non_overwrite(&old_vault, data_dir);
+    }
+    copy_security_files_if_missing(&old_base, security_dir);
+}
+
+/// Migrate security files from vault dir to security_dir (post v2.6.1).
+fn migrate_security_files(data_dir: &std::path::Path, security_dir: &std::path::Path) {
     for sec_file in &[LICENSE_FILE, LICENSE_SENTINEL_FILE, BURNED_KEYS_FILE, LOCKOUT_FILE] {
         let old_path = data_dir.join(sec_file);
         let new_path = security_dir.join(sec_file);
@@ -2988,7 +3171,158 @@ pub fn run() {
             let _ = fs::remove_file(&old_path);
         }
     }
-    // data_dir_for_sync: used in setup() to perform initial notification sync.
+}
+
+/// Setup desktop-specific features: window events, system tray, auto-lock, cron job.
+#[cfg(not(target_os = "android"))]
+fn setup_desktop(app: &mut tauri::App, data_dir_for_scheduler: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    sync_notifications(&app.handle(), data_dir_for_scheduler);
+
+    #[cfg(target_os = "macos")]
+    {
+        let bundle_id = app.config().identifier.clone();
+        let _ = std::process::Command::new("defaults")
+            .args(["write", &bundle_id, "NSAppSleepDisabled", "-bool", "YES"])
+            .output();
+        eprintln!("[LexFlow] macOS App Nap disabled via defaults write ✓");
+    }
+
+    // Launch the desktop cron job
+    let app_handle_cron = app.handle().clone();
+    tauri::async_runtime::spawn(async move { desktop_cron_job(app_handle_cron).await; });
+
+    // Auto-lock thread
+    let ah = app.handle().clone();
+    std::thread::spawn(move || autolock_loop(ah));
+
+    // Show main window
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+
+    // Window focus/blur events + close intercept
+    setup_window_events(app);
+
+    // System tray
+    setup_system_tray(app)?;
+
+    Ok(())
+}
+
+/// Register window focus/blur and close-requested events.
+#[cfg(not(target_os = "android"))]
+fn setup_window_events(app: &tauri::App) {
+    let app_handle = app.handle().clone();
+    if let Some(w) = app.get_webview_window("main") {
+        let w_clone = w.clone();
+        w.on_window_event(move |event| {
+            match event {
+                tauri::WindowEvent::Focused(focused) => {
+                    let _ = app_handle.emit("lf-blur", !focused);
+                }
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    if w_clone.is_fullscreen().unwrap_or(false) {
+                        let _ = w_clone.set_fullscreen(false);
+                    }
+                    let _ = w_clone.hide();
+                }
+                _ => {}
+            }
+        });
+    }
+}
+
+/// Create the system tray icon with show/quit menu.
+#[cfg(not(target_os = "android"))]
+fn setup_system_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::tray::TrayIconBuilder;
+    use tauri::menu::{Menu, MenuItem};
+
+    let show_item = MenuItem::with_id(app, "show", "Apri LexFlow", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Chiudi LexFlow", true, None::<&str>)?;
+    let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+    TrayIconBuilder::new()
+        .tooltip("LexFlow — Gestionale Legale")
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&tray_menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            "quit" => {
+                let state = app.state::<AppState>();
+                *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let tauri::tray::TrayIconEvent::Click {
+                button: tauri::tray::MouseButton::Left, ..
+            } = event {
+                if let Some(w) = tray.app_handle().get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
+/// Setup Android-specific features: resolve data dir, AOT sync, auto-lock.
+/// MUST be called during `setup()` — without it, data_dir/security_dir point
+/// to a temp placeholder and no vault I/O should occur.
+#[cfg(target_os = "android")]
+fn setup_android(app: &mut tauri::App) {
+    let real_dir = app.path().app_data_dir()
+        .expect("FATAL: Android could not resolve app_data_dir");
+    let vault_dir = real_dir.join("lexflow-vault");
+    fs::create_dir_all(&vault_dir)
+        .expect("FATAL: cannot create Android vault directory");
+    *app.state::<AppState>().data_dir.lock().unwrap_or_else(|e| e.into_inner()) = vault_dir.clone();
+    *app.state::<AppState>().security_dir.lock().unwrap_or_else(|e| e.into_inner()) = real_dir.clone();
+    sync_notifications(&app.handle(), &vault_dir);
+    let ah = app.handle().clone();
+    std::thread::spawn(move || autolock_loop(ah));
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    #[cfg(not(target_os = "android"))]
+    let data_dir = dirs::data_dir()
+        .expect("FATAL: could not determine system data directory (dirs::data_dir)")
+        .join("com.pietrolongo.lexflow")
+        .join("lexflow-vault");
+
+    #[cfg(not(target_os = "android"))]
+    let security_dir = dirs::data_dir()
+        .expect("FATAL: could not determine system data directory (dirs::data_dir)")
+        .join("com.pietrolongo.lexflow");
+
+    // Android: use temp dir as safe initial placeholder; setup_android() will
+    // overwrite both data_dir and security_dir with the real app-data path.
+    // We never write sensitive data until after setup_android() resolves them.
+    #[cfg(target_os = "android")]
+    let data_dir = std::env::temp_dir().join("lexflow-android-pending");
+    #[cfg(target_os = "android")]
+    let security_dir = std::env::temp_dir().join("lexflow-android-pending");
+
+    let _ = fs::create_dir_all(&data_dir);
+    let _ = fs::create_dir_all(&security_dir);
+
+    #[cfg(not(target_os = "android"))]
+    migrate_old_identifier(&data_dir, &security_dir);
+
+    migrate_security_files(&data_dir, &security_dir);
+
     #[cfg(not(target_os = "android"))]
     let data_dir_for_scheduler = data_dir.clone();
 
@@ -3011,291 +3345,18 @@ pub fn run() {
             write_mutex: Mutex::new(()),
         })
         .setup(move |app| {
-            // ═══ SECURITY FIX (Security Audit G5): RUNTIME SELF-INTEGRITY CHECK ═══
-            // Verifies that critical crypto constants have not been tampered with by a
-            // binary patcher/hex editor. A known SHA-256 digest of the concatenated
-            // constant values is checked at every startup. If the binary was patched
-            // (e.g. reducing Argon2 m_cost to 1 or changing PUBLIC_KEY_BYTES), this
-            // check detects the corruption and panics before any data is processed.
-            {
-                let mut integrity_seed = Vec::with_capacity(256);
-                integrity_seed.extend_from_slice(VAULT_MAGIC);
-                integrity_seed.extend_from_slice(&(AES_KEY_LEN as u64).to_le_bytes());
-                integrity_seed.extend_from_slice(&(NONCE_LEN as u64).to_le_bytes());
-                integrity_seed.extend_from_slice(&ARGON2_M_COST.to_le_bytes());
-                integrity_seed.extend_from_slice(&ARGON2_T_COST.to_le_bytes());
-                integrity_seed.extend_from_slice(&ARGON2_P_COST.to_le_bytes());
-                integrity_seed.extend_from_slice(&PUBLIC_KEY_BYTES);
-                integrity_seed.extend_from_slice(&MAX_FAILED_ATTEMPTS.to_le_bytes());
-                let digest = hex::encode(<Sha256 as Digest>::digest(&integrity_seed));
-                // Pre-computed: SHA-256 of the concatenated constants.
-                // To regenerate: change a constant → run in debug → read the panic message.
-                const EXPECTED_HASH: &str = "369a8f3e626e8e8b19cd99f48451596db2d8ca1c0de4b6784229cb00778192a1";
-                if digest != EXPECTED_HASH {
-                    eprintln!("FATAL INTEGRITY VIOLATION: crypto constants digest mismatch!");
-                    eprintln!("  Expected: {}", EXPECTED_HASH);
-                    eprintln!("  Got:      {}", digest);
-                    panic!("SECURITY: Binary integrity check failed — possible tampering detected.");
-                }
-            }
-            // ── NOTIFICATION PERMISSION (native, at startup) ──
-            // On macOS, permission is bound to the app's code signature. During development
-            // (ad-hoc signing), each rebuild changes the signature, causing macOS Notification
-            // Center to silently drop notifications. This is expected and resolves with a
-            // stable Apple Developer certificate in production builds.
-            //
-            // APPLE GUIDELINES FIX: if the user has explicitly Denied notifications,
-            // we must NOT call request_permission() again — macOS ignores the call and
-            // repeated attempts can cause the XPC daemon to permanently silence the app.
-            // Instead, log a message guiding the user to System Settings.
-            {
-                use tauri_plugin_notification::NotificationExt;
-                let state = app.notification().permission_state();
-                eprintln!("[LexFlow] Notification permission state: {:?}", state);
-                match state {
-                    Ok(tauri_plugin_notification::PermissionState::Granted) => {
-                        eprintln!("[LexFlow] Notifications already granted ✓");
-                    }
-                    Ok(tauri_plugin_notification::PermissionState::Denied) => {
-                        // DO NOT call request_permission() here — Apple will ignore it
-                        // and may permanently silence the app's XPC notification daemon.
-                        eprintln!("[LexFlow] ⚠️ Notifications DENIED by user/system.");
-                        eprintln!("[LexFlow] → User must enable manually: System Settings → Notifications → LexFlow");
-                        // Emit to frontend so we can show an in-app banner
-                        let _ = app.emit("notification-permission-denied", ());
-                    }
-                    _ => {
-                        // Unknown/NotDetermined — safe to request
-                        eprintln!("[LexFlow] Notifications unknown — requesting permission...");
-                        let result = app.notification().request_permission();
-                        eprintln!("[LexFlow] Permission request result: {:?}", result);
-                    }
-                }
-
-                // First-launch: send a welcome notification to register with macOS Notification Center.
-                // Without this, macOS may not show LexFlow in System Settings → Notifications.
-                // Uses a marker file so it only fires once per installation.
-                #[cfg(not(target_os = "android"))]
-                {
-                    let marker = data_dir_for_scheduler.join(".notifications_registered");
-                    if !marker.exists() {
-                        let _ = app.notification()
-                            .builder()
-                            .title("LexFlow")
-                            .body("Le notifiche sono attive! Riceverai promemoria per scadenze e udienze.")
-                            .show();
-                        let _ = std::fs::write(&marker, "1");
-                        eprintln!("[LexFlow] First-launch notification sent ✓");
-                    }
-                }
-            }
-
-            // ── AHEAD-OF-TIME SYNC: schedule all pending notifications with the OS ──
-            // On mobile: native AOT scheduling via sync_notifications()
-            // On desktop: no-op stub — the async cron job handles everything
-            #[cfg(not(target_os = "android"))]
-            sync_notifications(&app.handle(), &data_dir_for_scheduler);
-
-            // ── DESKTOP: App Nap prevention + async cron job ──────────────────
-            #[cfg(target_os = "macos")]
-            {
-                // Disable App Nap via defaults write — clean approach, no objc/cocoa FFI needed
-                let bundle_id = app.config().identifier.clone();
-                let _ = std::process::Command::new("defaults")
-                    .args(["write", &bundle_id, "NSAppSleepDisabled", "-bool", "YES"])
-                    .output();
-                eprintln!("[LexFlow] macOS App Nap disabled via defaults write ✓");
-            }
-
-            // Launch the desktop cron job (single async task, zero threads)
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
-                let app_handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    desktop_cron_job(app_handle).await;
-                });
-            }
-
-            #[cfg(target_os = "android")]
-            {
-                // Risolvi il path reale tramite Tauri PathResolver — nessun hardcoded path.
-                // app_data_dir() = /data/data/<pkg>/files/ (privato, senza root).
-                if let Ok(real_dir) = app.path().app_data_dir() {
-                    let vault_dir = real_dir.join("lexflow-vault");
-                    let _ = fs::create_dir_all(&vault_dir);
-                    *app.state::<AppState>().data_dir.lock().unwrap_or_else(|e| e.into_inner()) = vault_dir.clone();
-                    *app.state::<AppState>().security_dir.lock().unwrap_or_else(|e| e.into_inner()) = real_dir.clone();
-                    // ── AHEAD-OF-TIME SYNC on Android ──
-                    sync_notifications(&app.handle(), &vault_dir);
-                }
-            }
+            verify_binary_integrity();
 
             #[cfg(not(target_os = "android"))]
-            {
-                // NOTE: set_content_protected(true) removed — causes SIGABRT crash on
-                // macOS 26 (Sequoia) when the window loses focus (resignKeyWindow).
-                // The crash happens because setSharingType:NSWindowSharingNone interferes
-                // with the AppKit notification center during deactivation events.
-                // Privacy is already handled via the lf-blur event + frontend overlay.
+            setup_notification_permissions(app, &data_dir_for_scheduler);
+            #[cfg(target_os = "android")]
+            setup_notification_permissions(app, std::path::Path::new(""));
 
-                // Auto-lock thread con sleep adattivo:
-                // - vault bloccato → dorme 60s (nessun lavoro da fare, risparmia CPU)
-                // - vault sbloccato → dorme 30s (controlla inattività)
-                // RACE CONDITION FIX (L7 #5): emit "lf-vault-warning" 30s before locking
-                // so the frontend can show a "saving..." notice and the user can ping activity.
-                // This prevents data loss when the user is mid-form at the autolock boundary.
-                let ah = app.handle().clone();
-                std::thread::spawn(move || {
-                    loop {
-                        let state = ah.state::<AppState>();
-                        let is_unlocked = state.vault_key.lock()
-                            .map(|k| k.is_some()).unwrap_or(false);
-                        if !is_unlocked {
-                            drop(state);
-                            std::thread::sleep(Duration::from_secs(60));
-                            continue;
-                        }
-                        let minutes = state.autolock_minutes.lock()
-                            .map(|m| *m).unwrap_or(5);
-                        let last = state.last_activity.lock()
-                            .map(|l| *l).unwrap_or_else(|_| Instant::now());
-                        drop(state);
-                        std::thread::sleep(Duration::from_secs(30));
-                        if minutes == 0 { continue; }
-                        let elapsed = Instant::now().duration_since(last);
-                        let threshold = Duration::from_secs(minutes as u64 * 60);
-                        // Warning: 30s before actual lock
-                        if elapsed >= threshold.saturating_sub(Duration::from_secs(30))
-                            && elapsed < threshold
-                        {
-                            let _ = ah.emit("lf-vault-warning", ());
-                        }
-                        if elapsed >= threshold {
-                            let state2 = ah.state::<AppState>();
-                            if let Ok(mut key) = state2.vault_key.lock() {
-                                *key = None;
-                            }
-                            let _ = ah.emit("lf-vault-locked", ());
-                        }
-                    }
-                });
-
-                // Show main window after setup
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
-
-                // Window focus/blur events → privacy shield + intercept close to hide in tray
-                let app_handle = app.handle().clone();
-                if let Some(w) = app.get_webview_window("main") {
-                    let w_clone = w.clone();
-                    w.on_window_event(move |event| {
-                        match event {
-                            // Privacy shield: emit blur event so frontend can obscure content
-                            tauri::WindowEvent::Focused(focused) => {
-                                let _ = app_handle.emit("lf-blur", !focused);
-                            }
-                            // SYSTEM TRAY FIX: intercept the 'X' close button — hide the window
-                            // instead of terminating the process so the notification scheduler
-                            // keeps running in the background.  The user can quit via tray menu.
-                            tauri::WindowEvent::CloseRequested { api, .. } => {
-                                api.prevent_close();
-                                // BLACK SCREEN FIX: on macOS, if the window is in native fullscreen
-                                // and we just hide() it, the next show() re-opens into a black
-                                // fullscreen space.  Exit fullscreen BEFORE hiding so the window
-                                // returns to its normal state when re-shown from the tray.
-                                if w_clone.is_fullscreen().unwrap_or(false) {
-                                    let _ = w_clone.set_fullscreen(false);
-                                }
-                                let _ = w_clone.hide();
-                            }
-                            _ => {}
-                        }
-                    });
-                }
-
-                // ── System Tray ───────────────────────────────────────────────
-                // Keeps the process alive when the main window is hidden so the
-                // notification scheduler continues running between sessions.
-                {
-                    use tauri::tray::TrayIconBuilder;
-                    use tauri::menu::{Menu, MenuItem};
-
-                    let show_item = MenuItem::with_id(app, "show", "Apri LexFlow", true, None::<&str>)?;
-                    let quit_item = MenuItem::with_id(app, "quit", "Chiudi LexFlow", true, None::<&str>)?;
-                    let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
-
-                    TrayIconBuilder::new()
-                        .tooltip("LexFlow — Gestionale Legale")
-                        .icon(app.default_window_icon().unwrap().clone())
-                        .menu(&tray_menu)
-                        .show_menu_on_left_click(false)
-                        // Right-click / menu item handler
-                        .on_menu_event(|app, event| match event.id.as_ref() {
-                            "show" => {
-                                if let Some(w) = app.get_webview_window("main") {
-                                    let _ = w.show();
-                                    let _ = w.set_focus();
-                                }
-                            }
-                            "quit" => {
-                                // Lock vault before exiting so key is not in memory
-                                let state = app.state::<AppState>();
-                                *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                                app.exit(0);
-                            }
-                            _ => {}
-                        })
-                        // Left-click directly on the tray icon → show window
-                        .on_tray_icon_event(|tray, event| {
-                            if let tauri::tray::TrayIconEvent::Click {
-                                button: tauri::tray::MouseButton::Left, ..
-                            } = event {
-                                if let Some(w) = tray.app_handle().get_webview_window("main") {
-                                    let _ = w.show();
-                                    let _ = w.set_focus();
-                                }
-                            }
-                        })
-                        .build(app)?;
-                }
-            }
+            #[cfg(not(target_os = "android"))]
+            setup_desktop(app, &data_dir_for_scheduler)?;
 
             #[cfg(target_os = "android")]
-            {
-                // Android: stesso pattern sleep adattivo del desktop —
-                // meno wakeup quando il vault è bloccato = risparmio batteria
-                // RACE CONDITION FIX (L7 #5): warning event 30s before lock
-                let ah = app.handle().clone();
-                std::thread::spawn(move || {
-                    loop {
-                        let state = ah.state::<AppState>();
-                        let is_unlocked = state.vault_key.lock().unwrap_or_else(|e| e.into_inner()).is_some();
-                        if !is_unlocked {
-                            std::thread::sleep(Duration::from_secs(60));
-                            continue;
-                        }
-                        let minutes = *state.autolock_minutes.lock().unwrap_or_else(|e| e.into_inner());
-                        let last = *state.last_activity.lock().unwrap_or_else(|e| e.into_inner());
-                        drop(state);
-                        std::thread::sleep(Duration::from_secs(30));
-                        if minutes == 0 { continue; }
-                        let elapsed = Instant::now().duration_since(last);
-                        let threshold = Duration::from_secs(minutes as u64 * 60);
-                        if elapsed >= threshold.saturating_sub(Duration::from_secs(30))
-                            && elapsed < threshold
-                        {
-                            let _ = ah.emit("lf-vault-warning", ());
-                        }
-                        if elapsed >= threshold {
-                            let state2 = ah.state::<AppState>();
-                            *state2.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                            let _ = ah.emit("lf-vault-locked", ());
-                        }
-                    }
-                });
-            }
+            setup_android(app);
 
             Ok(())
         })

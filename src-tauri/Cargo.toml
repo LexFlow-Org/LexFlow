@@ -55,6 +55,10 @@ mobile = []
 [target.'cfg(not(target_os = "android"))'.dependencies]
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
+# Unix-only: libc for non-spoofable getuid() syscall (replaces $UID env var)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # macOS-only: (no extra deps needed -- App Nap disabled via defaults write)
 
 # time crate: needed by tauri-plugin-notification Schedule::At (OffsetDateTime)
