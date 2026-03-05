@@ -1,15 +1,7 @@
-# ============================================================================
-#  LexFlow -- Release Pipeline v2.0
-# ============================================================================
-#  Trigger:  push tag v*  OR  workflow_dispatch
-#  Jobs:
-#    1. build-macos      - Universal DMG (Intel + Apple Silicon)
-#    2. build-windows    - MSI x64 (offline WebView2)
-#    3. build-windows-no-webview2 - MSI x64 lite (senza WebView2)
-#    4. build-android    - APK + AAB (arm64 + armv7), firmato
-# ============================================================================
+# LexFlow Release Pipeline v2.0
+# Trigger: push tag v* OR workflow_dispatch
 
-name: "LexFlow Release"
+name: LexFlow Release
 
 on:
   push:
@@ -29,9 +21,8 @@ env:
 
 jobs:
 
-  # macOS -- Universal DMG
   build-macos:
-    name: "macOS Universal DMG"
+    name: macOS Universal DMG
     runs-on: macos-latest
     timeout-minutes: 30
     permissions:
@@ -49,7 +40,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
@@ -61,9 +52,7 @@ jobs:
           shared-key: macos-universal
 
       - name: Install dependencies
-        run: |
-          npm ci
-          cd client && npm ci --legacy-peer-deps
+        run: npm ci && cd client && npm ci --legacy-peer-deps
 
       - name: Build macOS DMG
         uses: tauri-apps/tauri-action@42503132eed58b227e498e20a4381e47d0c498f6
@@ -73,15 +62,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "LexFlow ${{ github.ref_name }}"
-          releaseBody: "Release LexFlow ${{ github.ref_name }}"
+          releaseName: LexFlow ${{ github.ref_name }}
+          releaseBody: Release LexFlow ${{ github.ref_name }}
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin --bundles dmg
 
-  # Windows -- MSI x64 (con WebView2 offline)
   build-windows:
-    name: "Windows MSI (x64)"
+    name: Windows MSI x64
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
@@ -92,10 +80,7 @@ jobs:
 
       - name: Remove local cargo config
         shell: powershell
-        run: |
-          if (Test-Path "src-tauri/.cargo/config.toml") {
-            Remove-Item "src-tauri/.cargo/config.toml" -Force
-          }
+        run: if (Test-Path "src-tauri/.cargo/config.toml") { Remove-Item "src-tauri/.cargo/config.toml" -Force }
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -103,7 +88,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -116,21 +101,17 @@ jobs:
 
       - name: Install WiX 4
         shell: powershell
-        run: |
-          dotnet tool install --global wix --version 4.0.5
-          wix extension add WixToolset.UI.wixext/4.0.5 -g
+        run: dotnet tool install --global wix --version 4.0.5; wix extension add WixToolset.UI.wixext/4.0.5 -g
 
       - name: Write WebView2 offline config
         shell: powershell
         run: |
-          $json = '{"bundle":{"windows":{"webviewInstallMode":{"type":"offlineInstaller","silent":true}}}}'
-          $utf8 = New-Object System.Text.UTF8Encoding $false
-          [System.IO.File]::WriteAllText("$PWD\src-tauri\tauri.webview2.conf.json", $json, $utf8)
+          $j = '{"bundle":{"windows":{"webviewInstallMode":{"type":"offlineInstaller","silent":true}}}}'
+          $u = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText("$PWD\src-tauri\tauri.webview2.conf.json", $j, $u)
 
       - name: Install dependencies
-        run: |
-          npm ci
-          cd client && npm ci --legacy-peer-deps
+        run: npm ci && cd client && npm ci --legacy-peer-deps
 
       - name: Build Windows MSI
         uses: tauri-apps/tauri-action@42503132eed58b227e498e20a4381e47d0c498f6
@@ -139,15 +120,14 @@ jobs:
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "8"
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "LexFlow ${{ github.ref_name }}"
+          releaseName: LexFlow ${{ github.ref_name }}
           releaseBody: ""
           releaseDraft: false
           prerelease: false
           args: --target x86_64-pc-windows-msvc --bundles msi --config src-tauri/tauri.webview2.conf.json
 
-  # Windows -- MSI Lite (senza WebView2)
   build-windows-no-webview2:
-    name: "Windows MSI Lite (no WebView2)"
+    name: Windows MSI Lite
     runs-on: windows-latest
     needs: build-windows
     timeout-minutes: 45
@@ -159,10 +139,7 @@ jobs:
 
       - name: Remove local cargo config
         shell: powershell
-        run: |
-          if (Test-Path "src-tauri/.cargo/config.toml") {
-            Remove-Item "src-tauri/.cargo/config.toml" -Force
-          }
+        run: if (Test-Path "src-tauri/.cargo/config.toml") { Remove-Item "src-tauri/.cargo/config.toml" -Force }
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -170,7 +147,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -183,16 +160,12 @@ jobs:
 
       - name: Install WiX 4
         shell: powershell
-        run: |
-          dotnet tool install --global wix --version 4.0.5
-          wix extension add WixToolset.UI.wixext/4.0.5 -g
+        run: dotnet tool install --global wix --version 4.0.5; wix extension add WixToolset.UI.wixext/4.0.5 -g
 
       - name: Install dependencies
-        run: |
-          npm ci
-          cd client && npm ci --legacy-peer-deps
+        run: npm ci && cd client && npm ci --legacy-peer-deps
 
-      - name: Build MSI (senza WebView2)
+      - name: Build MSI without WebView2
         shell: powershell
         run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi
 
@@ -201,19 +174,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $msiFiles = Get-ChildItem -Recurse -Filter "*.msi" `
-            -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi"
+          $msiFiles = Get-ChildItem -Recurse -Filter "*.msi" -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi"
           foreach ($msi in $msiFiles) {
-            $newName = $msi.Name -replace '\.msi$', '-no-webview2.msi'
+            $newName = $msi.Name -replace "\.msi$", "-no-webview2.msi"
             $newPath = Join-Path $msi.DirectoryName $newName
             Rename-Item $msi.FullName $newName
-            Write-Host "Renamed -> $newName"
             gh release upload "${{ github.ref_name }}" "$newPath" --clobber
           }
 
-  # Android -- APK + AAB (arm64 + armv7) firmato
   build-android:
-    name: "Android APK + AAB"
+    name: Android APK + AAB
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -245,7 +215,7 @@ jobs:
         with:
           ndk-version: r27c
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi
@@ -257,9 +227,7 @@ jobs:
           shared-key: android
 
       - name: Install dependencies
-        run: |
-          npm ci
-          cd client && npm ci --legacy-peer-deps
+        run: npm ci && cd client && npm ci --legacy-peer-deps
 
       - name: Initialize Tauri Android
         run: npx tauri android init
@@ -267,53 +235,23 @@ jobs:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Generate Android icons
-        run: |
-          pip3 install --quiet Pillow
-          python3 << 'PYEOF'
-          from PIL import Image, ImageDraw
-          from pathlib import Path
-          master = Image.open("assets/icon-master.png").convert("RGBA")
-          res = Path("src-tauri/gen/android/app/src/main/res")
-          sizes = {
-              "mipmap-mdpi": 48, "mipmap-hdpi": 72, "mipmap-xhdpi": 96,
-              "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192,
-          }
-          def resize(img, s):
-              return img.resize((s, s), Image.LANCZOS)
-          def rounded(img, s):
-              img = resize(img, s)
-              r = int(s * 0.22)
-              mask = Image.new("L", (s, s), 0)
-              ImageDraw.Draw(mask).rounded_rectangle([(0,0),(s-1,s-1)], radius=r, fill=255)
-              out = Image.new("RGBA", (s, s), (0,0,0,0))
-              out.paste(img, (0,0), mask)
-              return out
-          for dpi, s in sizes.items():
-              d = res / dpi
-              d.mkdir(parents=True, exist_ok=True)
-              resize(master, s).save(d / "ic_launcher.png")
-              resize(master, s).save(d / "ic_launcher_foreground.png")
-              rounded(master, s).save(d / "ic_launcher_round.png")
-              print(f"  ok {dpi} ({s}x{s})")
-          print("Icons done")
-          PYEOF
+        run: python3 scripts/generate-icons.py
 
       - name: Configure Gradle for CI
         run: |
-          cat >> src-tauri/gen/android/gradle.properties << EOF
-          org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m
-          org.gradle.daemon=false
-          org.gradle.parallel=true
-          org.gradle.caching=true
-          EOF
+          {
+            echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m"
+            echo "org.gradle.daemon=false"
+            echo "org.gradle.parallel=true"
+            echo "org.gradle.caching=true"
+          } >> src-tauri/gen/android/gradle.properties
 
-      - name: Download Gradle (with retry)
+      - name: Download Gradle with retry
         working-directory: src-tauri/gen/android
         run: |
-          for i in 1 2 3 4 5; do
-            echo "-> Attempt $i"
+          for _i in 1 2 3 4 5; do
             ./gradlew --version && break
-            echo "  retry in 15s..." && sleep 15
+            sleep 15
           done
 
       - name: Decode keystore
@@ -324,35 +262,11 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 -d > src-tauri/gen/android/app/release.keystore
             echo "Keystore decoded"
           else
-            echo "WARNING: No keystore -- build will be unsigned"
+            echo "No keystore - build will be unsigned"
           fi
 
       - name: Inject release signing
-        run: |
-          GRADLE="src-tauri/gen/android/app/build.gradle.kts"
-          KS="src-tauri/gen/android/app/release.keystore"
-          [ ! -f "$KS" ] || [ ! -f "$GRADLE" ] && exit 0
-          python3 << 'PYEOF'
-          import pathlib
-          g = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
-          c = g.read_text()
-          sc = '''
-    signingConfigs {
-        create("release") {
-            storeFile = file("release.keystore")
-            storePassword = System.getenv("ANDROID_STORE_PASSWORD") ?: ""
-            keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: ""
-            keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: ""
-        }
-    }
-
-'''
-          c = c.replace("buildTypes {", sc + "    buildTypes {", 1)
-          c = c.replace('getByName("release") {',
-              'getByName("release") {\n                signingConfig = signingConfigs.getByName("release")', 1)
-          g.write_text(c)
-          print("Gradle signing configured")
-          PYEOF
+        run: python3 scripts/inject-signing.py
 
       - name: Build Android
         env:
@@ -368,60 +282,9 @@ jobs:
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          BT=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
-          ZIPALIGN="$BT/zipalign"
-          APKSIGNER="$BT/apksigner"
-          APK=$(find src-tauri/gen/android -name "*universal-release.apk" 2>/dev/null | head -1)
-          [ -z "$APK" ] && APK=$(find src-tauri/gen/android -name "*release.apk" ! -name "*unsigned*" | head -1)
-          [ -z "$APK" ] && { echo "::error::No release APK"; exit 1; }
-          echo "Source: $APK"
-          ALIGNED="/tmp/lexflow-aligned.apk"
-          "$ZIPALIGN" -f -p 4 "$APK" "$ALIGNED"
-          "$ZIPALIGN" -c -p 4 "$ALIGNED"
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
-          [ "$VERSION" = "$TAG" ] && VERSION="1.0.0"
-          FINAL="/tmp/LexFlow-v${VERSION}-universal.apk"
-          "$APKSIGNER" sign \
-            --ks src-tauri/gen/android/app/release.keystore \
-            --ks-pass "env:ANDROID_STORE_PASSWORD" \
-            --ks-key-alias "$ANDROID_KEY_ALIAS" \
-            --key-pass "env:ANDROID_KEY_PASSWORD" \
-            --v1-signing-enabled true --v2-signing-enabled true \
-            --v3-signing-enabled true --v4-signing-enabled true \
-            --out "$FINAL" "$ALIGNED"
-          "$APKSIGNER" verify --verbose "$FINAL" 2>&1 | tee /tmp/verify.txt
-          grep -q "^Verifies$" /tmp/verify.txt || { echo "::error::Verify failed"; exit 1; }
-          echo "APK signed and verified"
-          echo "APK_FINAL=$FINAL" >> "$GITHUB_ENV"
-          AAB=$(find src-tauri/gen/android -name "*release.aab" 2>/dev/null | head -1)
-          if [ -n "$AAB" ]; then
-            AAB_FINAL="/tmp/LexFlow-v${VERSION}-universal.aab"
-            cp "$AAB" "$AAB_FINAL"
-            echo "AAB_FINAL=$AAB_FINAL" >> "$GITHUB_ENV"
-          fi
+        run: python3 scripts/sign-apk.py
 
-      - name: Upload APK + AAB to release
+      - name: Upload APK and AAB to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ github.ref_name }}"
-          for i in $(seq 1 30); do
-            gh release view "$TAG" &>/dev/null && break
-            echo "  Waiting for release... ($i/30)"
-            sleep 15
-          done
-          if [ -f "${APK_FINAL:-}" ]; then
-            gh release upload "$TAG" "$APK_FINAL" --clobber
-            cp "$APK_FINAL" /tmp/app-universal-release.apk
-            gh release upload "$TAG" /tmp/app-universal-release.apk --clobber
-            echo "APK uploaded"
-          fi
-          if [ -f "${AAB_FINAL:-}" ]; then
-            gh release upload "$TAG" "$AAB_FINAL" --clobber
-            cp "$AAB_FINAL" /tmp/app-universal-release.aab
-            gh release upload "$TAG" /tmp/app-universal-release.aab --clobber
-            echo "AAB uploaded"
-          fi
+        run: python3 scripts/upload-artifacts.py ${{ github.ref_name }}
