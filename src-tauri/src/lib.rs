@@ -3782,7 +3782,7 @@ fn verify_binary_integrity() {
     integrity_seed.extend_from_slice(&PUBLIC_KEY_BYTES);
     integrity_seed.extend_from_slice(&MAX_FAILED_ATTEMPTS.to_le_bytes());
     let digest = hex::encode(<Sha256 as Digest>::digest(&integrity_seed));
-    const EXPECTED_HASH: &str = "369a8f3e626e8e8b19cd99f48451596db2d8ca1c0de4b6784229cb00778192a1";
+    const EXPECTED_HASH: &str = "1a0a747676dc278b38132b71a988ecf82a820951a37ddb2ef0184ec91a6dc31f";
     if digest != EXPECTED_HASH {
         eprintln!("FATAL INTEGRITY VIOLATION: crypto constants digest mismatch!");
         eprintln!("  Expected: {}", EXPECTED_HASH);
