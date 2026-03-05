@@ -231,6 +231,7 @@ jobs:
 
       - name: Attest Build Provenance (SLSA)
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        continue-on-error: true
         with:
           subject-path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
 
@@ -313,6 +314,7 @@ jobs:
           }
 
       - name: Attest Build Provenance (SLSA)
+        continue-on-error: true          # attestation non disponibile su org private/free
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
           subject-path: staging/LexFlow-*.msi
@@ -408,6 +410,7 @@ jobs:
           }
 
       - name: Attest Build Provenance (SLSA)
+        continue-on-error: true          # attestation non disponibile su org private/free
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
           subject-path: staging/LexFlow-*.msi
@@ -498,7 +501,9 @@ jobs:
           # Find latest build-tools
           BT=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
           # Sign and zipalign APK (env: prevents password from appearing in ps aux)
-          APK=$(find src-tauri/gen/android -name "*universal-release.apk" | head -1)
+          APK=$(find src-tauri/gen/android -name "*universal-release*.apk" | head -1)
+          echo "Found APK: $APK"
+          if [ -z "$APK" ]; then echo "ERROR: No APK found!"; find src-tauri/gen/android -name "*.apk" -o -name "*.aab" | sort; exit 1; fi
           "$BT/zipalign" -f -p 4 "$APK" aligned.apk
           "$BT/apksigner" sign \
             --ks /dev/shm/release.keystore \
@@ -509,6 +514,8 @@ jobs:
             aligned.apk
           # Copy AAB
           AAB=$(find src-tauri/gen/android -name "*release.aab" | head -1)
+          echo "Found AAB: $AAB"
+          if [ -z "$AAB" ]; then echo "ERROR: No AAB found!"; exit 1; fi
           cp "$AAB" "LexFlow-${RELEASE_TAG}-android.aab"
           # Cleanup intermediate artifacts
           rm -f aligned.apk
@@ -525,6 +532,7 @@ jobs:
           done
 
       - name: Attest Build Provenance (SLSA)
+        continue-on-error: true          # attestation non disponibile su org private/free
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
           subject-path: LexFlow-*.apk
