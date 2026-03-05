@@ -357,7 +357,9 @@ jobs:
           shared-key: android
 
       - name: Install dependencies
-        run: npm ci && cd client && npm ci --legacy-peer-deps
+        run: |
+          npm ci && cd client && npm ci --legacy-peer-deps
+          pip3 install Pillow --quiet
 
       - name: Build Android
         env:
