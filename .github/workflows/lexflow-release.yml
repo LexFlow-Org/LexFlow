@@ -55,7 +55,7 @@ jobs:
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
       - name: Build macOS DMG
-        uses: tauri-apps/tauri-action@42503132eed58b227e498e20a4381e47d0c498f6
+        uses: tauri-apps/tauri-action@6a45448f17a006facb105cc5257b3edbc353038a
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -114,7 +114,7 @@ jobs:
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
       - name: Build Windows MSI
-        uses: tauri-apps/tauri-action@42503132eed58b227e498e20a4381e47d0c498f6
+        uses: tauri-apps/tauri-action@6a45448f17a006facb105cc5257b3edbc353038a
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "8"
