@@ -9,7 +9,8 @@ import { mapAgendaToScheduleItems } from './utils/helpers';
 // Componenti
 import LoginScreen from './components/LoginScreen';
 import LicenseActivation from './components/LicenseActivation';
-import Sidebar, { HamburgerButton, useIsMobile } from './components/Sidebar';
+import Sidebar, { HamburgerButton } from './components/Sidebar';
+import { useIsMobile } from './hooks/useIsMobile';
 import WindowControls from './components/WindowControls';
 import PracticeDetail from './components/PracticeDetail';
 import CreatePracticeModal from './components/CreatePracticeModal';
@@ -36,7 +37,7 @@ export default function App() {
       const e2eFlag = params.get('e2e');
       const isLocalhost = ['localhost', '127.0.0.1'].includes(globalThis.location.hostname);
       // If ?e2e=1 on localhost (or NODE env is test), start unlocked so tests can hit LicenseActivation.
-      if (e2eFlag === '1' && (isLocalhost || process.env.NODE_ENV === 'test')) return false;
+      if (e2eFlag === '1' && (isLocalhost || import.meta.env.MODE === 'test')) return false;
     } catch { console.debug('[App] E2E param check skipped'); }
     return true;
   });
@@ -269,7 +270,7 @@ export default function App() {
       const params = new URLSearchParams(globalThis.location.search);
       const e2eFlag = params.get('e2e');
       const isLocalhost = ['localhost', '127.0.0.1'].includes(globalThis.location.hostname);
-      if (e2eFlag === '1' && (isLocalhost || process.env.NODE_ENV === 'test')) {
+      if (e2eFlag === '1' && (isLocalhost || import.meta.env.MODE === 'test')) {
         // Give the app a tick to finish initial mounts
         setTimeout(() => { handleUnlock(); }, 50);
       }

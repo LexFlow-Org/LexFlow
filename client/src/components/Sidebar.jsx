@@ -16,19 +16,7 @@ import {
   Shield, Clock, Users
 } from 'lucide-react';
 import logo from '../assets/logo.png';
-
-// ── Hook breakpoint mobile ──────────────────────────────────────────────────
-export function useIsMobile(breakpoint = 1024) {
-  const [isMobile, setIsMobile] = useState(
-    globalThis.window === undefined ? false : globalThis.window.innerWidth < breakpoint
-  );
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, [breakpoint]);
-  return isMobile;
-}
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Nav items per il Liquid Curtain (mobile) ───────────────────────────────
 const navItemsMobile = [

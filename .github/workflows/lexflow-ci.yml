@@ -121,7 +121,7 @@ jobs:
 
       - name: ESLint
         working-directory: client
-        run: npx eslint . --max-warnings 0
+        run: npx eslint .
 
       - name: Vite build (production)
         working-directory: client

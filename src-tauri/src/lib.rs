@@ -240,8 +240,12 @@ fn decrypt_local_with_migration(path: &std::path::Path) -> Option<Vec<u8>> {
             );
             if let Ok(re_enc) = encrypt_data(&key, &dec) {
                 if let Err(e) = atomic_write_with_sync(path, &re_enc) {
-                    eprintln!("CRITICAL WARNING: V3→V4 migration write failed for {:?}: {}. \
-                        Migration will retry on next read.", path.file_name().unwrap_or_default(), e);
+                    eprintln!(
+                        "CRITICAL WARNING: V3→V4 migration write failed for {:?}: {}. \
+                        Migration will retry on next read.",
+                        path.file_name().unwrap_or_default(),
+                        e
+                    );
                 } else {
                     eprintln!(
                         "V3→V4 migration successful for {:?}.",
@@ -2430,11 +2434,11 @@ struct VerificationResult {
     client: Option<String>,
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    in_grace_period: Option<bool>,   // true if expired but within grace window
+    in_grace_period: Option<bool>, // true if expired but within grace window
     #[serde(skip_serializing_if = "Option::is_none")]
-    grace_days: Option<u64>,         // grace period days from payload
+    grace_days: Option<u64>, // grace period days from payload
     #[serde(skip_serializing_if = "Option::is_none")]
-    hardware_locked: Option<bool>,   // true if token has hardware ID
+    hardware_locked: Option<bool>, // true if token has hardware ID
 }
 
 #[tauri::command]
@@ -2579,7 +2583,11 @@ fn verify_license(key_string: String) -> VerificationResult {
             client: Some(payload.c),
             message: "Licenza scaduta.".into(),
             in_grace_period: Some(false),
-            grace_days: if grace_days > 0 { Some(grace_days) } else { None },
+            grace_days: if grace_days > 0 {
+                Some(grace_days)
+            } else {
+                None
+            },
             hardware_locked: if hardware_locked { Some(true) } else { None },
         };
     }
@@ -2589,7 +2597,11 @@ fn verify_license(key_string: String) -> VerificationResult {
         client: Some(payload.c),
         message: "Licenza attivata con successo!".into(),
         in_grace_period: Some(false),
-        grace_days: if grace_days > 0 { Some(grace_days) } else { None },
+        grace_days: if grace_days > 0 {
+            Some(grace_days)
+        } else {
+            None
+        },
         hardware_locked: if hardware_locked { Some(true) } else { None },
     }
 }
@@ -4026,13 +4038,14 @@ fn verify_binary_integrity() {
 
     // Derive an HMAC key from the seed itself (self-referential binding)
     let hmac_key = <Sha256 as Digest>::digest(&integrity_seed);
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&hmac_key)
-        .expect("HMAC can take key of any size");
+    let mut mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(&hmac_key).expect("HMAC can take key of any size");
     mac.update(&integrity_seed);
     let computed = mac.finalize();
 
     // Expected HMAC tag (hex-encoded, computed once at build time and hardcoded)
-    const EXPECTED_HMAC_HEX: &str = "ffff6192ca8179a91851a1f3d446564e24f5d34737bb089ec99c76ead909a365";
+    const EXPECTED_HMAC_HEX: &str =
+        "ffff6192ca8179a91851a1f3d446564e24f5d34737bb089ec99c76ead909a365";
     let expected_bytes = match hex::decode(EXPECTED_HMAC_HEX) {
         Ok(b) => b,
         Err(_) => {
@@ -4051,8 +4064,8 @@ fn verify_binary_integrity() {
     };
 
     // Constant-time comparison via HMAC verify
-    let mut verify_mac = <Hmac<Sha256> as Mac>::new_from_slice(&hmac_key)
-        .expect("HMAC can take key of any size");
+    let mut verify_mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(&hmac_key).expect("HMAC can take key of any size");
     verify_mac.update(&integrity_seed);
     if verify_mac.verify_slice(&expected_bytes).is_err() {
         let computed_hex = hex::encode(computed.into_bytes());
