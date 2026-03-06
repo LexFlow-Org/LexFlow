@@ -924,7 +924,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters }) {
                 </div>
               ))}
             </div>
-            {days.map(({date: _date, str}) => {
+            {days.map(({str}) => {
               const isToday = str === todayStr;
               const dayEvts = eventsByDate.get(str) || [];
               return (
