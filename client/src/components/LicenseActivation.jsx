@@ -25,6 +25,7 @@ export default function LicenseActivation({ children }) {
   const [showKey, setShowKey] = useState(false);
   const [shakeInput, setShakeInput] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState(0); // countdown brute-force
+  const [gracePeriod, setGracePeriod] = useState(null); // { inGrace: bool, days: number }
   const inputRef = useRef(null);
   const toastTimer = useRef(null);
   const lockoutTimer = useRef(null);
@@ -42,6 +43,10 @@ export default function LicenseActivation({ children }) {
           });
           setIsActivated(false);
           return;
+        }
+        // Grace period detection
+        if (status.inGracePeriod) {
+          setGracePeriod({ inGrace: true, days: status.graceDays || 0 });
         }
         setIsActivated(!!status.activated);
       } catch {
@@ -86,8 +91,8 @@ export default function LicenseActivation({ children }) {
 
   // ── Sanitizza input ───────────────────────────────────────────────────────
   function handleInputChange(e) {
-    // Rimuovi spazi, newline, tabs — le chiavi LXFW sono una stringa continua
-    const cleaned = e.target.value.replaceAll(/\s/g, '');
+    // Rimuovi spazi, newline, tabs e zero-width chars — le chiavi LXFW sono una stringa continua
+    const cleaned = e.target.value.replaceAll(/[\s\u200B-\u200D\uFEFF]/g, '');
     setLicense(cleaned);
     if (toast?.type === 'error') setToast(null);
   }
@@ -96,7 +101,7 @@ export default function LicenseActivation({ children }) {
   function handlePaste(e) {
     e.preventDefault();
     const text = (e.clipboardData || globalThis.clipboardData).getData('text');
-    const cleaned = text.replaceAll(/\s/g, '');
+    const cleaned = text.replaceAll(/[\s\u200B-\u200D\uFEFF]/g, '');
     setLicense(cleaned);
     if (toast?.type === 'error') setToast(null);
   }
@@ -157,7 +162,7 @@ export default function LicenseActivation({ children }) {
     setToast(null);
 
     try {
-      const response = await api.activateLicense(key, null);
+      const response = await api.activateLicense(key);
       handleActivationResponse(response);
     } catch {
       setToast({ type: 'error', text: 'Errore di comunicazione con il sistema.' });
@@ -184,7 +189,22 @@ export default function LicenseActivation({ children }) {
   }
 
   // ── App sbloccata ─────────────────────────────────────────────────────────
-  if (isActivated) return <>{children}</>;
+  if (isActivated) {
+    return (
+      <>
+        {gracePeriod?.inGrace && (
+          <div className="lic-grace-banner">
+            <AlertCircle size={16} />
+            <span>
+              <strong>Licenza in Grace Period</strong> — La licenza è scaduta ma hai ancora{' '}
+              {gracePeriod.days} giorni per rinnovare. Contatta il supporto per il rinnovo.
+            </span>
+          </div>
+        )}
+        {children}
+      </>
+    );
+  }
 
   // ── Schermata di attivazione ──────────────────────────────────────────────
   const hasInput = license.trim().length > 0;

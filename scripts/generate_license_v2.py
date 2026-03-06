@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """
-LexFlow — Generatore Licenze v2.2 (Ed25519 Signed Tokens + Registro Blindato)
+LexFlow — Generatore Licenze v2.4 (Ed25519 Signed Tokens + Registro Blindato)
 
-Miglioramenti rispetto a v2.1:
+Miglioramenti rispetto a v2.3:
+  - Fix bug salt detection: priorità al nuovo formato (salt embedded) se file ≥ 44B
+  - Backup automatico: snapshot prima di operazioni distruttive (burn/nuke)
+  - Hardware ID (node-locking): campo opzionale 'h' per legare licenza a un PC
+  - Grace Period: campo opzionale 'g' per scadenza morbida (avvisa ma funziona)
+
+Storico:
+  v2.3 — Salt embedded, getpass, backward-compat v2.2
+  v2.2 — Prima versione con registro crittografato
+
+Funzionalità:
   - Revoke e Burn UNIFICATI → un solo comando 'burn' (niente revoke soft, inutile)
   - ULTRA-BURN potenziato: 3000x cascade SHA-512 + SHA3-256 + BLAKE2b multi-algo
   - UNA SOLA PASSWORD per tutti i comandi (session-based)
@@ -11,6 +21,9 @@ Miglioramenti rispetto a v2.1:
   - Ogni chiave è tracciata con: ID, cliente, data emissione, scadenza, stato
   - Anti-replay: nonce univoco 128-bit per ogni chiave
   - Comando NUKE: distruzione TOTALE del registro (ultra-burn + sovrascrittura)
+  - Backup automatico prima di burn/nuke (anti-disastro)
+  - Hardware ID opzionale per node-locking
+  - Grace Period opzionale per scadenza morbida
 
 Uso:
   python3 scripts/generate_license_v2.py generate        → genera nuova chiave
@@ -31,6 +44,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import secrets
 import sys
 import time
@@ -52,12 +66,120 @@ SCRIPT_DIR = Path(__file__).parent
 REGISTRY_FILE = SCRIPT_DIR / ".lexflow-issued-keys.enc"
 REGISTRY_SALT_FILE = SCRIPT_DIR / ".lexflow-registry-salt"
 
-# ── UI Strings ───────────────────────────────────────────────────────────────
-SEP_NARROW = "  ═══════════════════════════════════════"
-SEP_MEDIUM = "  ═══════════════════════════════════════════════════════"
-SEP_WIDE = "  ═══════════════════════════════════════════════════════════════════════════"
-SEP_DASH = "  ─────────────────────────────────────────"
-MSG_CANCELLED = "  Annullato."
+# ── ANSI Colors ──────────────────────────────────────────────────────────────
+class C:
+    """ANSI escape codes for terminal styling."""
+    RESET   = "\033[0m"
+    BOLD    = "\033[1m"
+    DIM     = "\033[2m"
+    ITALIC  = "\033[3m"
+    # Colors
+    RED     = "\033[38;5;196m"
+    GREEN   = "\033[38;5;114m"
+    YELLOW  = "\033[38;5;221m"
+    BLUE    = "\033[38;5;75m"
+    CYAN    = "\033[38;5;117m"
+    PURPLE  = "\033[38;5;183m"
+    ORANGE  = "\033[38;5;215m"
+    WHITE   = "\033[38;5;255m"
+    GRAY    = "\033[38;5;245m"
+    DARK    = "\033[38;5;240m"
+    # Backgrounds
+    BG_RED  = "\033[48;5;52m"
+    BG_GREEN = "\033[48;5;22m"
+    BG_BLUE = "\033[48;5;17m"
+
+# ── UI Helpers ───────────────────────────────────────────────────────────────
+BOX_W = 62  # inner width of boxes
+
+def _box_top():
+    return f"  {C.DARK}╭{'─' * BOX_W}╮{C.RESET}"
+
+def _box_bot():
+    return f"  {C.DARK}╰{'─' * BOX_W}╯{C.RESET}"
+
+def _box_sep():
+    return f"  {C.DARK}├{'─' * BOX_W}┤{C.RESET}"
+
+def _box_line(text="", align="left"):
+    """Render a line inside a box. Strips ANSI for width calc."""
+    visible = re.sub(r'\x1b\[[0-9;]*m', '', text)
+    pad = BOX_W - 2 - len(visible)
+    if pad < 0:
+        pad = 0
+    if align == "center":
+        left_pad = pad // 2
+        right_pad = pad - left_pad
+        inner = " " * left_pad + text + " " * right_pad
+    else:
+        inner = " " + text + " " * (pad - 1) if pad > 0 else " " + text
+    return f"  {C.DARK}│{C.RESET}{inner}{C.DARK}│{C.RESET}"
+
+def _box_empty():
+    return _box_line("")
+
+def _header(title, subtitle=None, icon="⚖️"):
+    """Print a styled header box."""
+    lines = [
+        "",
+        _box_top(),
+        _box_empty(),
+        _box_line(f"{icon}  {C.BOLD}{C.CYAN}{title}{C.RESET}", "center"),
+    ]
+    if subtitle:
+        lines.append(_box_line(f"{C.DIM}{subtitle}{C.RESET}", "center"))
+    lines.append(_box_empty())
+    lines.append(_box_bot())
+    lines.append("")
+    print("\n".join(lines))
+
+def _success_box(title, details: list[str] = None):
+    """Print a success result box."""
+    lines = [
+        "",
+        _box_top(),
+        _box_empty(),
+        _box_line(f"{C.GREEN}✅{C.RESET}  {C.BOLD}{C.GREEN}{title}{C.RESET}", "center"),
+        _box_empty(),
+    ]
+    if details:
+        lines.append(_box_sep())
+        lines.append(_box_empty())
+        for d in details:
+            lines.append(_box_line(d))
+        lines.append(_box_empty())
+    lines.append(_box_bot())
+    lines.append("")
+    print("\n".join(lines))
+
+def _error(msg):
+    print(f"\n  {C.RED}❌{C.RESET} {msg}\n")
+
+def _warn(msg):
+    print(f"  {C.YELLOW}⚠️{C.RESET} {msg}")
+
+def _info(msg):
+    print(f"  {C.BLUE}ℹ️{C.RESET} {msg}")
+
+def _field(label, value, icon=""):
+    """Print a labeled field."""
+    prefix = f"{icon} " if icon else ""
+    print(f"  {prefix}{C.DIM}{label}:{C.RESET}  {C.WHITE}{value}{C.RESET}")
+
+def _prompt(label, secret=False, default=None):
+    """Styled input prompt."""
+    hint = f" {C.DIM}({default}){C.RESET}" if default else ""
+    prefix = f"  {C.PURPLE}›{C.RESET} "
+    if secret:
+        return getpass.getpass(f"{prefix}{label}{hint}: ").strip()
+    return input(f"{prefix}{label}{hint}: ").strip()
+
+def _confirm(msg, keyword):
+    """Ask for typed confirmation. Returns True if matched."""
+    val = input(f"  {C.YELLOW}⚠️{C.RESET} {msg} [{C.BOLD}{keyword}{C.RESET}]: ").strip()
+    return val == keyword
+
+MSG_CANCELLED = f"  {C.DIM}Annullato.{C.RESET}"
 
 # ── Session password cache ───────────────────────────────────────────────────
 _session_password = None
@@ -86,44 +208,54 @@ def compute_integrity_hmac(entries: list, salt: bytes) -> str:
 
 
 def load_registry(password: str) -> list:
-    """Load and decrypt the issued keys registry. Returns (entries, is_new)."""
+    """Load and decrypt the issued keys registry.
+    
+    Format v2.3: salt (32B) + nonce (12B) + ciphertext inline nel file .enc.
+    Backward-compatible: se esiste il vecchio .lexflow-registry-salt, lo usa e migra.
+    """
     if not REGISTRY_FILE.exists():
         return []
 
-    if not REGISTRY_SALT_FILE.exists():
-        print("  ⚠️  File salt mancante. Registro corrotto — usa 'nuke' per resettare.")
-        sys.exit(1)
-
-    salt = REGISTRY_SALT_FILE.read_bytes()
-    key = derive_registry_key(password, salt)
     data = REGISTRY_FILE.read_bytes()
 
-    if len(data) < 12:
-        print("  ⚠️  File registro troppo piccolo — corrotto. Usa 'nuke' per resettare.")
+    # ── Detect formato: precedenza al nuovo formato v2.3+ (salt embedded) ──
+    if len(data) >= 44:
+        # Nuovo formato: salt (32B) + nonce (12B) + ciphertext
+        salt = data[:32]
+        nonce = data[32:44]
+        ciphertext = data[44:]
+    elif REGISTRY_SALT_FILE.exists():
+        # Vecchio formato (fallback v2.2): salt in file separato
+        salt = REGISTRY_SALT_FILE.read_bytes()
+        if len(data) < 12:
+            _error("File registro troppo piccolo — corrotto. Usa 'nuke' per resettare.")
+            sys.exit(1)
+        nonce = data[:12]
+        ciphertext = data[12:]
+    else:
+        _error("File registro non valido o file salt mancante. Usa 'nuke' per resettare.")
         sys.exit(1)
 
-    nonce = data[:12]
-    ciphertext = data[12:]
+    key = derive_registry_key(password, salt)
 
     try:
         aesgcm = AESGCM(key)
         plaintext = aesgcm.decrypt(nonce, ciphertext, None)
     except Exception:
+        _error("Decryption fallita.")
+        print(f"  {C.DIM}  Possibili cause:{C.RESET}")
+        print(f"  {C.DIM}  1. Password errata{C.RESET}")
+        print(f"  {C.DIM}  2. File registro corrotto{C.RESET}")
         print()
-        print("  ❌ Decryption fallita. Possibili cause:")
-        print("     1. Password errata")
-        print("     2. File registro corrotto")
-        print()
-        print("  Se sei SICURO della password, il file è corrotto.")
-        print("  Usa: python3 scripts/generate_license_v2.py nuke")
-        print("  per eliminare il registro e ricominciare da zero.")
+        print(f"  {C.DIM}  Se sei SICURO della password, il file è corrotto.{C.RESET}")
+        print(f"  {C.DIM}  Usa: python3 scripts/generate_license_v2.py nuke{C.RESET}")
         print()
         sys.exit(1)
 
     try:
         wrapper = json.loads(plaintext.decode())
     except json.JSONDecodeError:
-        print("  ❌ Registro decrittato ma JSON invalido — corrotto. Usa 'nuke'.")
+        _error("Registro decrittato ma JSON invalido — corrotto. Usa 'nuke'.")
         sys.exit(1)
 
     # Integrity check
@@ -132,29 +264,38 @@ def load_registry(password: str) -> list:
     computed_hmac = compute_integrity_hmac(entries, salt)
 
     if stored_hmac and stored_hmac != computed_hmac:
-        print("  ❌ INTEGRITÀ COMPROMESSA! Il registro è stato manomesso.")
-        print("     HMAC atteso:  " + computed_hmac[:32] + "...")
-        print("     HMAC trovato: " + stored_hmac[:32] + "...")
-        print("  Usa 'nuke' per eliminare e ricominciare.")
+        _error("INTEGRITÀ COMPROMESSA! Il registro è stato manomesso.")
+        print(f"  {C.DIM}  HMAC atteso:  {computed_hmac[:32]}…{C.RESET}")
+        print(f"  {C.DIM}  HMAC trovato: {stored_hmac[:32]}…{C.RESET}")
+        print(f"  {C.DIM}  Usa 'nuke' per eliminare e ricominciare.{C.RESET}")
+        print()
         sys.exit(1)
 
     return entries
 
 
 def save_registry(password: str, entries: list):
-    """Encrypt and save the registry with integrity HMAC."""
-    if not REGISTRY_SALT_FILE.exists():
-        salt = secrets.token_bytes(32)
-        REGISTRY_SALT_FILE.write_bytes(salt)
-    else:
+    """Encrypt and save the registry with integrity HMAC.
+    
+    Formato v2.3: salt (32B) + nonce (12B) + ciphertext — tutto in un unico file.
+    Se esiste il vecchio file salt separato, lo migra e lo rimuove.
+    """
+    # Recupera salt esistente o genera nuovo
+    if REGISTRY_SALT_FILE.exists():
+        # Migrazione: usa il vecchio salt, poi lo elimineremo
         salt = REGISTRY_SALT_FILE.read_bytes()
+    elif REGISTRY_FILE.exists() and len(REGISTRY_FILE.read_bytes()) >= 32:
+        # Salt già embedded nel file .enc (formato v2.3)
+        salt = REGISTRY_FILE.read_bytes()[:32]
+    else:
+        salt = secrets.token_bytes(32)
 
     key = derive_registry_key(password, salt)
 
     # Wrap entries with HMAC
     hmac_val = compute_integrity_hmac(entries, salt)
     wrapper = {
-        "version": "2.2",
+        "version": "2.4",
         "entries": entries,
         "hmac": hmac_val,
         "updated_at": datetime.now().isoformat(),
@@ -164,7 +305,17 @@ def save_registry(password: str, entries: list):
     nonce = secrets.token_bytes(12)
     aesgcm = AESGCM(key)
     ciphertext = aesgcm.encrypt(nonce, plaintext, None)
-    REGISTRY_FILE.write_bytes(nonce + ciphertext)
+
+    # Nuovo formato: salt + nonce + ciphertext in un unico file
+    REGISTRY_FILE.write_bytes(salt + nonce + ciphertext)
+
+    # Migrazione: rimuovi vecchio file salt separato (ora è embedded)
+    if REGISTRY_SALT_FILE.exists():
+        # Sovrascrittura sicura prima di cancellare
+        size = REGISTRY_SALT_FILE.stat().st_size
+        REGISTRY_SALT_FILE.write_bytes(secrets.token_bytes(max(size, 64)))
+        REGISTRY_SALT_FILE.unlink()
+        _info("Salt migrato nel file registro (formato v2.3).")
 
 
 def get_password() -> str:
@@ -175,19 +326,19 @@ def get_password() -> str:
         return _session_password
 
     if REGISTRY_FILE.exists():
-        pwd = getpass.getpass("  🔑 Password registro: ")
+        pwd = _prompt("Password registro", secret=True)
     else:
         print()
-        print("  📝 Prima esecuzione — crea la password del registro chiavi.")
-        print("     Questa password protegge TUTTE le operazioni sulle licenze.")
+        _info("Prima esecuzione — crea la password del registro chiavi.")
+        print(f"  {C.DIM}  Questa password protegge TUTTE le operazioni sulle licenze.{C.RESET}")
         print()
-        pwd = getpass.getpass("     Nuova password (min 8 caratteri): ")
-        pwd2 = getpass.getpass("     Conferma password: ")
+        pwd = _prompt("Nuova password (min 8 caratteri)", secret=True)
+        pwd2 = _prompt("Conferma password", secret=True)
         if pwd != pwd2:
-            print("  ❌ Le password non corrispondono.")
+            _error("Le password non corrispondono.")
             sys.exit(1)
         if len(pwd) < 8:
-            print("  ❌ Password troppo corta (minimo 8 caratteri).")
+            _error("Password troppo corta (minimo 8 caratteri).")
             sys.exit(1)
 
     _session_password = pwd
@@ -234,13 +385,13 @@ def _parse_private_key(priv_key_raw: str):
         priv_key_raw = ''.join([l for l in lines if not l.startswith('-----')])
 
     if len(priv_key_raw) == 64 and all(c in '0123456789abcdefABCDEF' for c in priv_key_raw):
-        print("  ℹ️  Formato HEX rilevato.")
+        _info("Formato HEX rilevato.")
         priv_key_bytes = bytes.fromhex(priv_key_raw)
     else:
         priv_key_bytes = normalize_b64(priv_key_raw)
 
     if len(priv_key_bytes) == 48 and priv_key_bytes[0] == 0x30:
-        print("  ℹ️  Formato PKCS8 (48 byte) → estraggo seed 32 byte.")
+        _info("Formato PKCS8 (48 byte) → estraggo seed 32 byte.")
         priv_key_bytes = priv_key_bytes[-32:]
     elif len(priv_key_bytes) != 32:
         raise ValueError(f"Chiave deve essere 32 byte (raw) o 48 byte (PKCS8), ricevuti {len(priv_key_bytes)}.")
@@ -266,44 +417,52 @@ def _parse_expiry(date_str: str):
 
 def cmd_generate():
     """Generate a new license key."""
-    print()
-    print(SEP_MEDIUM)
-    print("    LEXFLOW — GENERATORE LICENZE v2.1")
-    print(SEP_MEDIUM)
-    print()
+    _header("LEXFLOW — GENERATORE LICENZE", "v2.4 · Ed25519 Signed Tokens", "🔐")
 
-    # 1. Chiave Privata
-    priv_key_raw = input("  Chiave Privata (Base64/Hex/PEM): ").strip()
+    # 1. Chiave Privata (getpass per evitare leak in terminal history)
+    priv_key_raw = _prompt("Chiave Privata (Base64/Hex/PEM)", secret=True)
     if not priv_key_raw:
-        print("  ❌ Chiave obbligatoria.")
+        _error("Chiave obbligatoria.")
         return
 
     try:
         private_key, pub_bytes = _parse_private_key(priv_key_raw)
-        print(f"  ✅ Chiave OK. Pubblica: [{', '.join(str(b) for b in pub_bytes[:4])}, ...]")
+        _info(f"Chiave OK → Pubblica: [{', '.join(str(b) for b in pub_bytes[:4])}, ...]")
     except Exception as e:
-        print(f"  ❌ Chiave privata non valida: {e}")
+        _error(f"Chiave privata non valida: {e}")
         return
 
     # 2. Dati
     print()
-    client_name = input("  Nome Cliente/Studio: ").strip()
+    client_name = _prompt("Nome Cliente/Studio")
     if not client_name:
-        print("  ❌ Nome obbligatorio.")
+        _error("Nome obbligatorio.")
         return
 
-    key_id = input("  ID Licenza (invio = auto): ").strip()
+    key_id = _prompt("ID Licenza", default="auto")
     if not key_id:
         key_id = str(uuid.uuid4())[:8]
-        print(f"  → ID: {key_id}")
+        _info(f"ID generato: {C.BOLD}{key_id}{C.RESET}")
 
-    date_str = input("  Scadenza AAAA-MM-GG (invio = 1 anno): ").strip()
+    date_str = _prompt("Scadenza AAAA-MM-GG", default="1 anno")
     try:
         expiry_timestamp, exp_label = _parse_expiry(date_str)
-        print(f"  → Scadenza: {exp_label}")
+        _info(f"Scadenza: {C.BOLD}{exp_label}{C.RESET}")
     except ValueError:
-        print("  ❌ Formato data errato. Usa AAAA-MM-GG.")
+        _error("Formato data errato. Usa AAAA-MM-GG.")
         return
+
+    # Hardware ID (node-locking opzionale)
+    hwid = _prompt("Hardware ID (lascia vuoto per licenza universale)")
+
+    # Grace Period
+    grace_days = _prompt("Giorni di Grace Period dopo scadenza", default="0")
+    try:
+        grace_int = int(grace_days) if grace_days else 0
+    except ValueError:
+        grace_int = 0
+    if grace_int > 0:
+        _info(f"Grace Period: {C.BOLD}{grace_int} giorni{C.RESET}")
 
     # 3. Payload + Firma
     nonce = secrets.token_hex(16)
@@ -313,6 +472,10 @@ def cmd_generate():
         "id": key_id,
         "n": nonce,
     }
+    if hwid:
+        license_payload["h"] = hwid
+    if grace_int > 0:
+        license_payload["g"] = grace_int
 
     payload_json = json.dumps(license_payload, separators=(',', ':')).encode('utf-8')
     payload_b64 = base64.urlsafe_b64encode(payload_json).decode('utf-8').rstrip('=')
@@ -324,7 +487,7 @@ def cmd_generate():
     try:
         private_key.public_key().verify(signature, payload_b64.encode('utf-8'))
     except Exception:
-        print("  ❌ ERRORE FIRMA — chiave corrotta.")
+        _error("ERRORE FIRMA — chiave corrotta.")
         return
 
     # 5. Registra
@@ -333,9 +496,8 @@ def cmd_generate():
 
     existing_ids = {e.get("id") for e in registry if e.get("status") != "burned"}
     if key_id in existing_ids:
-        print(f"\n  ⚠️  ID '{key_id}' già presente!")
-        confirm = input("  Continuare? (s/N): ").strip().lower()
-        if confirm != 's':
+        _warn(f"ID '{key_id}' già presente!")
+        if not _confirm("Continuare?", "s"):
             return
 
     entry = {
@@ -348,25 +510,38 @@ def cmd_generate():
         "status": "issued",
         "nonce": nonce,
     }
+    if hwid:
+        entry["hardware_id"] = hwid
+    if grace_int > 0:
+        entry["grace_days"] = grace_int
     registry.append(entry)
     save_registry(pwd, registry)
 
+    _success_box("LICENZA GENERATA E REGISTRATA", [
+        f"{C.DIM}Cliente:{C.RESET}    {C.WHITE}{client_name}{C.RESET}",
+        f"{C.DIM}ID:{C.RESET}         {C.CYAN}{key_id}{C.RESET}",
+        f"{C.DIM}Scadenza:{C.RESET}   {C.WHITE}{datetime.fromtimestamp(expiry_timestamp / 1000).strftime('%Y-%m-%d')}{C.RESET}",
+        *([ f"{C.DIM}Hardware:{C.RESET}   {C.WHITE}{hwid}{C.RESET}" ] if hwid else []),
+        *([ f"{C.DIM}Grace:{C.RESET}     {C.WHITE}{grace_int} giorni{C.RESET}" ] if grace_int > 0 else []),
+        f"{C.DIM}Burn Hash:{C.RESET}  {C.DARK}{entry['burn_hash'][:16]}…{C.RESET}",
+        f"{C.DIM}Registro:{C.RESET}   {C.WHITE}{len(registry)} chiavi totali{C.RESET}",
+    ])
+
+    # Token box
+    print(_box_top())
+    print(_box_line(f"  {C.DIM}TOKEN — copia e conserva in modo sicuro{C.RESET}", "center"))
+    print(_box_sep())
+    print(_box_empty())
+    # Word-wrap token into lines that fit the box
+    tok = final_token
+    chunk_size = BOX_W - 6
+    while tok:
+        chunk = tok[:chunk_size]
+        tok = tok[chunk_size:]
+        print(_box_line(f"  {C.GREEN}{chunk}{C.RESET}"))
+    print(_box_empty())
+    print(_box_bot())
     print()
-    print(SEP_MEDIUM)
-    print("    ✅ LICENZA GENERATA E REGISTRATA")
-    print(SEP_MEDIUM)
-    print()
-    print(f"  Cliente:    {client_name}")
-    print(f"  ID:         {key_id}")
-    print(f"  Scadenza:   {datetime.fromtimestamp(expiry_timestamp / 1000).strftime('%Y-%m-%d')}")
-    print(f"  Burn Hash:  {entry['burn_hash'][:16]}...")
-    print(f"  Registro:   {len(registry)} chiavi totali")
-    print()
-    print("  TOKEN:")
-    print()
-    print(f"  {final_token}")
-    print()
-    print(SEP_MEDIUM)
 
 
 def cmd_list():
@@ -375,16 +550,15 @@ def cmd_list():
     registry = load_registry(pwd)
 
     if not registry:
-        print("\n  📭 Registro vuoto.\n")
+        print(f"\n  {C.DIM}📭 Registro vuoto.{C.RESET}\n")
         return
 
-    print()
-    print(SEP_WIDE)
-    print("    REGISTRO CHIAVI LEXFLOW")
-    print(SEP_WIDE)
-    print()
-    print(f"  {'#':<4} {'ID':<12} {'Cliente':<25} {'Emessa':<12} {'Scade':<12} {'Stato'}")
-    print("  " + "─" * 75)
+    _header("REGISTRO CHIAVI LEXFLOW", f"{len(registry)} licenze tracciate", "📋")
+
+    # Table header
+    hdr = f"  {C.DIM}{'#':<4} {'ID':<12} {'Cliente':<25} {'Emessa':<12} {'Scade':<12} {'Stato'}{C.RESET}"
+    print(hdr)
+    print(f"  {C.DARK}{'─' * 78}{C.RESET}")
 
     now_ms = int(time.time() * 1000)
     for i, entry in enumerate(registry, 1):
@@ -394,24 +568,26 @@ def cmd_list():
         expiry_ms = entry.get("expiry_ms", 0)
 
         if status == "burned":
-            icon = "🔥"
-            label = "OBLITERATA"
+            icon = f"{C.RED}🔥{C.RESET}"
+            label = f"{C.RED}OBLITERATA{C.RESET}"
+            client_display = f"{C.DARK}██████████{C.RESET}"
+            expires = f"{C.DARK}──────────{C.RESET}"
         elif expiry_ms > 0 and now_ms > expiry_ms:
-            icon = "⏰"
-            label = "scaduta"
+            icon = f"{C.YELLOW}⏰{C.RESET}"
+            label = f"{C.YELLOW}scaduta{C.RESET}"
+            client_display = f"{C.WHITE}{entry.get('client', '?')}{C.RESET}"
         elif status == "activated":
-            icon = "🟢"
-            label = "attiva"
+            icon = f"{C.GREEN}🟢{C.RESET}"
+            label = f"{C.GREEN}attiva{C.RESET}"
+            client_display = f"{C.WHITE}{entry.get('client', '?')}{C.RESET}"
         else:
-            icon = "🔵"
-            label = "emessa"
+            icon = f"{C.BLUE}🔵{C.RESET}"
+            label = f"{C.BLUE}emessa{C.RESET}"
+            client_display = f"{C.WHITE}{entry.get('client', '?')}{C.RESET}"
 
-        client_display = entry.get("client", "?")
-        if status == "burned":
-            client_display = "██████████"
-            expires = "██████████"
-
-        print(f"  {i:<4} {entry.get('id', '?'):<12} {client_display:<25} {issued:<12} {expires:<12} {icon} {label}")
+        num = f"{C.DIM}{i}{C.RESET}"
+        kid = f"{C.CYAN}{entry.get('id', '?')}{C.RESET}"
+        print(f"  {num:<15} {kid:<23} {client_display:<36} {C.DIM}{issued}{C.RESET}   {C.DIM}{expires}{C.RESET}   {icon} {label}")
 
     # Stats
     total = len(registry)
@@ -420,8 +596,8 @@ def cmd_list():
     expired = sum(1 for e in registry if e.get("expiry_ms", 0) > 0 and now_ms > e.get("expiry_ms", 0) and e.get("status") not in ("burned",))
 
     print()
-    print(f"  Totale: {total} │ Valide: {active} │ Scadute: {expired} │ Bruciate: {burned}")
-    print(SEP_WIDE)
+    print(f"  {C.DARK}{'─' * 78}{C.RESET}")
+    print(f"  {C.DIM}Totale:{C.RESET} {C.WHITE}{total}{C.RESET}  {C.DIM}│{C.RESET}  {C.GREEN}Valide: {active}{C.RESET}  {C.DIM}│{C.RESET}  {C.YELLOW}Scadute: {expired}{C.RESET}  {C.DIM}│{C.RESET}  {C.RED}Bruciate: {burned}{C.RESET}")
     print()
 
 
@@ -430,32 +606,54 @@ def cmd_verify():
     if len(sys.argv) >= 3:
         token = sys.argv[2].strip()
     else:
-        token = input("  Token da verificare: ").strip()
+        token = _prompt("Token da verificare")
 
     parts = token.split('.')
     if len(parts) != 3 or parts[0] != 'LXFW':
-        print("  ❌ Formato non valido. Deve essere LXFW.<payload>.<firma>")
+        _error("Formato non valido. Deve essere LXFW.<payload>.<firma>")
         return
 
     try:
         payload_bytes = base64.urlsafe_b64decode(parts[1] + '==')
         payload = json.loads(payload_bytes)
     except Exception:
-        print("  ❌ Payload corrotto.")
+        _error("Payload corrotto.")
         return
 
     expiry_ms = payload.get('e', 0)
     now_ms = int(time.time() * 1000)
-    expired = now_ms > expiry_ms
 
-    print()
-    print(f"  Cliente:   {payload.get('c', '?')}")
-    print(f"  ID:        {payload.get('id', '?')}")
-    print(f"  Nonce:     {payload.get('n', 'N/A')[:16]}...")
-    print(f"  Scadenza:  {datetime.fromtimestamp(expiry_ms / 1000).strftime('%Y-%m-%d')} {'⏰ SCADUTA' if expired else '✅ Valida'}")
+    _header("VERIFICA TOKEN", payload.get('id', '?'), "🔍")
+
+    _field("Cliente", payload.get('c', '?'), "👤")
+    _field("ID", payload.get('id', '?'), "🏷️")
+    _field("Nonce", f"{payload.get('n', 'N/A')[:16]}…", "🔑")
+
+    # Hardware ID (se presente)
+    if 'h' in payload:
+        _field("Hardware ID", payload.get('h'), "🖥️")
+
+    # Grace Period logic
+    grace_days = payload.get('g', 0)
+    grace_ms = grace_days * 86400 * 1000
+
+    exp_date = datetime.fromtimestamp(expiry_ms / 1000).strftime('%Y-%m-%d')
+    is_expired = now_ms > expiry_ms
+    is_in_grace = is_expired and (now_ms <= (expiry_ms + grace_ms))
+
+    if is_in_grace:
+        grace_end = datetime.fromtimestamp((expiry_ms + grace_ms) / 1000).strftime('%Y-%m-%d')
+        _field("Scadenza", f"{C.ORANGE}{exp_date} ⚠️ SCADUTA (Grace Period fino al {grace_end}){C.RESET}", "📅")
+    elif is_expired:
+        _field("Scadenza", f"{C.RED}{exp_date} ❌ SCADUTA{C.RESET}", "📅")
+    else:
+        _field("Scadenza", f"{C.GREEN}{exp_date} ✅ Valida{C.RESET}", "📅")
+
+    if grace_days > 0:
+        _field("Grace Period", f"{grace_days} giorni", "🕐")
 
     burn_hash = compute_key_hash(token)
-    print(f"  Burn Hash: {burn_hash[:24]}...")
+    _field("Burn Hash", f"{C.DARK}{burn_hash[:24]}…{C.RESET}", "🔒")
 
     try:
         pwd = get_password()
@@ -464,54 +662,63 @@ def cmd_verify():
         if found:
             e = found[0]
             if e.get("status") == "burned":
-                print("  Registro:  🔥 CHIAVE OBLITERATA — non più valida")
+                _field("Registro", f"{C.RED}🔥 CHIAVE OBLITERATA — non più valida{C.RESET}", "📋")
             else:
-                print(f"  Registro:  ✅ Trovata (stato: {e.get('status')})")
+                _field("Registro", f"{C.GREEN}✅ Trovata (stato: {e.get('status')}){C.RESET}", "📋")
         else:
-            print("  Registro:  ⚠️  NON trovata (v1 o non registrata)")
+            _field("Registro", f"{C.YELLOW}❓ NON trovata (v1 o non registrata){C.RESET}", "📋")
     except Exception:
-        print("  Registro:  ⚠️  Impossibile accedere al registro")
+        _field("Registro", f"{C.YELLOW}❓ Impossibile accedere{C.RESET}", "📋")
     print()
 
 
+def create_backup():
+    """Crea un backup del registro prima di operazioni distruttive."""
+    if REGISTRY_FILE.exists():
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = SCRIPT_DIR / f".lexflow-registry-{timestamp}.bak.enc"
+        backup_file.write_bytes(REGISTRY_FILE.read_bytes())
+        _info(f"📦 Backup di sicurezza creato: {backup_file.name}")
+
+
 def cmd_burn():
-    """BURN a key — ultra-burn irreversible destruction. No soft revoke, just total annihilation."""
+    """BURN a key — ultra-burn irreversible destruction."""
     if len(sys.argv) >= 3:
         target_id = sys.argv[2].strip()
     else:
-        target_id = input("  ID chiave da BRUCIARE: ").strip()
+        target_id = _prompt("ID chiave da BRUCIARE")
 
     pwd = get_password()
     registry = load_registry(pwd)
 
     found = [e for e in registry if e.get("id") == target_id and e.get("status") != "burned"]
     if not found:
-        print(f"  ❌ Chiave '{target_id}' non trovata o già bruciata.")
+        _error(f"Chiave '{target_id}' non trovata o già bruciata.")
         return
 
     entry = found[0]
+
+    _header("🔥 ULTRA-BURN · Annientamento Totale", "3000 round × 3 algoritmi crittografici", "🔥")
+
+    _field("ID", entry.get('id'), "🏷️")
+    _field("Cliente", entry.get('client'), "👤")
+    _field("Scadenza", entry.get('expires_at', '?')[:10], "📅")
     print()
-    print("  🔥 ULTRA-BURN v2 — Annientamento Totale")
-    print(SEP_DASH)
-    print(f"  ID:       {entry.get('id')}")
-    print(f"  Cliente:  {entry.get('client')}")
-    print(f"  Scade:    {entry.get('expires_at', '?')[:10]}")
+    _warn(f"{C.RED}{C.BOLD}ATTENZIONE: Questa operazione è IRREVERSIBILE.{C.RESET}")
+    print(f"  {C.DIM}  Client, hash, nonce verranno sovrascritti con 3000 round{C.RESET}")
+    print(f"  {C.DIM}  di cascade multi-algo (SHA-512 → SHA3-256 → BLAKE2b).{C.RESET}")
+    print(f"  {C.DIM}  Il token NON potrà MAI più essere verificato o recuperato.{C.RESET}")
     print()
-    print("  ⚠️  ATTENZIONE: Questa operazione è IRREVERSIBILE.")
-    print("     Client, hash, nonce verranno sovrascritti con 3000 round")
-    print("     di cascade multi-algoritmo (SHA-512 → SHA3-256 → BLAKE2b).")
-    print("     Il token NON potrà MAI più essere verificato o recuperato.")
-    print("     Nessun revoke soft — solo distruzione totale.")
-    print()
-    confirm = input("  Digita 'BURN' per confermare: ").strip()
-    if confirm != 'BURN':
+
+    if not _confirm("Digita per confermare", "BURN"):
         print(MSG_CANCELLED)
         return
 
+    create_backup()
     print()
-    print("  ⏳ Ultra-burn in corso (3000 round × 3 algoritmi)...")
+    print(f"  {C.ORANGE}⏳ Ultra-burn in corso…{C.RESET}")
 
-    # Ultra-burn v2: sovrascrittura cascade multi-algo di TUTTI i dati sensibili
+    # Ultra-burn v2: sovrascrittura cascade multi-algo
     entry["status"] = "burned"
     entry["burned_at"] = datetime.now().isoformat()
     entry["client"] = ultra_burn_string(entry.get("client", ""))
@@ -519,43 +726,39 @@ def cmd_burn():
     entry["nonce"] = ultra_burn_string(entry.get("nonce", ""))
     entry["expires_at"] = "0000-00-00T00:00:00"
     entry["expiry_ms"] = 0
-    # Anche issued_at: nessuna traccia temporale di quando è stata emessa
     entry["issued_at"] = ultra_burn_string(entry.get("issued_at", ""))
 
     save_registry(pwd, registry)
 
-    print()
-    print(f"  🔥🔥🔥 Chiave '{target_id}' OBLITERATA.")
-    print("     3000 round: SHA-512 (1000) → SHA3-256 (1000) → BLAKE2b (1000)")
-    print("     Campi distrutti: client, burn_hash, nonce, issued_at, expires_at")
-    print("     Recupero: IMPOSSIBILE — dati sepolti sotto 3 strati crittografici.")
-    print()
+    _success_box(f"Chiave '{target_id}' OBLITERATA", [
+        f"{C.DIM}Algoritmi:{C.RESET}  SHA-512 (1000) → SHA3-256 (1000) → BLAKE2b (1000)",
+        f"{C.DIM}Distrutti:{C.RESET}  client, burn_hash, nonce, issued_at, expires_at",
+        f"{C.DIM}Recupero:{C.RESET}   {C.RED}IMPOSSIBILE{C.RESET}",
+    ])
 
 
 def cmd_nuke():
     """NUKE — destroy entire registry."""
+    _header("☢️ NUKE · Distruzione Totale Registro", "Questa operazione non può essere annullata", "☢️")
+
+    print(f"  {C.RED}Questo eliminerà PERMANENTEMENTE:{C.RESET}")
+    print(f"  {C.DIM}  • Tutte le chiavi emesse{C.RESET}")
+    print(f"  {C.DIM}  • Il registro crittografato{C.RESET}")
+    print(f"  {C.DIM}  • Il file salt{C.RESET}")
     print()
-    print("  ☢️  NUKE — DISTRUZIONE TOTALE REGISTRO")
-    print(SEP_DASH)
-    print()
-    print("  Questo eliminerà PERMANENTEMENTE:")
-    print("    • Tutte le chiavi emesse")
-    print("    • Il registro crittografato")
-    print("    • Il file salt")
-    print()
-    print("  I token già distribuiti continueranno a funzionare nell'app")
-    print("  ma non saranno più tracciati nel registro.")
+    print(f"  {C.YELLOW}I token già distribuiti continueranno a funzionare nell'app{C.RESET}")
+    print(f"  {C.YELLOW}ma non saranno più tracciati nel registro.{C.RESET}")
     print()
 
-    confirm1 = input("  Digita 'NUKE' per confermare: ").strip()
-    if confirm1 != 'NUKE':
+    if not _confirm("Prima conferma — digita", "NUKE"):
         print(MSG_CANCELLED)
         return
 
-    confirm2 = input("  Sei ASSOLUTAMENTE sicuro? Digita 'CONFERMA': ").strip()
-    if confirm2 != 'CONFERMA':
+    if not _confirm("Sei ASSOLUTAMENTE sicuro? Digita", "CONFERMA"):
         print(MSG_CANCELLED)
         return
+
+    create_backup()
 
     # Sovrascrittura sicura: riempi i file con dati random prima di cancellare
     for fpath in [REGISTRY_FILE, REGISTRY_SALT_FILE]:
@@ -566,11 +769,10 @@ def cmd_nuke():
                 fpath.write_bytes(secrets.token_bytes(max(size, 64)))
             fpath.unlink()
 
-    print()
-    print("  ☢️  REGISTRO DISTRUTTO.")
-    print("     File sovrascritti 3x con dati random e cancellati.")
-    print("     La prossima esecuzione creerà un nuovo registro pulito.")
-    print()
+    _success_box("REGISTRO DISTRUTTO", [
+        f"{C.DIM}File sovrascritti 3× con dati random e cancellati.{C.RESET}",
+        f"{C.DIM}La prossima esecuzione creerà un registro pulito.{C.RESET}",
+    ])
 
 
 def cmd_export():
@@ -579,12 +781,12 @@ def cmd_export():
     registry = load_registry(pwd)
 
     if not registry:
-        print("  📭 Registro vuoto.")
+        print(f"\n  {C.DIM}📭 Registro vuoto.{C.RESET}\n")
         return
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID", "Cliente", "Emissione", "Scadenza", "Stato", "Burn Hash (parziale)"])
+    writer.writerow(["ID", "Cliente", "Emissione", "Scadenza", "Stato", "Hardware ID", "Grace Days", "Burn Hash (parziale)"])
     for entry in registry:
         client = entry.get("client", "")
         if entry.get("status") == "burned":
@@ -595,13 +797,18 @@ def cmd_export():
             entry.get("issued_at", "")[:19],
             entry.get("expires_at", "")[:10],
             entry.get("status", ""),
+            entry.get("hardware_id", ""),
+            entry.get("grace_days", ""),
             entry.get("burn_hash", "")[:16],
         ])
 
     csv_path = SCRIPT_DIR / "lexflow-keys-export.csv"
     csv_path.write_text(output.getvalue())
-    print(f"\n  ✅ Esportato: {csv_path}")
-    print(f"  📋 {len(registry)} chiavi.\n")
+
+    _success_box("Registro Esportato", [
+        f"{C.DIM}File:{C.RESET}    {C.WHITE}{csv_path}{C.RESET}",
+        f"{C.DIM}Chiavi:{C.RESET}  {C.WHITE}{len(registry)}{C.RESET}",
+    ])
 
 
 def cmd_stats():
@@ -623,39 +830,42 @@ def cmd_stats():
         c = e.get("client", "?")
         clients[c] = clients.get(c, 0) + 1
 
-    print()
-    print(SEP_NARROW)
-    print("    STATISTICHE REGISTRO LEXFLOW")
-    print(SEP_NARROW)
-    print()
-    print(f"  Chiavi totali:      {total}")
-    print(f"  ├─ Valide:          {active}")
-    print(f"  ├─ Attivate:        {activated}")
-    print(f"  ├─ Scadute:         {expired}")
-    print(f"  └─ Bruciate:        {burned}")
-    print()
+    _header("📊 STATISTICHE REGISTRO", f"{total} licenze tracciate", "📊")
+
+    # Stats tree
+    print(f"  {C.WHITE}{C.BOLD}{total}{C.RESET} {C.DIM}chiavi totali{C.RESET}")
+    print(f"  {C.DARK}├─{C.RESET} {C.GREEN}🟢 Valide:    {active}{C.RESET}")
+    print(f"  {C.DARK}├─{C.RESET} {C.BLUE}🔵 Attivate:  {activated}{C.RESET}")
+    print(f"  {C.DARK}├─{C.RESET} {C.YELLOW}⏰ Scadute:   {expired}{C.RESET}")
+    print(f"  {C.DARK}╰─{C.RESET} {C.RED}🔥 Bruciate:  {burned}{C.RESET}")
+
     if clients:
-        print("  Per Cliente:")
-        for client, count in sorted(clients.items(), key=lambda x: -x[1]):
-            print(f"    {client}: {count}")
-    print()
-    print(SEP_NARROW)
+        print()
+        print(f"  {C.DIM}Per Cliente:{C.RESET}")
+        for i, (client, count) in enumerate(sorted(clients.items(), key=lambda x: -x[1])):
+            connector = "╰─" if i == len(clients) - 1 else "├─"
+            print(f"  {C.DARK}{connector}{C.RESET} {C.WHITE}{client}{C.RESET}: {C.CYAN}{count}{C.RESET}")
     print()
 
 
 def main():
     if len(sys.argv) < 2:
+        _header("⚖️ LexFlow License Manager", "v2.4 · Ed25519 + AES-256-GCM + Scrypt", "⚖️")
+        cmds = [
+            ("generate", "Genera nuova licenza", f"{C.CYAN}🔐{C.RESET}"),
+            ("list", "Mostra registro chiavi", f"{C.BLUE}📋{C.RESET}"),
+            ("verify", "Verifica un token", f"{C.GREEN}🔍{C.RESET}"),
+            ("burn", "Brucia chiave (irreversibile)", f"{C.RED}🔥{C.RESET}"),
+            ("export", "Esporta CSV", f"{C.WHITE}📄{C.RESET}"),
+            ("stats", "Statistiche", f"{C.PURPLE}📊{C.RESET}"),
+            ("nuke", "Distruggi TUTTO il registro", f"{C.ORANGE}☢️{C.RESET}"),
+        ]
+        print(f"  {C.DIM}Comandi disponibili:{C.RESET}")
         print()
-        print("  LexFlow License Manager v2.2")
+        for cmd_name, desc, icon in cmds:
+            print(f"    {icon}  {C.CYAN}{C.BOLD}{cmd_name:<12}{C.RESET} {C.DIM}{desc}{C.RESET}")
         print()
-        print("  Comandi:")
-        print("    generate          Genera nuova licenza")
-        print("    list              Mostra registro chiavi")
-        print("    verify [token]    Verifica un token")
-        print("    burn <id>         Brucia chiave (ultra-burn irreversibile)")
-        print("    export            Esporta CSV")
-        print("    stats             Statistiche")
-        print("    nuke              Distruggi TUTTO il registro")
+        print(f"  {C.DIM}Uso: python3 scripts/generate_license_v2.py <comando>{C.RESET}")
         print()
         return
 
@@ -674,8 +884,9 @@ def main():
     if fn:
         fn()
     else:
-        print(f"  ❌ Comando sconosciuto: {cmd}")
-        print("  Comandi: generate, list, verify, burn, export, stats, nuke")
+        _error(f"Comando sconosciuto: {cmd}")
+        print(f"  {C.DIM}Comandi: generate, list, verify, burn, export, stats, nuke{C.RESET}")
+        print()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,333 @@
+# LexFlow CI Pipeline v1.1 -- Security-First Continuous Integration
+# Runs on every push to main and every Pull Request
+# Pure ASCII -- no Unicode (GitHub YAML parser compatibility)
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - ".gitignore"
+      - "assets/**"
+      - "scripts/**"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - ".gitignore"
+      - "assets/**"
+      - "scripts/**"
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ---------------------------------------------------------
+  # 1. RUST -- cargo check, clippy, fmt, test
+  # ---------------------------------------------------------
+  rust:
+    name: "Rust: Check + Clippy + Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          workspaces: ./src-tauri -> target
+          shared-key: ci-rust
+
+      - name: Remove local cargo config (CI uses default linker)
+        run: rm -f src-tauri/.cargo/config.toml
+
+      - name: cargo fmt -- check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check 2>&1
+
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy -- -D warnings 2>&1
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test 2>&1
+
+  # ---------------------------------------------------------
+  # 2. FRONTEND -- lint, typecheck, build
+  # ---------------------------------------------------------
+  frontend:
+    name: "Frontend: Lint + Build"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci && cd client && npm ci --legacy-peer-deps
+
+      - name: ESLint
+        working-directory: client
+        run: npx eslint . --max-warnings 0
+
+      - name: Vite build (production)
+        working-directory: client
+        run: npm run build
+
+  # ---------------------------------------------------------
+  # 3. SECURITY -- dependency audit, secret scanning, license
+  # ---------------------------------------------------------
+  security:
+    name: "Security: Audit + Scanning"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --quiet 2>/dev/null || true
+          cargo audit --file src-tauri/Cargo.lock
+
+      - name: npm audit (high severity)
+        working-directory: client
+        run: |
+          npm ci --legacy-peer-deps
+          npm audit --audit-level=high
+
+      - name: Secret Scanning -- gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: License Check -- cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
+        with:
+          manifest-path: src-tauri/Cargo.toml
+          command: check licenses
+
+  # ---------------------------------------------------------
+  # 4. VERSION CONSISTENCY -- all manifests must agree
+  # ---------------------------------------------------------
+  version-check:
+    name: "Version: Manifest Consistency"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Verify version consistency across all manifests
+        run: |
+          VER_ROOT=$(jq -r .version package.json)
+          VER_CARGO=$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          VER_TAURI=$(jq -r .version src-tauri/tauri.conf.json)
+          VER_CLIENT=$(jq -r .version client/package.json)
+
+          echo "==================================="
+          echo "  package.json:        $VER_ROOT"
+          echo "  Cargo.toml:          $VER_CARGO"
+          echo "  tauri.conf.json:     $VER_TAURI"
+          echo "  client/package.json: $VER_CLIENT"
+          echo "==================================="
+
+          PASS=true
+          if [ "$VER_ROOT" != "$VER_CARGO" ]; then echo "MISMATCH: package.json ($VER_ROOT) vs Cargo.toml ($VER_CARGO)"; PASS=false; fi
+          if [ "$VER_ROOT" != "$VER_TAURI" ]; then echo "MISMATCH: package.json ($VER_ROOT) vs tauri.conf.json ($VER_TAURI)"; PASS=false; fi
+          if [ "$VER_ROOT" != "$VER_CLIENT" ]; then echo "MISMATCH: package.json ($VER_ROOT) vs client/package.json ($VER_CLIENT)"; PASS=false; fi
+
+          if [ "$PASS" = false ]; then
+            echo ""
+            echo "ERROR: Version mismatch detected!"
+            echo "All 4 manifests must declare the same version."
+            exit 1
+          fi
+          echo "All versions match: $VER_ROOT"
+
+  # ---------------------------------------------------------
+  # 5. CROSS-COMPILE CHECK -- macOS + Windows targets
+  # ---------------------------------------------------------
+  cross-check:
+    name: "Cross: ${{ matrix.label }}"
+    needs: [rust, frontend]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: "macOS (aarch64)"
+            os: macos-latest
+            target: aarch64-apple-darwin
+            deps: ""
+          - label: "Windows (x64)"
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            deps: ""
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          workspaces: ./src-tauri -> target
+          shared-key: ci-cross-${{ matrix.target }}
+
+      - name: Remove local cargo config (CI uses default linker)
+        run: rm -f src-tauri/.cargo/config.toml
+        shell: bash
+
+      - name: Install dependencies
+        run: npm ci && cd client && npm ci --legacy-peer-deps
+        shell: bash
+
+      - name: cargo check --target ${{ matrix.target }}
+        working-directory: src-tauri
+        run: cargo check --target ${{ matrix.target }}
+        shell: bash
+
+  # ---------------------------------------------------------
+  # 6. CI GATE -- single status check for branch protection
+  # ---------------------------------------------------------
+  ci-gate:
+    name: "CI Gate"
+    needs: [rust, frontend, security, version-check, cross-check]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Evaluate results
+        run: |
+          echo "=== CI Gate Results ==="
+          echo "  rust:          ${{ needs.rust.result }}"
+          echo "  frontend:      ${{ needs.frontend.result }}"
+          echo "  security:      ${{ needs.security.result }}"
+          echo "  version-check: ${{ needs.version-check.result }}"
+          echo "  cross-check:   ${{ needs.cross-check.result }}"
+          echo "======================="
+
+          # Required gates (must pass)
+          if [ "${{ needs.rust.result }}" != "success" ]; then
+            echo "FAIL: Rust checks failed"
+            exit 1
+          fi
+          if [ "${{ needs.frontend.result }}" != "success" ]; then
+            echo "FAIL: Frontend checks failed"
+            exit 1
+          fi
+          if [ "${{ needs.version-check.result }}" != "success" ]; then
+            echo "FAIL: Version consistency check failed"
+            exit 1
+          fi
+
+          # Advisory gates (warn but don't block)
+          if [ "${{ needs.security.result }}" != "success" ]; then
+            echo "WARNING: Security audit had findings (non-blocking)"
+          fi
+          if [ "${{ needs.cross-check.result }}" != "success" ]; then
+            echo "WARNING: Cross-compilation check failed (non-blocking)"
+          fi
+
+          echo "CI Gate: PASSED"

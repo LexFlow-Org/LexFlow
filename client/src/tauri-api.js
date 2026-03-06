@@ -111,8 +111,8 @@ export const testNotification = () => safeInvoke('test_notification');
 // Licensing
 export const checkLicense = () => safeInvoke('check_license');
 export const verifyLicense = () => safeInvoke('verify_license');
-export const activateLicense = (key, clientName) =>
-  safeInvoke('activate_license', { key, _clientName: clientName || null });
+export const activateLicense = (key) => safeInvoke('activate_license', { key });
+export const getMachineFingerprint = () => safeInvoke('get_machine_fingerprint');
 
 // Platform / App
 export const isMac = () => safeInvoke('is_mac');
