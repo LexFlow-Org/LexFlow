@@ -452,8 +452,8 @@ def cmd_generate():
         _error("Formato data errato. Usa AAAA-MM-GG.")
         return
 
-    # Hardware ID (node-locking opzionale)
-    hwid = _prompt("Hardware ID (lascia vuoto per licenza universale)")
+    # NOTE: Hardware ID non serve — l'app lo calcola e salva automaticamente
+    # all'attivazione (compute_machine_fingerprint in lib.rs).
 
     # Grace Period
     grace_days = _prompt("Giorni di Grace Period dopo scadenza", default="0")
@@ -472,8 +472,6 @@ def cmd_generate():
         "id": key_id,
         "n": nonce,
     }
-    if hwid:
-        license_payload["h"] = hwid
     if grace_int > 0:
         license_payload["g"] = grace_int
 
@@ -510,8 +508,6 @@ def cmd_generate():
         "status": "issued",
         "nonce": nonce,
     }
-    if hwid:
-        entry["hardware_id"] = hwid
     if grace_int > 0:
         entry["grace_days"] = grace_int
     registry.append(entry)
@@ -521,26 +517,19 @@ def cmd_generate():
         f"{C.DIM}Cliente:{C.RESET}    {C.WHITE}{client_name}{C.RESET}",
         f"{C.DIM}ID:{C.RESET}         {C.CYAN}{key_id}{C.RESET}",
         f"{C.DIM}Scadenza:{C.RESET}   {C.WHITE}{datetime.fromtimestamp(expiry_timestamp / 1000).strftime('%Y-%m-%d')}{C.RESET}",
-        *([ f"{C.DIM}Hardware:{C.RESET}   {C.WHITE}{hwid}{C.RESET}" ] if hwid else []),
         *([ f"{C.DIM}Grace:{C.RESET}     {C.WHITE}{grace_int} giorni{C.RESET}" ] if grace_int > 0 else []),
         f"{C.DIM}Burn Hash:{C.RESET}  {C.DARK}{entry['burn_hash'][:16]}…{C.RESET}",
         f"{C.DIM}Registro:{C.RESET}   {C.WHITE}{len(registry)} chiavi totali{C.RESET}",
     ])
 
-    # Token box
-    print(_box_top())
-    print(_box_line(f"  {C.DIM}TOKEN — copia e conserva in modo sicuro{C.RESET}", "center"))
-    print(_box_sep())
-    print(_box_empty())
-    # Word-wrap token into lines that fit the box
-    tok = final_token
-    chunk_size = BOX_W - 6
-    while tok:
-        chunk = tok[:chunk_size]
-        tok = tok[chunk_size:]
-        print(_box_line(f"  {C.GREEN}{chunk}{C.RESET}"))
-    print(_box_empty())
-    print(_box_bot())
+    # Token — stampa pulita per copia facile (no box characters)
+    print(f"  {C.DIM}{'─' * 60}{C.RESET}")
+    print(f"  {C.DIM}TOKEN — seleziona e copia la riga qui sotto:{C.RESET}")
+    print(f"  {C.DIM}{'─' * 60}{C.RESET}")
+    print()
+    print(f"{C.GREEN}{final_token}{C.RESET}")
+    print()
+    print(f"  {C.DIM}{'─' * 60}{C.RESET}")
     print()
 
 

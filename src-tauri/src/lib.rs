@@ -2410,9 +2410,9 @@ fn check_license(state: State<AppState>) -> Value {
 // The corresponding private key is stored securely offline (never in source control).
 // To regenerate: pip install cryptography && python3 -c "from cryptography.hazmat.primitives.asymmetric import ed25519; k=ed25519.Ed25519PrivateKey.generate(); print(list(k.public_key().public_bytes(encoding=__import__('cryptography.hazmat.primitives.serialization',fromlist=['Encoding']).Encoding.Raw, format=__import__('cryptography.hazmat.primitives.serialization',fromlist=['PublicFormat']).PublicFormat.Raw)))"
 const PUBLIC_KEY_BYTES: [u8; 32] = [
-    224u8, 91u8, 232u8, 166u8, 43u8, 189u8, 252u8, 43u8, 2u8, 207u8, 72u8, 79u8, 156u8, 169u8,
-    10u8, 54u8, 159u8, 45u8, 26u8, 92u8, 192u8, 37u8, 44u8, 158u8, 251u8, 44u8, 239u8, 4u8, 157u8,
-    212u8, 139u8, 36u8,
+    6u8, 195u8, 27u8, 74u8, 178u8, 167u8, 122u8, 126u8, 185u8, 247u8, 210u8, 133u8, 115u8, 11u8,
+    155u8, 10u8, 145u8, 18u8, 212u8, 154u8, 217u8, 210u8, 125u8, 180u8, 127u8, 242u8, 254u8, 36u8,
+    108u8, 196u8, 244u8, 239u8,
 ];
 
 #[derive(Deserialize, Serialize)]
