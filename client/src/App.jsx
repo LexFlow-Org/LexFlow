@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
 import * as api from './tauri-api';
@@ -22,7 +22,6 @@ import PracticesList from './pages/PracticesList';
 import DeadlinesPage from './pages/DeadlinesPage';
 import AgendaPage from './pages/AgendaPage';
 import SettingsPage from './pages/SettingsPage';
-import ConflictCheckPage from './pages/ConflictCheckPage';
 import TimeTrackingPage from './pages/TimeTrackingPage';
 import ContactsPage from './pages/ContactsPage';
 
@@ -464,9 +463,8 @@ export default function App() {
               <Route path="/settings" element={<SettingsPage onLock={handleManualLock} />} />
               <Route path="/sicurezza" element={<SettingsPage onLock={handleManualLock} />} />
               
-              <Route path="/conflitti" element={
-                <ConflictCheckPage onSelectPractice={handleSelectPractice} />
-              } />
+              {/* Redirect vecchia pagina Conflitti → Contatti & Conflitti */}
+              <Route path="/conflitti" element={<Navigate to="/contatti" replace />} />
               
               <Route path="/ore" element={
                 <TimeTrackingPage practices={practices} />

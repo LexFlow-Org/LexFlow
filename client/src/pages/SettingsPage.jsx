@@ -290,18 +290,71 @@ ImportBackupModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── Biometric Reset Confirm Modal ── */
 function BioResetConfirmModal({ onClose }) {
+  // step: 'confirm' → 'done' → 're-enroll'
+  const [step, setStep] = useState('confirm');
+  const [pwd, setPwd] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const doReset = async () => {
+    setLoading(true);
+    try {
+      await api.clearBio();
+      toast.success("Biometria resettata");
+      setStep('done');
+    } catch {
+      toast.error("Errore nel reset biometria");
+    }
+    setLoading(false);
+  };
+
+  const doReEnroll = async () => {
+    setError('');
+    if (!pwd.trim()) { setError('Inserisci la Master Password.'); return; }
+    setLoading(true);
+    try {
+      // Verify the password is correct first
+      const verify = await api.verifyVaultPassword(pwd);
+      if (!verify?.success) {
+        setError(verify?.error || 'Password errata.');
+        setLoading(false);
+        return;
+      }
+      // Enroll biometrics with the password
+      await api.saveBio(pwd);
+      toast.success("Biometria riconfigurata con successo!");
+      onClose();
+    } catch {
+      setError('Errore nella configurazione biometrica.');
+    }
+    setLoading(false);
+  };
+
   return (
     <ModalOverlay onClose={onClose} labelledBy="bio-reset-title" zIndex={200}>
       <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <div className="px-8 pt-8 pb-5" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)' }}>
+        <div className="px-8 pt-8 pb-5" style={{ background: step === 're-enroll' 
+          ? 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)'
+          : 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center border border-red-500/20">
-              <RefreshCw size={22} className="text-red-400" />
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
+              step === 're-enroll' ? 'bg-primary/10 border-primary/20' : 'bg-red-500/10 border-red-500/20'
+            }`}>
+              <RefreshCw size={22} className={step === 're-enroll' ? 'text-primary' : 'text-red-400'} />
             </div>
             <div>
-              <h3 id="bio-reset-title" className="text-xl font-bold text-white">Resetta Biometria</h3>
-              <p className="text-xs text-text-dim mt-0.5">Azione irreversibile</p>
+              <h3 id="bio-reset-title" className="text-xl font-bold text-white">
+                {step === 'confirm' && 'Resetta Biometria'}
+                {step === 'done' && 'Biometria Resettata'}
+                {step === 're-enroll' && 'Riconfigura Biometria'}
+              </h3>
+              <p className="text-xs text-text-dim mt-0.5">
+                {step === 'confirm' && 'Azione irreversibile'}
+                {step === 'done' && 'Vuoi riconfigurare subito?'}
+                {step === 're-enroll' && 'Inserisci la Master Password'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
@@ -309,23 +362,75 @@ function BioResetConfirmModal({ onClose }) {
           </button>
         </div>
       </div>
-      <div className="px-8 py-6">
-        <p className="text-text-muted text-xs leading-relaxed">
-          Cancellare le credenziali biometriche salvate? Dovrai reinserire la password e riconfigurare la biometria.
-        </p>
-      </div>
-      <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
-        <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
-        <button onClick={() => {
-          onClose();
-          api.clearBio()
-            .then(() => toast.success("Biometria resettata"))
-            .catch(() => toast.error("Errore nel reset biometria"));
-        }}
-          className="px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest">
-          Conferma
-        </button>
-      </div>
+
+      {/* Step: Confirm reset */}
+      {step === 'confirm' && (
+        <>
+          <div className="px-8 py-6">
+            <p className="text-text-muted text-xs leading-relaxed">
+              Cancellare le credenziali biometriche salvate? Dovrai reinserire la password e potrai riconfigurare la biometria.
+            </p>
+          </div>
+          <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
+            <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+            <button onClick={doReset} disabled={loading}
+              className={`px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
+              {loading ? 'Reset...' : 'Conferma'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Step: Done — offer re-enrollment */}
+      {step === 'done' && (
+        <>
+          <div className="px-8 py-6">
+            <p className="text-text-muted text-xs leading-relaxed">
+              Le credenziali biometriche sono state cancellate. Vuoi riconfigurare subito l'accesso biometrico (Face ID / Touch ID)?
+            </p>
+          </div>
+          <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
+            <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">No, chiudi</button>
+            <button onClick={() => setStep('re-enroll')}
+              className="btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest">
+              Riconfigura
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Step: Re-enroll — ask for password */}
+      {step === 're-enroll' && (
+        <>
+          <div className="px-8 py-6 space-y-4">
+            <p className="text-text-muted text-xs leading-relaxed">
+              Inserisci la tua Master Password per configurare l'accesso biometrico.
+            </p>
+            <div className="relative">
+              <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
+              <input type={showPwd ? 'text' : 'password'}
+                className="w-full py-3 pl-10 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+                placeholder="Master Password…"
+                value={pwd}
+                onChange={e => { setPwd(e.target.value); setError(''); }}
+                autoFocus
+                onKeyDown={e => { if (e.key === 'Enter') doReEnroll(); }} />
+              <button type="button" onClick={() => setShowPwd(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors">
+                {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+          </div>
+          <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
+            <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+            <button onClick={doReEnroll} disabled={loading}
+              className={`btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
+              {loading ? 'Configurazione...' : 'Salva Biometria'}
+            </button>
+          </div>
+        </>
+      )}
       </div>
     </ModalOverlay>
   );

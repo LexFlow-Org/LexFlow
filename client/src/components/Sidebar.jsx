@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Briefcase, CalendarClock,
   CalendarDays, Settings, Lock, ShieldCheck, X, Menu,
-  Shield, Clock, Users
+  Clock, Users
 } from 'lucide-react';
 import logo from '../assets/logo.png';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -24,9 +24,8 @@ const navItemsMobile = [
   { path: '/agenda',     label: 'Agenda',       icon: CalendarDays },
   { path: '/scadenze',   label: 'Scadenze',     icon: CalendarClock },
   { path: '/pratiche',   label: 'Fascicoli',    icon: Briefcase },
-  { path: '/conflitti',  label: 'Conflitti',    icon: Shield },
   { path: '/ore',        label: 'Gestione Ore', icon: Clock },
-  { path: '/contatti',   label: 'Contatti',     icon: Users },
+  { path: '/contatti',   label: 'Contatti & Conflitti', icon: Users },
   { path: '/settings',   label: 'Impostazioni', icon: Settings },
 ];
 
@@ -44,8 +43,7 @@ const sections = [
     title: 'Studio',
     items: [
       { path: '/pratiche',  label: 'Fascicoli',  icon: Briefcase },
-      { path: '/conflitti', label: 'Conflitti',   icon: Shield },
-      { path: '/contatti',  label: 'Contatti',    icon: Users },
+      { path: '/contatti',  label: 'Contatti & Conflitti', icon: Users },
     ],
   },
   {

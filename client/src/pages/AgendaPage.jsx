@@ -161,11 +161,12 @@ function cleanupDragListeners(onMove, onUp, el, ghostId, longPressTimer) {
 
 /** Drag handler for TodayView events — vertical only (time change + long-press duplicate) */
 function handleTodayEventDrag(e, ev, onSave) {
-  if (e.target.closest('.resize-handle') || e.target.closest('button')) return;
+  if (e.target.closest('.resize-handle')) return;
   const startY = e.clientY;
   const origStart = ev.startMin;
   const duration = ev.endMin - ev.startMin;
-  const el = e.currentTarget;
+  const btn = e.currentTarget;
+  const el = btn.closest('.agenda-event') || btn;
   let moved = false;
   let newStart = origStart;
   let longPressTimer = null;
@@ -229,10 +230,11 @@ function initDragMovement(el, isDuplicate, longPressTimer) {
 
 /** Drag handler for WeekView events — vertical (time) + horizontal (date) + long-press duplicate */
 function handleWeekEventDrag(e, ev, onSave) {
-  if (e.target.closest('.resize-handle') || e.target.closest('button')) return;
+  if (e.target.closest('.resize-handle')) return;
   const startX = e.clientX;
   const startY = e.clientY;
-  const el = e.currentTarget;
+  const btn = e.currentTarget;
+  const el = btn.closest('.agenda-event') || btn;
   const grid = el.closest('.grid');
   const [esh, esm] = ev.timeStart.split(':').map(Number);
   const [eeh, eem] = ev.timeEnd.split(':').map(Number);
@@ -1120,15 +1122,14 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
   };
 
   return (
-    <dialog className="modal-backdrop" open aria-modal="true" aria-label="Impostazioni Avvisi" onCancel={onClose}>
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Chiudi" onClick={onClose} tabIndex={-1} />
+    <ModalOverlay onClose={onClose} labelledBy="notif-settings-title" zIndex={200}>
       <div className="glass-card border border-white/10 shadow-2xl p-6 animate-fade-in relative z-10" style={{ maxWidth: 400, width: '100%' }}>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center">
               <BellRing size={18} className="text-amber-400" />
             </div>
-            <h3 className="text-base font-bold text-white uppercase tracking-wide">Impostazioni Avvisi</h3>
+            <h3 id="notif-settings-title" className="text-base font-bold text-white uppercase tracking-wide">Impostazioni Avvisi</h3>
           </div>
           <button onClick={onClose} className="text-text-muted hover:text-white transition"><X size={20}/></button>
         </div>
@@ -1198,7 +1199,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
           </button>
         </div>
       </div>
-    </dialog>
+    </ModalOverlay>
   );
 }
 
