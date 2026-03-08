@@ -333,18 +333,29 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
   const [category, setCategory] = useState(event?.category || 'udienza');
   const [notes, setNotes] = useState(event?.notes || '');
   const [remindMinutes, setRemindMinutes] = useState(event?.remindMinutes ?? null);
-  const [customRemindTime, setCustomRemindTime] = useState(event?.customRemindTime || '');
+  const [customRemindTime, setCustomRemindTime] = useState(() => {
+    if (event?.customRemindTime) return event.customRemindTime;
+    // Default: 10 min prima dell'inizio
+    const ts = event?.timeStart || defaultTime;
+    if (ts) {
+      const [h, m] = ts.split(':').map(Number);
+      const totalMin = h * 60 + m - 10;
+      if (totalMin >= 0) {
+        const rh = Math.floor(totalMin / 60);
+        const rm = totalMin % 60;
+        return `${String(rh).padStart(2,'0')}:${String(rm).padStart(2,'0')}`;
+      }
+    }
+    return '';
+  });
   const [practiceId, setPracticeId] = useState(event?.practiceId || '');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Preavviso dinamico: pre-imposta "Alle" con 10 min prima dell'inizio
-  useEffect(() => {
-    if (remindMinutes === null || remindMinutes === undefined) {
-      // Default: 10 min prima
-    }
-    // Aggiorna il campo "Alle" in base all'ora di inizio
-    if (timeStart && (customRemindTime === '' || !event?.customRemindTime)) {
-      const [h, m] = timeStart.split(':').map(Number);
+  // Aggiorna "Alle" quando cambia l'ora di inizio (solo se non impostato manualmente)
+  const handleTimeStartChange = (newTime) => {
+    setTimeStart(newTime);
+    if (!event?.customRemindTime) {
+      const [h, m] = newTime.split(':').map(Number);
       const totalMin = h * 60 + m - 10;
       if (totalMin >= 0) {
         const rh = Math.floor(totalMin / 60);
@@ -352,7 +363,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
         setCustomRemindTime(`${String(rh).padStart(2,'0')}:${String(rm).padStart(2,'0')}`);
       }
     }
-  }, [timeStart, customRemindTime, event?.customRemindTime]);
+  };
 
   const REMIND_OPTIONS = [
     { value: null, label: 'Standard' },
@@ -426,7 +437,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
             <div className="space-y-2">
               <label htmlFor="em-start" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Inizio</label>
               <input id="em-start" type="time" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all" value={timeStart} onChange={e => {
-                setTimeStart(e.target.value);
+                handleTimeStartChange(e.target.value);
                 const [h,m] = e.target.value.split(':').map(Number);
                 setTimeEnd(fmtTime(Math.min(h+1,23), m));
               }} />
@@ -624,7 +635,7 @@ function StatsCard({ events }) {
 // --- Componente Upcoming ---
 function UpcomingPanel({ events, onEdit, onToggle }) {
   const now = new Date();
-  const todayStr = toDateStr(now);
+  const todayStr = useMemo(() => toDateStr(new Date()), []);
   const upcoming = useMemo(() => events.filter(e => e.date >= todayStr && !e.completed).sort((a,b) => a.date === b.date ? a.timeStart.localeCompare(b.timeStart) : a.date.localeCompare(b.date)).slice(0, 8), [events, todayStr]);
   const overdue = useMemo(() => events.filter(e => e.date < todayStr && !e.completed), [events, todayStr]);
 
@@ -711,7 +722,8 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
 
   useEffect(() => {
     if (timelineRef.current) {
-      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const n = new Date();
+      const nowMin = n.getHours() * 60 + n.getMinutes();
       const scrollTo = Math.max(0, (nowMin / 60) * 60 - 150);
       timelineRef.current.scrollTop = scrollTo;
     }
@@ -1211,12 +1223,10 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
   const [showNotifPopup, setShowNotifPopup] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [localSettings, setLocalSettings] = useState(settings || {});
-  const events = agendaEvents || [];
+  const events = useMemo(() => agendaEvents || [], [agendaEvents]);
 
-  // Sync localSettings when parent settings prop changes
-  useEffect(() => {
-    if (settings) setLocalSettings(settings);
-  }, [settings]);
+  // Derive localSettings from parent settings prop (no effect needed)
+  const effectiveSettings = settings || localSettings;
 
   const toggleFilter = useCallback((cat) => setActiveFilters(prev => 
     prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
@@ -1293,7 +1303,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
             title="Impostazioni Avvisi"
           >
             <Bell size={16} />
-            {localSettings?.notifyEnabled && (
+            {effectiveSettings?.notifyEnabled && (
               <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
             )}
           </button>
@@ -1350,8 +1360,8 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
       {modalEvent && <EventModal event={modalEvent.event} onSave={handleSave} onDelete={handleDelete} onClose={() => setModalEvent(null)} practices={practices} />}
       {showNotifPopup && (
         <NotificationSettingsPopup 
-          key={`notif-${localSettings?.briefingMattina}-${localSettings?.briefingPomeriggio}-${localSettings?.briefingSera}`}
-          settings={localSettings}
+          key={`notif-${effectiveSettings?.briefingMattina}-${effectiveSettings?.briefingPomeriggio}-${effectiveSettings?.briefingSera}`}
+          settings={effectiveSettings}
           agendaEvents={events}
           onSave={(s) => setLocalSettings(s)} 
           onClose={() => setShowNotifPopup(false)} 

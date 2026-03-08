@@ -213,8 +213,9 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   }, [autoLocked, bioAvailable, bioSaved, bioFailed, isNew, showPasswordField]);
 
   // ─── Countdown timer per lockout brute-force ───────────────────────────────
+  const isLockedOut = lockoutSeconds > 0;
   useEffect(() => {
-    if (lockoutSeconds <= 0) {
+    if (!isLockedOut) {
       if (lockoutTimer.current) clearInterval(lockoutTimer.current);
       return;
     }
@@ -234,7 +235,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
       });
     }, 1000);
     return () => { if (lockoutTimer.current) clearInterval(lockoutTimer.current); };
-  }, [lockoutSeconds > 0]); // re-trigger only on transition 0→positive
+  }, [isLockedOut]); // re-trigger only on transition 0→positive
 
   const getStrength = (pwd) => {
     if (!pwd) return { label: '', color: 'bg-white/10', text: 'text-white/10', pct: 0, segments: 0 };
