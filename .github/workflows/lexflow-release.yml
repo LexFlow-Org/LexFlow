@@ -225,6 +225,7 @@ jobs:
           gh release upload "$RELEASE_TAG" lexflow-macos-sbom.json --clobber
           DMG_FILE=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
           if [ -n "$DMG_FILE" ]; then
+            gh release upload "$RELEASE_TAG" "$DMG_FILE" --clobber
             shasum -a 256 "$DMG_FILE" > lexflow-macos.dmg.sha256
             gh release upload "$RELEASE_TAG" lexflow-macos.dmg.sha256 --clobber
           fi
