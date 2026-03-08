@@ -4,6 +4,24 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.0.1] -- 2026-03-08
+
+### UX / UI
+- **Biometria re-enrollment** -- Dopo il reset biometria, viene offerto un flusso a 3 step per riconfigurare subito Face ID / Touch ID
+- **Drag-and-drop Agenda** -- Corretto il blocco del drag sugli eventi: rimosso guard errato sul button overlay, fix del flag `_didDrag` sul parent `.agenda-event`
+- **Click eventi più intuitivo** -- Rimossa l'icona chevron invisibile, sostituita con hint "Clicca per aprire" visibile on hover
+- **Notifiche popup centrato** -- `NotificationSettingsPopup` usa ora `ModalOverlay` per posizionamento centrato coerente
+- **Conflitti unificati in Contatti** -- La pagina Conflitto di Interessi è ora un tab dentro Contatti & Conflitti, rimossa la route separata `/conflitti`
+- **Sidebar semplificata** -- Voce unica "Contatti & Conflitti" nella sezione Studio
+
+### Miglioramenti precedenti (Round 1)
+- **Cursor pointer globale** -- Aggiunto `cursor: pointer` su tutti gli elementi interattivi
+- **Gestione cartelle fascicolo** -- Pulsanti Scollega / Cambia cartella in PracticeDetail
+- **Timer persistente** -- Il timer attivo in Gestione Ore sopravvive all'autolock (localStorage)
+- **Hardware ID rimosso** -- Eliminata la visualizzazione dell'ID macchina dalle impostazioni licenza
+
+---
+
 ## [1.0.0] -- 2026-03-03
 
 ### Sicurezza -- Audit Completo (Backend + Frontend)
