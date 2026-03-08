@@ -150,7 +150,8 @@ jobs:
               NOTES="$SECTION"
             fi
           fi
-          gh release create "$TAG" --draft --title "LexFlow $TAG" --notes "$NOTES" || echo "Release already exists."
+          printf '%s\n' "$NOTES" > /tmp/release-notes.md
+          gh release create "$TAG" --draft --title "LexFlow $TAG" --notes-file /tmp/release-notes.md || echo "Release already exists."
 
   # ---------------------------------------------------------
   # 2. MACOS UNIVERSAL BUILD
@@ -552,30 +553,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - name: Generate Release Notes from CHANGELOG
-        id: notes
-        run: |
-          TAG="${{ needs.pre-flight.outputs.tag }}"
-          if [ -f CHANGELOG.md ]; then
-            SECTION=$(awk "/^## \[${TAG#v}\]/{found=1;next} /^## \[/{if(found) exit} found{print}" CHANGELOG.md)
-            if [ -n "$SECTION" ]; then
-              EOF_MARKER=$(openssl rand -hex 8)
-              echo "BODY<<$EOF_MARKER" >> $GITHUB_OUTPUT
-              echo "$SECTION" >> $GITHUB_OUTPUT
-              echo "$EOF_MARKER" >> $GITHUB_OUTPUT
-            else
-              echo "BODY=Release $TAG" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "BODY=Release $TAG" >> $GITHUB_OUTPUT
-          fi
-
       - name: Publish Draft Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
         run: |
-          gh release edit "$RELEASE_TAG" --draft=false --notes "${{ steps.notes.outputs.BODY }}"
+          TAG="${{ needs.pre-flight.outputs.tag }}"
+          if [ -f CHANGELOG.md ]; then
+            SECTION=$(awk "/^## \[${TAG#v}\]/{found=1;next} /^## \[/{if(found) exit} found{print}" CHANGELOG.md)
+            if [ -n "$SECTION" ]; then
+              printf '%s\n' "$SECTION" > /tmp/release-notes.md
+            else
+              echo "Release $TAG" > /tmp/release-notes.md
+            fi
+          else
+            echo "Release $TAG" > /tmp/release-notes.md
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --notes-file /tmp/release-notes.md
           echo "Release $RELEASE_TAG published successfully!"
 
   # ---------------------------------------------------------
