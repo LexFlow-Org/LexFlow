@@ -4045,7 +4045,7 @@ fn verify_binary_integrity() {
 
     // Expected HMAC tag (hex-encoded, computed once at build time and hardcoded)
     const EXPECTED_HMAC_HEX: &str =
-        "ffff6192ca8179a91851a1f3d446564e24f5d34737bb089ec99c76ead909a365";
+        "14251fa200e33b3a9f3bd04e33a476689c8bc74dba7c55163486f4792a38c36a";
     let expected_bytes = match hex::decode(EXPECTED_HMAC_HEX) {
         Ok(b) => b,
         Err(_) => {
