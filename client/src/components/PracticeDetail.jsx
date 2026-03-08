@@ -4,7 +4,8 @@ import {
   ArrowLeft, Calendar, FileText, 
   Clock, Plus, Trash2, Send, FolderOpen, 
   FolderPlus, Lock, ChevronDown,
-  FilePlus, Info, Fingerprint, ShieldCheck, Download
+  FilePlus, Info, Fingerprint, ShieldCheck, Download,
+  Unlink, RefreshCw
 } from 'lucide-react';
 import { exportPracticePDF } from '../utils/pdfGenerator';
 import ExportWarningModal from './ExportWarningModal';
@@ -273,6 +274,23 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
     }
   };
 
+  const unlinkFolder = () => {
+    update({ folderPath: null });
+    setFolderExpanded(false);
+    setFolderContents([]);
+    toast.success('Cartella scollegata');
+  };
+
+  const changeFolder = async () => {
+    const folder = await api.selectFolder();
+    if (folder) {
+      update({ folderPath: folder });
+      setFolderExpanded(false);
+      setFolderContents([]);
+      toast.success('Cartella aggiornata');
+    }
+  };
+
   const openFolder = async () => {
     if (!practice.folderPath) return;
     try {
@@ -464,7 +482,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
                 activeTab === id 
                   ? 'bg-primary text-black shadow-[0_0_12px_rgba(212,169,64,0.25)]' 
                   : 'text-text-dim hover:text-white hover:bg-white/[0.06]'
@@ -579,19 +597,39 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
               </button>
 
               {practice.folderPath ? (
-                <button 
-                  type="button"
-                  onClick={openFolder}
-                  className="glass-card p-6 flex items-center gap-4 border border-white/5 cursor-pointer hover:bg-white/5 hover:border-white/15 transition-all group text-left w-full"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
-                    <FolderOpen size={24} className="text-text-muted" />
+                <div className="glass-card p-6 border border-white/5 space-y-3">
+                  <button 
+                    type="button"
+                    onClick={openFolder}
+                    className="flex items-center gap-4 cursor-pointer hover:bg-white/5 transition-all group text-left w-full"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                      <FolderOpen size={24} className="text-text-muted" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-base font-bold text-white">Apri Cartella</p>
+                      <p className="text-[10px] text-text-dim uppercase tracking-wider mt-1 truncate">{practice.folderPath.split('/').pop()}</p>
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                    <button 
+                      type="button"
+                      onClick={changeFolder}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold text-text-muted hover:text-white hover:bg-white/[0.06] transition-all"
+                    >
+                      <RefreshCw size={12} />
+                      Cambia
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={unlinkFolder}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                    >
+                      <Unlink size={12} />
+                      Scollega
+                    </button>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-base font-bold text-white">Apri Cartella</p>
-                    <p className="text-[10px] text-text-dim uppercase tracking-wider mt-1 truncate">{practice.folderPath.split('/').pop()}</p>
-                  </div>
-                </button>
+                </div>
               ) : (
                 <button 
                   type="button"
@@ -655,6 +693,20 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
                   <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">Cartella Collegata</h3>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-text-dim truncate max-w-[200px]" title={practice.folderPath}>{practice.folderPath.split('/').pop()}</span>
+                    <button 
+                      onClick={changeFolder}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-text-muted hover:text-white hover:bg-white/[0.06] transition-all"
+                      title="Cambia cartella"
+                    >
+                      <RefreshCw size={11} />
+                    </button>
+                    <button 
+                      onClick={unlinkFolder}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                      title="Scollega cartella"
+                    >
+                      <Unlink size={11} />
+                    </button>
                     <button 
                       onClick={toggleFolderContents} 
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-[10px] font-bold text-text-muted hover:bg-white/[0.06] hover:text-white transition-all"

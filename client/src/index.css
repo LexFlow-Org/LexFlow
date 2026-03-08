@@ -72,6 +72,9 @@
   input, textarea { -webkit-user-select: text; user-select: text; }
 
   a { color: var(--primary); text-decoration: none; }
+
+  /* Cursor pointer per tutti gli elementi interattivi */
+  button, [role="button"], a, summary { cursor: pointer; }
 }
 
 /* ========== COMPONENTS ========== */

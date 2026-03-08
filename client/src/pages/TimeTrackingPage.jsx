@@ -71,7 +71,16 @@ export default function TimeTrackingPage({ practices }) {
   const [activeTab, setActiveTab] = useState('ore');
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTimer, setActiveTimer] = useState(null);
+  const [activeTimer, setActiveTimer] = useState(() => {
+    try {
+      const saved = localStorage.getItem('lexflow_active_timer');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.startedAt) return parsed;
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
   const [elapsed, setElapsed] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -97,10 +106,12 @@ export default function TimeTrackingPage({ practices }) {
 
   useEffect(() => {
     if (activeTimer) {
+      localStorage.setItem('lexflow_active_timer', JSON.stringify(activeTimer));
       intervalRef.current = setInterval(() => {
         setElapsed(Math.floor((Date.now() - activeTimer.startedAt) / 1000));
       }, 1000);
     } else {
+      localStorage.removeItem('lexflow_active_timer');
       clearInterval(intervalRef.current);
       setElapsed(0);
     }
@@ -261,11 +272,11 @@ export default function TimeTrackingPage({ practices }) {
         </div>
         <div className="inline-flex bg-white/[0.04] rounded-xl p-1 border border-white/5">
           <button onClick={() => setActiveTab('ore')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'ore' ? 'bg-primary/15 text-primary shadow-sm' : 'text-text-dim hover:text-white'}`}>
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'ore' ? 'bg-primary/15 text-primary shadow-sm' : 'text-text-dim hover:text-white'}`}>
             <Clock size={14} /> Ore
           </button>
           <button onClick={() => setActiveTab('parcelle')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'parcelle' ? 'bg-primary/15 text-primary shadow-sm' : 'text-text-dim hover:text-white'}`}>
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'parcelle' ? 'bg-primary/15 text-primary shadow-sm' : 'text-text-dim hover:text-white'}`}>
             <Receipt size={14} /> Parcelle
           </button>
         </div>
