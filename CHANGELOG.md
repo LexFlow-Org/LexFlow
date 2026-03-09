@@ -4,6 +4,24 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.0.2] -- 2026-03-10
+
+### UX / UI
+- **Multi-cartella fascicoli** -- I fascicoli ora supportano più cartelle collegate (array), stessa UX dei documenti con pulsante "Collega Cartella" sempre visibile
+- **Bio system auth** -- Verifica biometrica di sistema (Touch ID/Face ID) richiesta prima di factory reset e reset biometria
+- **Bio button redesign** -- Card colorata con icona Fingerprint (emerald=attiva, amber=disponibile, grigio=N/A)
+- **Bio reset verify step** -- Nuovo step di verifica identità con animazione pulse prima del reset biometria
+- **Contrast boost** -- Migliorata leggibilità: text-dim, text-muted, text, border, glass-card opacity aumentate
+- **Sidebar contrast** -- Bordi, etichette categorie e versione più visibili
+
+### Bug Fix
+- **Touch ID focus guard** -- Il prompt Touch ID non appare più quando LexFlow non è in primo piano (fix in tauri-api + LoginScreen + PracticeDetail)
+
+### Cleanup
+- Rimosso codice morto: folder viewer inline, file-type helpers, import Unlink/RefreshCw
+
+---
+
 ## [1.0.1] -- 2026-03-08
 
 ### UX / UI
