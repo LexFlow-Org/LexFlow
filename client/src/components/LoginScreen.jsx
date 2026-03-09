@@ -144,9 +144,23 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
       if (!bioTriggered.current) {
         bioTriggered.current = true;
         setShowPasswordField(false);
-        setTimeout(() => {
-          if (handleBioLoginRef.current) handleBioLoginRef.current(true);
-        }, 400);
+        // Only auto-trigger biometric if the window actually has focus
+        // to avoid Touch ID appearing over other apps
+        const triggerWhenFocused = () => {
+          if (document.hasFocus()) {
+            if (handleBioLoginRef.current) handleBioLoginRef.current(true);
+          } else {
+            // Wait for the window to gain focus, then trigger once
+            const onFocus = () => {
+              window.removeEventListener('focus', onFocus);
+              setTimeout(() => {
+                if (handleBioLoginRef.current) handleBioLoginRef.current(true);
+              }, 300);
+            };
+            window.addEventListener('focus', onFocus);
+          }
+        };
+        setTimeout(triggerWhenFocused, 400);
       }
     } catch (err) {
       console.warn("Errore inizializzazione bio:", err);
@@ -177,21 +191,24 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     if (isNew) return;
 
     const triggerBio = () => {
+      // Only trigger if the window actually has OS-level focus
+      if (!document.hasFocus()) return;
       // Always call the latest version via ref — avoids stale closure bugs
       if (handleBioLoginRef.current) handleBioLoginRef.current(true);
     };
 
     const handleVisibility = () => {
       // document.visibilityState === 'visible' → l'utente è tornato su LexFlow
-      if (document.visibilityState === 'visible' && !bioAutoTriggeredOnReturn.current && !showPasswordField) {
+      // Also require hasFocus() to avoid triggering over other apps
+      if (document.visibilityState === 'visible' && document.hasFocus() && !bioAutoTriggeredOnReturn.current && !showPasswordField) {
         bioAutoTriggeredOnReturn.current = true;
         // Breve delay per dare tempo al focus della finestra
         setTimeout(triggerBio, 300);
       }
     };
 
-    // Se la finestra è già visibile (l'utente è davanti a LexFlow), triggera subito
-    if (document.visibilityState === 'visible' && !bioAutoTriggeredOnReturn.current && !showPasswordField) {
+    // Se la finestra è già visibile E focused (l'utente è davanti a LexFlow), triggera subito
+    if (document.visibilityState === 'visible' && document.hasFocus() && !bioAutoTriggeredOnReturn.current && !showPasswordField) {
       bioAutoTriggeredOnReturn.current = true;
       setTimeout(triggerBio, 600);
     }

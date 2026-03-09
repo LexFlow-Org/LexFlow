@@ -4,8 +4,7 @@ import {
   ArrowLeft, Calendar, FileText, 
   Clock, Plus, Trash2, Send, FolderOpen, 
   FolderPlus, Lock, ChevronDown,
-  FilePlus, Info, Fingerprint, ShieldCheck, Download,
-  Unlink, RefreshCw
+  FilePlus, Info, Fingerprint, ShieldCheck, Download
 } from 'lucide-react';
 import { exportPracticePDF } from '../utils/pdfGenerator';
 import ExportWarningModal from './ExportWarningModal';
@@ -24,14 +23,24 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
   useEffect(() => {
     if (!bioAttempted) {
       setBioAttempted(true);
-      (async () => {
+      // Only trigger biometric if the window is focused (avoid Touch ID over other apps)
+      const attemptBio = async () => {
         try {
           const result = await api.bioLogin();
           if (result) onUnlock();
         } catch (err) {
           console.debug('[PracticeDetail] Biometric auth failed or dismissed', err);
         }
-      })();
+      };
+      if (document.hasFocus()) {
+        attemptBio();
+      } else {
+        const onFocus = () => {
+          window.removeEventListener('focus', onFocus);
+          attemptBio();
+        };
+        window.addEventListener('focus', onFocus);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onUnlock is stable via useCallback; bioAttempted gate prevents re-runs
   }, [bioAttempted]);
@@ -63,7 +72,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
 
   return (
     <div className="h-full flex flex-col bg-[#0c0d14] animate-fade-in">
-      <div className="flex items-center px-6 py-4 border-b border-[#22263a]">
+      <div className="flex items-center px-6 py-4 border-b border-[#2e3352]">
         <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-text-dim hover:text-white">
           <ArrowLeft size={20} />
         </button>
@@ -150,37 +159,6 @@ function getDeadlineLabel(diff) {
   return `tra ${diff}gg`;
 }
 
-/* ---------- File-type helpers (reduces cognitive complexity) ---------- */
-const IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','svg','bmp','tiff']);
-const DOC_EXTS   = new Set(['doc','docx','odt','rtf','txt']);
-const SHEET_EXTS = new Set(['xls','xlsx','csv','ods']);
-
-function getFileTypeInfo(name) {
-  const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
-  const isPDF   = ext === 'pdf';
-  const isImage = IMAGE_EXTS.has(ext);
-  const isDoc   = DOC_EXTS.has(ext);
-  const isSheet = SHEET_EXTS.has(ext);
-  return { ext, isPDF, isImage, isDoc, isSheet };
-}
-
-function getFileBgClass(isDir, { isPDF, isImage, isDoc, isSheet }) {
-  if (isDir)   return 'bg-amber-500/10';
-  if (isPDF)   return 'bg-red-500/10';
-  if (isImage) return 'bg-purple-500/10';
-  if (isDoc)   return 'bg-blue-500/10';
-  if (isSheet) return 'bg-green-500/10';
-  return 'bg-white/5';
-}
-
-function getFileIconClass({ isPDF, isImage, isDoc, isSheet }) {
-  if (isPDF)   return 'text-red-400';
-  if (isImage) return 'text-purple-400';
-  if (isDoc)   return 'text-blue-400';
-  if (isSheet) return 'text-green-400';
-  return 'text-text-muted';
-}
-
 /* ---------- Status Dropdown ---------- */
 function StatusDropdown({ status, onChangeStatus }) {
   const [open, setOpen] = useState(false);
@@ -239,9 +217,6 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
   const [showExportWarning, setShowExportWarning] = useState(false);
   const [showExportPwdModal, setShowExportPwdModal] = useState(false);
   const [exportPwd, setExportPwd] = useState('');
-  const [folderExpanded, setFolderExpanded] = useState(false);
-  const [folderLoading, setFolderLoading] = useState(false);
-  const [folderContents, setFolderContents] = useState([]);
   
   // Stati per i form
   const [newNote, setNewNote] = useState('');
@@ -253,6 +228,13 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
   const update = (changes) => onUpdate({ ...practice, ...changes });
 
   const handleBioUnlock = useCallback(() => setBiometricVerified(true), []);
+
+  // Backwards-compatible folders array (old data has folderPath as string)
+  const folders = (() => {
+    if (Array.isArray(practice.folders) && practice.folders.length > 0) return practice.folders;
+    if (practice.folderPath) return [{ path: practice.folderPath, name: practice.folderPath.split('/').pop(), addedAt: practice.createdAt || new Date().toISOString() }];
+    return [];
+  })();
 
   // Se il fascicolo è protetto e non verificato, mostra schermata di blocco
   if (practice.biometricProtected && !biometricVerified) {
@@ -269,56 +251,34 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
   const linkFolder = async () => {
     const folder = await api.selectFolder();
     if (folder) {
-      update({ folderPath: folder });
+      const newFolder = { path: folder, name: folder.split('/').pop(), addedAt: new Date().toISOString() };
+      const updatedFolders = [...folders, newFolder];
+      update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
       toast.success('Cartella collegata');
     }
   };
 
-  const unlinkFolder = () => {
-    update({ folderPath: null });
-    setFolderExpanded(false);
-    setFolderContents([]);
+  const removeFolder = (idx) => {
+    const updatedFolders = folders.filter((_, i) => i !== idx);
+    update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
     toast.success('Cartella scollegata');
   };
 
-  const changeFolder = async () => {
-    const folder = await api.selectFolder();
-    if (folder) {
-      update({ folderPath: folder });
-      setFolderExpanded(false);
-      setFolderContents([]);
-      toast.success('Cartella aggiornata');
-    }
+  const confirmRemoveFolder = (idx) => {
+    setConfirmDelete({
+      message: 'Scollegare questa cartella dal fascicolo?',
+      onConfirm: () => { removeFolder(idx); setConfirmDelete(null); },
+    });
   };
 
-  const openFolder = async () => {
-    if (!practice.folderPath) return;
+  const openFolderAtPath = async (path) => {
+    if (!path) return;
     try {
-      await api.openPath(practice.folderPath);
+      await api.openPath(path);
     } catch {
       toast.error('Impossibile aprire la cartella');
     }
   };
-
-  const toggleFolderContents = async () => {
-    if (folderExpanded) { setFolderExpanded(false); return; }
-    setFolderLoading(true);
-    try {
-      const res = await api.listFolderContents(practice.folderPath);
-      setFolderContents(Array.isArray(res) ? res : []);
-      setFolderExpanded(true);
-    } catch (err) {
-      console.error('[PracticeDetail] Folder listing failed:', err);
-      toast.error('Errore lettura cartella');
-    } finally {
-      setFolderLoading(false);
-    }
-  };
-
-  const folderButtonLabel = (() => {
-    if (folderLoading) return 'Caricamento…';
-    return folderExpanded ? 'Nascondi contenuto' : 'Mostra contenuto';
-  })();
 
   const handleExport = () => {
     // Open the security warning modal first — actual export runs only on confirm.
@@ -438,7 +398,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
   // --- Components ---
   const TABS = [
     { id: 'diary', label: 'Diario', icon: Clock, count: (practice.diary || []).length },
-    { id: 'docs', label: 'Documenti', icon: FileText, count: (practice.attachments || []).length },
+    { id: 'docs', label: 'Documenti', icon: FileText, count: (practice.attachments || []).length + folders.length },
     { id: 'deadlines', label: 'Scadenze', icon: Calendar, count: (practice.deadlines || []).length },
     { id: 'info', label: 'Info', icon: Info, count: 0 },
   ];
@@ -446,7 +406,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
   return (
     <div className="h-full flex flex-col bg-[#0c0d14] animate-fade-in">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#22263a] bg-[#0c0d14]/50 backdrop-blur-md sticky top-0 z-10">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[#2e3352] bg-[#0c0d14]/50 backdrop-blur-md sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-text-dim hover:text-white">
             <ArrowLeft size={20} />
@@ -476,7 +436,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
       </div>
 
       {/* Tabs — Segmented Control moderno */}
-      <div className="px-6 py-3 border-b border-[#22263a]">
+      <div className="px-6 py-3 border-b border-[#2e3352]">
         <div className="inline-flex bg-white/[0.04] rounded-xl p-1 border border-white/5">
           {TABS.map(({ id, label, icon: Icon, count }) => (
             <button
@@ -534,7 +494,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
                 <div key={note.date + idx} className="flex gap-4 group">
                   <div className="flex flex-col items-center">
                     <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                    <div className="w-px h-full bg-[#22263a] my-1" />
+                    <div className="w-px h-full bg-[#2e3352] my-1" />
                   </div>
                   <div className="flex-1 glass-card p-4 relative">
                     <div className="flex justify-between items-start mb-2">
@@ -551,7 +511,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
               ))}
             </div>
 
-            <form onSubmit={addNote} className="sticky bottom-0 bg-[#0c0d14] pt-4 border-t border-[#22263a]">
+            <form onSubmit={addNote} className="sticky bottom-0 bg-[#0c0d14] pt-4 border-t border-[#2e3352]">
               <div className="relative">
                 <textarea
                   className="input-field w-full min-h-[80px] pr-12 resize-none"
@@ -596,55 +556,19 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
                 </div>
               </button>
 
-              {practice.folderPath ? (
-                <div className="glass-card p-6 border border-white/5 space-y-3">
-                  <button 
-                    type="button"
-                    onClick={openFolder}
-                    className="flex items-center gap-4 cursor-pointer hover:bg-white/5 transition-all group text-left w-full"
-                  >
-                    <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
-                      <FolderOpen size={24} className="text-text-muted" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-base font-bold text-white">Apri Cartella</p>
-                      <p className="text-[10px] text-text-dim uppercase tracking-wider mt-1 truncate">{practice.folderPath.split('/').pop()}</p>
-                    </div>
-                  </button>
-                  <div className="flex items-center gap-2 pt-2 border-t border-white/5">
-                    <button 
-                      type="button"
-                      onClick={changeFolder}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold text-text-muted hover:text-white hover:bg-white/[0.06] transition-all"
-                    >
-                      <RefreshCw size={12} />
-                      Cambia
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={unlinkFolder}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                    >
-                      <Unlink size={12} />
-                      Scollega
-                    </button>
-                  </div>
+              <button 
+                type="button"
+                onClick={linkFolder}
+                className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-white/5 hover:border-white/15 transition-all border border-white/5 group text-left w-full"
+              >
+                <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                  <FolderPlus size={24} className="text-amber-400" />
                 </div>
-              ) : (
-                <button 
-                  type="button"
-                  onClick={linkFolder}
-                  className="glass-card p-6 flex items-center gap-4 border border-dashed border-white/10 cursor-pointer hover:bg-white/5 hover:border-white/20 transition-all group text-left w-full"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
-                    <FolderPlus size={24} className="text-text-dim group-hover:text-white transition-colors" />
-                  </div>
-                  <div>
-                    <p className="text-base font-bold text-white">Collega Cartella</p>
-                    <p className="text-[10px] text-text-dim uppercase tracking-wider mt-1">Associa una cartella locale al fascicolo</p>
-                  </div>
-                </button>
-              )}
+                <div>
+                  <p className="text-base font-bold text-white">Collega Cartella</p>
+                  <p className="text-[10px] text-text-dim uppercase tracking-wider mt-1">Associa una cartella locale al fascicolo</p>
+                </div>
+              </button>
             </div>
 
             {/* Lista allegati crittografati */}
@@ -686,78 +610,44 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
               )}
             </div>
 
-            {/* ═══ FOLDER VIEWER — Contenuto cartella collegata ═══ */}
-            {practice.folderPath && (
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">Cartella Collegata</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-text-dim truncate max-w-[200px]" title={practice.folderPath}>{practice.folderPath.split('/').pop()}</span>
-                    <button 
-                      onClick={changeFolder}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-text-muted hover:text-white hover:bg-white/[0.06] transition-all"
-                      title="Cambia cartella"
-                    >
-                      <RefreshCw size={11} />
-                    </button>
-                    <button 
-                      onClick={unlinkFolder}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                      title="Scollega cartella"
-                    >
-                      <Unlink size={11} />
-                    </button>
-                    <button 
-                      onClick={toggleFolderContents} 
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-[10px] font-bold text-text-muted hover:bg-white/[0.06] hover:text-white transition-all"
-                    >
-                      <ChevronDown size={12} className={`transition-transform ${folderExpanded ? 'rotate-180' : ''}`} />
-                      {folderButtonLabel}
-                    </button>
-                  </div>
+            {/* ═══ CARTELLE COLLEGATE ═══ */}
+            <div className="mt-6">
+              <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px] mb-4">Cartelle Collegate</h3>
+              {folders.length === 0 ? (
+                <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-white/10">
+                  <FolderOpen size={28} className="text-text-dim/30 mb-3" />
+                  <p className="text-sm text-text-dim">Nessuna cartella collegata</p>
+                  <p className="text-xs text-text-dim/60 mt-1">Collega cartelle locali al fascicolo</p>
                 </div>
-
-                {folderExpanded && (
-                  <div className="space-y-1.5 animate-fade-in">
-                    {folderContents.length === 0 ? (
-                      <div className="glass-card p-6 flex flex-col items-center justify-center text-center border border-dashed border-white/10">
-                        <FolderOpen size={24} className="text-text-dim/30 mb-2" />
-                        <p className="text-sm text-text-dim">Cartella vuota</p>
+              ) : (
+                <div className="space-y-2">
+                  {folders.map((fld, idx) => (
+                    <div key={fld.path}
+                      className="glass-card p-3 flex items-center gap-3 group hover:border-amber-500/30 transition-colors text-left w-full relative"
+                    >
+                      <button type="button"
+                        onClick={() => openFolderAtPath(fld.path)}
+                        className="absolute inset-0 z-0 cursor-pointer"
+                        aria-label={`Apri ${fld.name}`}
+                      />
+                      <FolderOpen size={16} className="text-amber-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white truncate">{fld.name}</p>
+                        <p className="text-[10px] text-text-dim">
+                          {fld.addedAt ? formatDateIT(fld.addedAt, '') : ''}
+                        </p>
                       </div>
-                    ) : (
-                      <>
-                        <div className="text-[10px] text-text-dim mb-2">{folderContents.length} {folderContents.length === 1 ? 'elemento' : 'elementi'}</div>
-                        {folderContents.map((it) => {
-                          const fileInfo = getFileTypeInfo(it.name);
-                          const bgClass = getFileBgClass(it.is_dir, fileInfo);
-                          const iconClass = getFileIconClass(fileInfo);
-                          return (
-                            <button type="button" key={it.path} onClick={() => api.openPath(it.path)}
-                              className="glass-card p-3 flex items-center gap-3 cursor-pointer hover:border-primary/30 hover:bg-white/[0.03] transition-all text-left w-full group"
-                            >
-                              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${bgClass}`}>
-                                {it.is_dir
-                                  ? <FolderOpen size={18} className="text-amber-400"/>
-                                  : <FileText size={18} className={iconClass}/>
-                                }
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm text-white truncate group-hover:text-primary transition-colors">{it.name}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  {fileInfo.ext && !it.is_dir && <span className="text-[9px] font-bold uppercase text-text-dim bg-white/5 px-1.5 py-0.5 rounded">{fileInfo.ext}</span>}
-                                  <span className="text-[10px] text-text-dim">{it.is_dir ? 'Cartella' : 'File'}</span>
-                                  {it.modified && <span className="text-[10px] text-text-dim">{formatDateIT(it.modified, '')}</span>}
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+                      <button onClick={(e) => { e.stopPropagation(); openFolderAtPath(fld.path); }} className="btn-ghost text-xs p-2 relative z-[1]" title="Apri nel Finder">
+                        <FolderOpen size={14} />
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveFolder(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-red-400 transition-all relative z-[1]">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -934,6 +824,11 @@ const practiceShape = PropTypes.shape({
   description: PropTypes.string,
   biometricProtected: PropTypes.bool,
   folderPath: PropTypes.string,
+  folders: PropTypes.arrayOf(PropTypes.shape({
+    path: PropTypes.string,
+    name: PropTypes.string,
+    addedAt: PropTypes.string,
+  })),
   attachments: PropTypes.arrayOf(PropTypes.shape({
     name: PropTypes.string,
     path: PropTypes.string,

@@ -42,7 +42,14 @@ export const saveBio = (pwd) => safeInvoke('save_bio', { pwd });
 export const clearBio = () => safeInvoke('clear_bio');
 // SECURITY FIX (Gemini Audit Chunk 01): wrap in try/catch so callers
 // get null on bio failure instead of an unhandled throw from safeInvoke
+// FOCUS GUARD: never trigger system biometric prompt when LexFlow window
+// doesn't have focus — prevents Touch ID appearing over other apps
 export const bioLogin = async () => {
+  // If the window is not focused, skip biometric entirely
+  if (!document.hasFocus()) {
+    console.debug('[LexFlow] bioLogin skipped — window not focused');
+    return null;
+  }
   try {
     const res = await safeInvoke('bio_login');
     return (res?.success) ? { success: true } : null;

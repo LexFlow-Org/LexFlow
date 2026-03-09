@@ -156,7 +156,7 @@ DesktopNavItem.propTypes = {
 function DesktopSidebar({ version, onLock }) {
 
   return (
-    <aside className="w-68 h-screen bg-[#08090f] border-r border-white/5 flex flex-col flex-shrink-0 z-20 pt-14 relative">
+    <aside className="w-68 h-screen bg-[#08090f] border-r border-white/8 flex flex-col flex-shrink-0 z-20 pt-14 relative">
       <div className="absolute top-0 left-0 w-full h-32 bg-primary/5 blur-[80px] -z-10 pointer-events-none" />
 
       {/* Logo */}
@@ -178,7 +178,7 @@ function DesktopSidebar({ version, onLock }) {
         {sections.map((section) => (
           <div key={section.title || 'main'} className="space-y-1">
             {section.title && (
-              <div className="px-4 mb-2 text-[10px] font-black text-text-dim/40 uppercase tracking-[3px]">
+              <div className="px-4 mb-2 text-[10px] font-black text-text-dim/60 uppercase tracking-[3px]">
                 {section.title}
               </div>
             )}
@@ -188,7 +188,7 @@ function DesktopSidebar({ version, onLock }) {
       </nav>
 
       {/* Footer */}
-      <div className="p-6 border-t border-white/5 bg-[#0a0b12]">
+      <div className="p-6 border-t border-white/8 bg-[#0a0b12]">
         <button
           onClick={onLock}
           className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group mb-6"
@@ -199,9 +199,9 @@ function DesktopSidebar({ version, onLock }) {
         <div className="flex flex-col gap-3 px-2">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-bold text-text-dim/60 uppercase tracking-tighter">Versione {version}</span>
+            <span className="text-[10px] font-bold text-text-dim/80 uppercase tracking-tighter">Versione {version}</span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/5">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/8">
             <ShieldCheck size={12} className="text-primary" />
             <span className="text-[9px] font-black text-text-dim uppercase tracking-widest">AES-256 GCM Secure</span>
           </div>

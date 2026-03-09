@@ -34,7 +34,7 @@ class ErrorBoundary extends React.Component {
           <p className="text-text-muted mb-6 max-w-md">
             Si è verificato un errore imprevisto nell'interfaccia. Nessun dato è stato perso, ma è necessario ricaricare la vista.
           </p>
-          <div className="bg-[#13141e] p-4 rounded border border-[#22263a] mb-6 text-left w-full max-w-lg overflow-auto max-h-40">
+          <div className="bg-[#13141e] p-4 rounded border border-[#2e3352] mb-6 text-left w-full max-w-lg overflow-auto max-h-40">
             <code className="text-xs text-red-400 font-mono">
               {this.state.error?.toString()}
             </code>

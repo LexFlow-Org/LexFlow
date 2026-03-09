@@ -39,7 +39,7 @@
 .lic-card {
   width: 480px; max-width: 92vw;
   background: var(--bg-card, #13141e);
-  border: 1px solid var(--border, #22263a);
+  border: 1px solid var(--border, #2e3352);
   border-radius: 16px;
   padding: 36px 32px 28px;
   box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03) inset;
@@ -83,7 +83,7 @@
 .lic-input-wrap {
   position: relative;
   border-radius: 10px;
-  border: 1px solid var(--border, #22263a);
+  border: 1px solid var(--border, #2e3352);
   background: var(--bg, #0c0d14);
   transition: border-color 0.2s, box-shadow 0.2s;
 }

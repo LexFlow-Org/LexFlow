@@ -7,17 +7,17 @@
   --color-card-hover: #1a1c2a;
   --color-surface: #161822;
   --color-input: #181a26;
-  --color-border: #22263a;
+  --color-border: #2e3352;
 
   --color-primary: #d4a940;
   --color-primary-hover: #b8912e;
   --color-primary-soft: rgba(212,169,64,0.12);
   --color-primary-glow: rgba(212,169,64,0.25);
 
-  --color-text: #e8eaf4;
-  --color-text-muted: #9ea2b8;
-  --color-text-dim: #727896;
-  --color-text-subtle: #565b73;
+  --color-text: #edeef6;
+  --color-text-muted: #b0b4cc;
+  --color-text-dim: #8b90ad;
+  --color-text-subtle: #6e7490;
 
   --color-success: #34d399;
   --color-warning: #fbbf24;
@@ -37,10 +37,10 @@
     --bg-card-hover: #1a1c2a;
     --bg-input: #181a26;
     --bg-surface: #161822;
-    --text: #e8eaf4;
-    --text-muted: #9ea2b8;
-    --text-dim: #727896;
-    --border: #2d3250;
+    --text: #edeef6;
+    --text-muted: #b0b4cc;
+    --text-dim: #8b90ad;
+    --border: #363b5a;
     --success: #34d399;
     --warning: #fbbf24;
     --danger: #f87171;
@@ -87,14 +87,14 @@
 
   /* GLASS */
   .glass-card {
-    background: rgba(19, 20, 30, 0.8);
+    background: rgba(19, 20, 30, 0.85);
     backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: 1rem;
     transition: all 0.2s;
   }
   .glass-card:hover {
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
     box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
   }
 
@@ -164,7 +164,7 @@
     width: 100%;
     padding: 10px 14px;
     background: var(--bg-input);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: var(--radius-sm);
     color: var(--text);
     font-size: 13px;
