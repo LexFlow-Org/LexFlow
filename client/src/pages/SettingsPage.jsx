@@ -316,7 +316,7 @@ function BioResetConfirmModal({ onClose }) {
     try {
       // Verify the password is correct first
       const verify = await api.verifyVaultPassword(pwd);
-      if (!verify?.success) {
+      if (!verify?.valid) {
         setError(verify?.error || 'Password errata.');
         setLoading(false);
         return;
