@@ -457,6 +457,17 @@ export default function SettingsPage({ onLock }) {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showBioResetConfirm, setShowBioResetConfirm] = useState(false);
 
+  // Biometrics status: 'checking' | 'active' | 'available' | 'unavailable'
+  const [bioStatus, setBioStatus] = useState('checking');
+  const refreshBioStatus = async () => {
+    try {
+      const available = await api.checkBio();
+      if (!available) { setBioStatus('unavailable'); return; }
+      const saved = await api.hasBioSaved();
+      setBioStatus(saved ? 'active' : 'available');
+    } catch { setBioStatus('unavailable'); }
+  };
+
   const applySettings = (settings) => {
     if (!settings) return;
     if (typeof settings.privacyBlurEnabled === 'boolean') setPrivacyEnabled(settings.privacyBlurEnabled);
@@ -470,6 +481,11 @@ export default function SettingsPage({ onLock }) {
     api.getAppVersion().then(setAppVersion);
     api.isMac().then(isMac => setPlatform(isMac ? 'macOS' : 'Windows'));
     api.getSettings().then(applySettings);
+    // Check biometrics status
+    api.checkBio().then(available => {
+      if (!available) { setBioStatus('unavailable'); return; }
+      api.hasBioSaved().then(saved => setBioStatus(saved ? 'active' : 'available'));
+    }).catch(() => setBioStatus('unavailable'));
     // Listen for corrupted settings file event from backend
     const unsubscribe = api.onSettingsCorrupted?.((payload) => {
       toast.error(
@@ -681,10 +697,22 @@ export default function SettingsPage({ onLock }) {
             </button>
             <button 
               onClick={() => setShowBioResetConfirm(true)}
-              className="flex items-center justify-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all group"
+              className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all group relative"
             >
               <RefreshCw size={18} className="text-text-dim group-hover:rotate-180 transition-transform duration-500" />
-              <span className="text-sm font-medium">Resetta Biometria</span>
+              <div className="flex flex-col items-start">
+                <span className="text-sm font-medium">Biometria</span>
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                  bioStatus === 'active' ? 'text-green-400' :
+                  bioStatus === 'available' ? 'text-amber-400' :
+                  bioStatus === 'unavailable' ? 'text-red-400/60' : 'text-text-dim'
+                }`}>
+                  {bioStatus === 'active' && '● Attiva'}
+                  {bioStatus === 'available' && '○ Non configurata'}
+                  {bioStatus === 'unavailable' && '✕ Non disponibile'}
+                  {bioStatus === 'checking' && '…'}
+                </span>
+              </div>
             </button>
           </div>
         </section>
@@ -781,7 +809,7 @@ export default function SettingsPage({ onLock }) {
       {showImportModal && <ImportBackupModal onClose={() => setShowImportModal(false)} />}
 
       {/* Biometrics Reset Confirm Modal */}
-      {showBioResetConfirm && <BioResetConfirmModal onClose={() => setShowBioResetConfirm(false)} />}
+      {showBioResetConfirm && <BioResetConfirmModal onClose={() => { setShowBioResetConfirm(false); refreshBioStatus(); }} />}
     </div>
   );
 }

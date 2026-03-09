@@ -69,12 +69,17 @@
   }
 
   /* Riabilita selezione su input/textarea */
-  input, textarea { -webkit-user-select: text; user-select: text; }
+  input, textarea { -webkit-user-select: text; user-select: text; cursor: text; }
 
   a { color: var(--primary); text-decoration: none; }
 
-  /* Cursor pointer per tutti gli elementi interattivi */
-  button, [role="button"], a, summary { cursor: pointer; }
+  /* Cursor pointer per tutti gli elementi interattivi — !important to override residual text cursor from input focus */
+  button, [role="button"], a, summary { cursor: pointer !important; }
+  /* Restore text cursor on actual text inputs even if they're also buttons (rare) */
+  input, textarea, [contenteditable="true"] { cursor: text !important; }
+  input[type="checkbox"], input[type="radio"], input[type="range"], input[type="color"],
+  input[type="file"], input[type="submit"], input[type="reset"], input[type="button"],
+  select { cursor: pointer !important; }
 }
 
 /* ========== COMPONENTS ========== */

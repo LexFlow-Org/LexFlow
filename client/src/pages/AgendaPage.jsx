@@ -840,12 +840,12 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                           >
                             <div className="mx-auto w-8 h-0.5 bg-white/10 group-hover/resizetop:bg-white/30 rounded-full mt-0.5 transition" />
                           </button>
-                          <div className="flex justify-between items-start h-full relative z-[1]">
+                          <div className="flex justify-between items-start h-full relative z-[1] pointer-events-none">
                                <div className="flex items-start gap-2 min-w-0 flex-1">
                                   {/* Checkbox completamento */}
                                   <button
                                     onClick={e => { e.stopPropagation(); onToggle(ev.id); }}
-                                    className={`w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
+                                    className={`pointer-events-auto w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
                                       ev.completed
                                         ? 'bg-green-500 border-green-500'
                                         : 'border-white/30 hover:border-primary hover:bg-primary/10'
@@ -989,8 +989,8 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters }) {
                             handleResizeTop(e, { startMin: tsh*60+tsm, endMin: teh*60+tem, minHeight: 20, selector: '.week-ev', ev, onSave });
                           }}
                         />
-                        <div className="font-bold truncate leading-tight flex items-center gap-1 relative z-[1]">{ev.title}{ev.remindMinutes != null && <BellRing size={8} className="text-amber-400 flex-shrink-0" />}</div>
-                        {height >= 30 && <div className="opacity-80 text-[9px] relative z-[1]">{ev.timeStart}</div>}
+                        <div className="font-bold truncate leading-tight flex items-center gap-1 relative z-[1] pointer-events-none">{ev.title}{ev.remindMinutes != null && <BellRing size={8} className="text-amber-400 flex-shrink-0" />}</div>
+                        {height >= 30 && <div className="opacity-80 text-[9px] relative z-[1] pointer-events-none">{ev.timeStart}</div>}
                         {/* Resize handle bottom */}
                         <button type="button" aria-label="Ridimensiona fine"
                           className="resize-handle absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize z-10"
@@ -1058,18 +1058,18 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
                 className={`border-b border-r border-white/5 p-1 relative cursor-pointer hover:bg-white/[0.03] transition group text-left ${outside ? 'opacity-30 bg-black/20' : ''} ${isToday ? 'bg-primary/[0.05]' : ''}`}>
                 <button type="button" className="absolute inset-0 z-0 cursor-pointer" aria-label={`Aggiungi evento il ${str}`}
                   onClick={() => onAdd(str)} />
-                <div className={`text-[10px] font-bold mb-1 ml-1 w-5 h-5 flex items-center justify-center rounded-full relative z-[1] ${isToday ? 'bg-primary text-black' : 'text-text-muted'}`}>
+                <div className={`text-[10px] font-bold mb-1 ml-1 w-5 h-5 flex items-center justify-center rounded-full relative z-[1] pointer-events-none ${isToday ? 'bg-primary text-black' : 'text-text-muted'}`}>
                   {date.getDate()}
                 </div>
-                <div className="space-y-1 overflow-y-auto max-h-[80px] no-scrollbar relative z-[1]">
+                <div className="space-y-0.5 overflow-y-auto max-h-[80px] no-scrollbar relative z-[1]">
                   {dayEvts.slice(0, 4).map(ev => (
                     <button type="button" key={ev.id} onClick={e => {e.stopPropagation(); onEdit(ev);}}
-                      className="text-[9px] px-1.5 py-0.5 rounded-sm truncate text-white border-l-[2px] transition hover:scale-105 block w-full text-left cursor-pointer"
+                      className="text-[9px] px-1.5 py-1 rounded-sm truncate text-white border-l-[2px] transition hover:brightness-125 hover:shadow-sm block w-full text-left cursor-pointer"
                       style={{ background: `${CAT_COLORS[ev.category]}40`, borderLeftColor: CAT_COLORS[ev.category] }}>
                       {ev.title}
                     </button>
                   ))}
-                  {dayEvts.length > 4 && <div className="text-[8px] text-center text-text-dim">+{dayEvts.length - 4} altri</div>}
+                  {dayEvts.length > 4 && <div className="text-[8px] text-center text-text-dim pointer-events-none">+{dayEvts.length - 4} altri</div>}
                 </div>
               </div>
             );
