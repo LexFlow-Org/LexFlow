@@ -3583,7 +3583,10 @@ fn schedule_all_reminders(
     let mut sorted: Vec<&Value> = items.iter().collect();
     sorted.sort_by(|a, b| {
         let key = |v: &Value| {
-            let d = v.get("date").and_then(|x| x.as_str()).unwrap_or("9999-99-99");
+            let d = v
+                .get("date")
+                .and_then(|x| x.as_str())
+                .unwrap_or("9999-99-99");
             let t = v.get("time").and_then(|x| x.as_str()).unwrap_or("99:99");
             format!("{} {}", d, t)
         };
