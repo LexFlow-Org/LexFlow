@@ -800,13 +800,14 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
         </dialog>
       )}
 
-      {confirmDelete && (
-        <ConfirmDialog
-          message={confirmDelete.message}
-          onConfirm={confirmDelete.onConfirm}
-          onCancel={() => setConfirmDelete(null)}
-        />
-      )}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Conferma"
+        message={confirmDelete?.message}
+        confirmLabel="Elimina"
+        onConfirm={confirmDelete?.onConfirm}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }

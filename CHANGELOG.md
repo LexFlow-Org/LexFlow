@@ -4,6 +4,13 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.0.3] -- 2026-03-10
+
+### Bug Fix
+- **ConfirmDialog non si apriva** -- I dialog di conferma eliminazione (documenti, cartelle, note, scadenze, log ore, fatture) non venivano mai mostrati perché mancava la prop `open` — corretto in PracticeDetail e TimeTrackingPage
+
+---
+
 ## [1.0.2] -- 2026-03-10
 
 ### UX / UI

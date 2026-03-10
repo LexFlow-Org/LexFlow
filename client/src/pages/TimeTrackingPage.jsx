@@ -462,13 +462,14 @@ export default function TimeTrackingPage({ practices }) {
           onSave={saveInvoice} onClose={() => { setShowCreateInvoice(false); setEditingInvoice(null); }} />
       )}
 
-      {confirmDelete && (
-        <ConfirmDialog
-          message={confirmDelete.message}
-          onConfirm={confirmDelete.onConfirm}
-          onCancel={() => setConfirmDelete(null)}
-        />
-      )}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Conferma"
+        message={confirmDelete?.message}
+        confirmLabel="Elimina"
+        onConfirm={confirmDelete?.onConfirm}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }
