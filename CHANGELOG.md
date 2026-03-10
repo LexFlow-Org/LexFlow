@@ -4,6 +4,32 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.5.0] -- 2026-03-10
+
+### UX / UI -- Redesign Contatti (Piano 1)
+- **Inline-expand pattern** -- Rimosso split-panel fisso: ogni contatto ha icone Edit (modifica) e Info (dettagli) inline; la card dettaglio si espande sotto (mobile) o a fianco (desktop)
+- **ChevronRight per chiudere** -- L'icona `>` chiude la card espansa (prima non funzionava)
+- **Card dinamica per tipo** -- `ContactDetailCard` mostra campi diversi in base al tipo: codice fiscale e P.IVA solo per clienti, foro per giudici, albo per avvocati/consulenti
+- **Soggetti collegati** -- Sezione "Soggetti Collegati" nella card mostra contatti correlati tramite fascicoli condivisi (es. controparte ↔ avv. controparte)
+- **Fascicoli linkati** -- Bottoni cliccabili con stato (Attivo/Chiuso) per navigare direttamente al fascicolo
+
+### UX / UI -- Redesign Timer/Ore (Piano 2)
+- **PracticeCombobox** -- Nuovo componente ricerca fascicolo con dropdown glass-card, icona Search, navigazione keyboard (Escape/Enter), click-outside
+- **Pre-lancio timer** -- Il timer non parte piu con `practices[0]`: ora richiede selezione esplicita del fascicolo + descrizione opzionale; pulsante Avvia disabilitato senza selezione
+- **Timer attivo redesign** -- Card con sezioni etichettate (Fascicolo + Attivita), icone Briefcase/FileText, timer grande centrale, bottone "Ferma" prominente
+- **PracticeSelect rimosso** -- Il vecchio `<select>` nativo e' stato sostituito da PracticeCombobox in tutto il codice (ManualLogModal, InvoiceModal, timer)
+- **Placeholder corretto** -- Corretto `\u00E0` che appariva come testo letterale → ora mostra "Attivita" correttamente
+
+### UX / UI -- Navigazione Dashboard/Agenda/Scadenze
+- **Dashboard popover** -- Click su evento con fascicolo mostra popover con scelta "Apri in Agenda" / "Vai al Fascicolo" (prima navigava direttamente)
+- **Agenda ?date= param** -- AgendaPage supporta `?date=YYYY-MM-DD` per navigare a una data specifica con `focusDate` e calcolo automatico weekOffset
+- **Scadenze navigazione** -- Le scadenze di agenda navigano con `?date=`; le scadenze da fascicolo mostrano popover analogo al Dashboard
+
+### Bug Fix
+- **Platform detection** -- SettingsPage ora usa `getPlatform()` invece di `isMac()` per mostrare il nome piattaforma corretto (macOS/Windows/Android) con fallback
+
+---
+
 ## [1.0.3] -- 2026-03-10
 
 ### Bug Fix

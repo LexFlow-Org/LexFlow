@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { Clock, Play, Square, Plus, Trash2, ChevronLeft, ChevronRight, Edit3, Check, X, DollarSign, Receipt, Download } from 'lucide-react';
+import { Clock, Play, Square, Plus, Trash2, ChevronLeft, ChevronRight, Edit3, Check, X, DollarSign, Receipt, Download, Briefcase, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ModalOverlay from '../components/ModalOverlay';
+import PracticeCombobox from '../components/PracticeCombobox';
 import * as api from '../tauri-api';
 import { genId, toDateStr } from '../utils/helpers';
 
@@ -24,28 +25,6 @@ const DAYS_IT = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 const MONTHS_IT = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
 /* ======== Billing helpers ======== */
-
-function PracticeSelect({ id, label, value, onChange, practices, placeholder = '-- Nessuno --' }) {
-  return (
-    <div>
-      <label htmlFor={id} className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">{label}</label>
-      <select id={id} value={value} onChange={onChange} className="input-field w-full py-3">
-        <option value="">{placeholder}</option>
-        {practices.filter(p => p.status === 'active').map(p => (
-          <option key={p.id} value={p.id}>{p.client} — {p.object}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
-PracticeSelect.propTypes = {
-  id: PropTypes.string.isRequired,
-  label: PropTypes.string.isRequired,
-  value: PropTypes.string.isRequired,
-  onChange: PropTypes.func.isRequired,
-  practices: PropTypes.array.isRequired,
-  placeholder: PropTypes.string,
-};
 
 const CPA_RATE = 0.04;
 const IVA_RATE = 0.22;
@@ -89,6 +68,9 @@ export default function TimeTrackingPage({ practices }) {
   const [invoices, setInvoices] = useState([]);
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
+  // Pre-launch timer form
+  const [timerPracticeId, setTimerPracticeId] = useState('');
+  const [timerDescription, setTimerDescription] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -286,35 +268,65 @@ export default function TimeTrackingPage({ practices }) {
       {activeTab === 'ore' && (
         <div className="flex-1 flex flex-col overflow-hidden">
           {activeTimer ? (
-            <div className="glass-card p-4 mb-4 flex items-center justify-between border border-primary/20 bg-primary/5">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                <div>
-                  <p className="text-sm font-bold text-white">{activeTimer.description || 'Timer attivo'}</p>
-                  <p className="text-xs text-text-dim">{getPracticeName(activeTimer.practiceId)}</p>
-                </div>
+            <div className="glass-card p-5 mb-4 border border-primary/20 bg-primary/5 space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">Timer in corso</span>
               </div>
-              <div className="flex items-center gap-4">
-                <span className="font-mono text-2xl text-primary font-bold tabular-nums">
+              <div className="flex items-center gap-3">
+                <Briefcase size={14} className="text-text-dim flex-shrink-0" />
+                <span className="text-sm text-white font-medium truncate">{getPracticeName(activeTimer.practiceId)}</span>
+              </div>
+              {activeTimer.description && (
+                <div className="flex items-center gap-3">
+                  <FileText size={14} className="text-text-dim flex-shrink-0" />
+                  <span className="text-sm text-text-muted truncate">{activeTimer.description}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-2">
+                <span className="font-mono text-3xl text-primary font-bold tabular-nums">
                   {String(Math.floor(elapsed / 3600)).padStart(2, '0')}:{String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
                 </span>
-                <button onClick={stopTimer} className="p-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl transition-colors">
-                  <Square size={18} fill="currentColor" />
+                <button onClick={stopTimer} className="flex items-center gap-2 px-4 py-2.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 rounded-xl transition-colors text-xs font-bold">
+                  <Square size={14} fill="currentColor" /> Ferma
                 </button>
               </div>
             </div>
           ) : (
-            <div className="glass-card p-4 mb-4 flex items-center justify-between">
+            <div className="glass-card p-5 mb-4 space-y-4">
               <div className="flex items-center gap-3">
-                <Play size={20} className="text-primary" />
+                <Play size={18} className="text-primary flex-shrink-0" />
+                <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">Avvia Timer</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <PracticeCombobox
+                  value={timerPracticeId}
+                  onChange={setTimerPracticeId}
+                  practices={practices}
+                  label="Fascicolo"
+                  id="timer-practice"
+                />
                 <div>
-                  <p className="text-sm font-bold text-white">Avvia Timer</p>
-                  <p className="text-xs text-text-dim">Seleziona fascicolo e descrivi l&apos;attivit&agrave;</p>
+                  <label htmlFor="timer-desc" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Attività</label>
+                  <input
+                    id="timer-desc"
+                    type="text"
+                    value={timerDescription}
+                    onChange={e => setTimerDescription(e.target.value)}
+                    placeholder="Descrizione attività..."
+                    className="input-field w-full py-2.5"
+                  />
                 </div>
               </div>
-              <button onClick={() => startTimer(practices[0]?.id || '', '')} className="btn-primary text-xs px-4 py-2">
-                <Play size={14} /> Avvia
-              </button>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => { startTimer(timerPracticeId, timerDescription); setTimerPracticeId(''); setTimerDescription(''); }}
+                  disabled={!timerPracticeId}
+                  className="btn-primary text-xs px-5 py-2.5 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
+                >
+                  <Play size={14} /> Avvia
+                </button>
+              </div>
             </div>
           )}
 
@@ -516,7 +528,7 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
         </div>
         <form onSubmit={handleSave} className="px-8 py-6 space-y-5">
           <div className="grid grid-cols-2 gap-4">
-            <PracticeSelect id="manual-log-practice" label="Fascicolo" value={practiceId} onChange={e => setPracticeId(e.target.value)} practices={practices} />
+            <PracticeCombobox id="manual-log-practice" label="Fascicolo" value={practiceId} onChange={setPracticeId} practices={practices} />
             <div>
               <label htmlFor="manual-log-date" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Data</label>
               <input id="manual-log-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="input-field w-full py-3" />
@@ -524,7 +536,7 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
           </div>
           <div>
             <label htmlFor="manual-log-description" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Descrizione</label>
-            <input id="manual-log-description" value={description} onChange={e => setDescription(e.target.value)} className="input-field w-full py-3" placeholder="Attivit\u00E0 svolta..." />
+            <input id="manual-log-description" value={description} onChange={e => setDescription(e.target.value)} className="input-field w-full py-3" placeholder="Attività svolta..." />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -645,7 +657,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <PracticeSelect id="inv-practice" label="Fascicolo" value={practiceId} onChange={e => setPracticeId(e.target.value)} practices={practices} placeholder="-- Seleziona --" />
+            <PracticeCombobox id="inv-practice" label="Fascicolo" value={practiceId} onChange={setPracticeId} practices={practices} placeholder="Cerca fascicolo..." />
             <div>
               <label htmlFor="inv-client" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Cliente</label>
               <input id="inv-client" value={clientName} onChange={e => setClientName(e.target.value)} className="input-field w-full py-3" placeholder="Nome cliente..." />

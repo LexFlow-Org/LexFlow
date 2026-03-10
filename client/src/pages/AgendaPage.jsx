@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { 
   Plus, 
@@ -888,8 +889,22 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
 }
 
 // --- Vista Settimana ---
-function WeekView({ events, onEdit, onAdd, onSave, activeFilters }) {
-  const [weekOffset, setWeekOffset] = useState(0);
+function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onClearFocusDate }) {
+  // Calculate initial weekOffset from focusDate (if provided)
+  const initialOffset = useMemo(() => {
+    if (!focusDate) return 0;
+    const target = new Date(focusDate + 'T00:00:00');
+    const now2 = new Date();
+    const nowMon = new Date(now2); nowMon.setDate(now2.getDate() - ((now2.getDay() + 6) % 7)); nowMon.setHours(0,0,0,0);
+    const tgtMon = new Date(target); tgtMon.setDate(target.getDate() - ((target.getDay() + 6) % 7)); tgtMon.setHours(0,0,0,0);
+    return Math.round((tgtMon - nowMon) / (7 * 24 * 60 * 60 * 1000));
+  }, [focusDate]);
+  const [weekOffset, setWeekOffset] = useState(initialOffset);
+  // Sync weekOffset when focusDate changes externally
+  useEffect(() => {
+    if (focusDate) { setWeekOffset(initialOffset); if (onClearFocusDate) onClearFocusDate(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusDate, initialOffset]);
   const scrollRef = useRef(null);
   const now = new Date();
   const todayStr = toDateStr(now);
@@ -1217,13 +1232,32 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
 
 // --- Componente Principale Agenda ---
 export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSelectPractice, settings }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState('today');
   const [modalEvent, setModalEvent] = useState(null);
   const [activeFilters, setActiveFilters] = useState([]);
   const [showNotifPopup, setShowNotifPopup] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [localSettings, setLocalSettings] = useState(settings || {});
+  // Jump-to-date: when navigated with ?date=YYYY-MM-DD, focus that day
+  const [focusDate, setFocusDate] = useState(null);
   const events = useMemo(() => agendaEvents || [], [agendaEvents]);
+
+  // Handle ?date= query parameter — switch to appropriate view
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) return;
+    const todayStr = toDateStr(new Date());
+    if (dateParam === todayStr) {
+      setView('today');
+    } else {
+      setView('week');
+      setFocusDate(dateParam);
+    }
+    // Clear the param so it doesn't persist on manual navigation
+    setSearchParams({}, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Derive localSettings from parent settings prop (no effect needed)
   const effectiveSettings = settings || localSettings;
@@ -1344,7 +1378,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
       <div className={`flex-1 overflow-hidden grid gap-5 items-start ${showStats ? 'grid-cols-1 lg:grid-cols-[1fr_260px]' : 'grid-cols-1'}`} style={{ transition: 'grid-template-columns 0.3s' }}>
         <div className="overflow-hidden h-full">
           {view === 'today' && <TodayView events={events} onToggle={handleToggle} onEdit={openEdit} onAdd={openAdd} onSave={handleSave} activeFilters={activeFilters} />}
-          {view === 'week' && <WeekView events={events} onEdit={openEdit} onAdd={openAdd} onSave={handleSave} activeFilters={activeFilters} />}
+          {view === 'week' && <WeekView events={events} onEdit={openEdit} onAdd={openAdd} onSave={handleSave} activeFilters={activeFilters} focusDate={focusDate} onClearFocusDate={() => setFocusDate(null)} />}
           {view === 'month' && <MonthView events={events} onEdit={openEdit} onAdd={openAdd} activeFilters={activeFilters} />}
         </div>
         
@@ -1412,6 +1446,8 @@ WeekView.propTypes = {
   onAdd: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired,
   activeFilters: PropTypes.array.isRequired,
+  focusDate: PropTypes.string,
+  onClearFocusDate: PropTypes.func,
 };
 
 MonthView.propTypes = {

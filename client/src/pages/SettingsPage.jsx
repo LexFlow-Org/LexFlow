@@ -541,7 +541,10 @@ export default function SettingsPage({ onLock }) {
 
   useEffect(() => {
     api.getAppVersion().then(setAppVersion);
-    api.isMac().then(isMac => setPlatform(isMac ? 'macOS' : 'Windows'));
+    api.getPlatform().then(p => {
+      const labels = { macos: 'macOS', windows: 'Windows', android: 'Android', ios: 'iOS', linux: 'Linux' };
+      setPlatform(labels[p] || p || 'Desktop');
+    }).catch(() => api.isMac().then(m => setPlatform(m ? 'macOS' : 'Windows')));
     api.getSettings().then(applySettings);
     // Check biometrics status
     api.checkBio().then(available => {

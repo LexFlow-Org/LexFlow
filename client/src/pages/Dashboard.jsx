@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Briefcase, CalendarDays, CalendarClock, Coffee, Sun, Sunrise, ChevronDown } from 'lucide-react';
+import { Briefcase, CalendarDays, CalendarClock, Coffee, Sun, Sunrise, ChevronDown, Calendar, FolderOpen } from 'lucide-react';
 
 const CAT_COLORS = { udienza: '#d4a940', scadenza: '#EF6B6B', riunione: '#5B8DEF', studio: '#8B7CF6', personale: '#2DD4BF' };
 const CAT_COLOR = c => CAT_COLORS[c] || '#7c8099';
@@ -8,6 +8,18 @@ const CAT_COLOR = c => CAT_COLORS[c] || '#7c8099';
 function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavigate }) {
   const scrollRef = useRef(null);
   const [scrollInfo, setScrollInfo] = useState({ atBottom: true, hiddenCount: 0 });
+  const [popoverEventId, setPopoverEventId] = useState(null);
+  const popoverRef = useRef(null);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!popoverEventId) return;
+    const handleClick = (e) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target)) setPopoverEventId(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [popoverEventId]);
   const MAX_VISIBLE_HEIGHT = 240; // max height in px before scrolling kicks in
   const needsScroll = relevant.length > 5; // threshold to enable scroll
 
@@ -50,23 +62,49 @@ function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavig
         style={{ maxHeight: needsScroll ? MAX_VISIBLE_HEIGHT : 'none' }}
       >
         {relevant.map((ev, i) => (
-          <button type="button" key={ev.id || i} data-event-row
-            onClick={() => {
-              if (ev.practiceId && onSelectPractice) onSelectPractice(ev.practiceId);
-              else if (onNavigate) onNavigate('/agenda');
-            }}
-            className="flex items-center gap-3 text-sm cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-white/[0.06] transition-colors group text-left w-full">
-            <span className="text-[11px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded w-14 text-center flex-shrink-0">
-              {ev.timeStart || '--:--'}
-            </span>
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-white/10" style={{ background: CAT_COLOR(ev.category) }} />
-            <span className="text-white truncate group-hover:text-primary transition-colors">{ev.title}</span>
-            {ev.category && (
-              <span className="text-[9px] font-bold uppercase tracking-wider ml-auto flex-shrink-0 px-2 py-0.5 rounded-md"
-                style={{ color: CAT_COLOR(ev.category), background: CAT_COLOR(ev.category) + '1a' }}
-              >{ev.category}</span>
+          <div key={ev.id || i} data-event-row className="relative">
+            <button type="button"
+              onClick={() => {
+                if (ev.practiceId) {
+                  // Mostra popover con scelta Agenda/Fascicolo
+                  setPopoverEventId(popoverEventId === (ev.id || i) ? null : (ev.id || i));
+                } else if (onNavigate) {
+                  onNavigate('/agenda');
+                }
+              }}
+              className="flex items-center gap-3 text-sm cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-white/[0.06] transition-colors group text-left w-full">
+              <span className="text-[11px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded w-14 text-center flex-shrink-0">
+                {ev.timeStart || '--:--'}
+              </span>
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-white/10" style={{ background: CAT_COLOR(ev.category) }} />
+              <span className="text-white truncate group-hover:text-primary transition-colors">{ev.title}</span>
+              {ev.category && (
+                <span className="text-[9px] font-bold uppercase tracking-wider ml-auto flex-shrink-0 px-2 py-0.5 rounded-md"
+                  style={{ color: CAT_COLOR(ev.category), background: CAT_COLOR(ev.category) + '1a' }}
+                >{ev.category}</span>
+              )}
+            </button>
+
+            {/* Popover: Agenda o Fascicolo */}
+            {popoverEventId === (ev.id || i) && ev.practiceId && (
+              <div ref={popoverRef} className="absolute left-4 top-full mt-1 bg-[#14151d] border border-white/10 rounded-xl shadow-2xl z-50 py-1 min-w-[200px] animate-fade-in">
+                <button
+                  onClick={() => { setPopoverEventId(null); if (onNavigate) onNavigate('/agenda?date=' + ev.date); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-xs hover:bg-white/5 transition-colors text-left"
+                >
+                  <Calendar size={14} className="text-primary" />
+                  <span className="text-white font-medium">Apri in Agenda</span>
+                </button>
+                <button
+                  onClick={() => { setPopoverEventId(null); if (onSelectPractice) onSelectPractice(ev.practiceId); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-xs hover:bg-white/5 transition-colors text-left"
+                >
+                  <FolderOpen size={14} className="text-amber-400" />
+                  <span className="text-white font-medium">Vai al Fascicolo</span>
+                </button>
+              </div>
             )}
-          </button>
+          </div>
         ))}
       </div>
 

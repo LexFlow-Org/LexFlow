@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import PropTypes from 'prop-types';
-import { CalendarClock, ChevronRight, Check, Calendar } from 'lucide-react';
+import { CalendarClock, ChevronRight, Check, Calendar, FolderOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
 import { formatDateIT, mapAgendaToScheduleItems } from '../utils/helpers';
@@ -8,19 +8,33 @@ import { formatDateIT, mapAgendaToScheduleItems } from '../utils/helpers';
 const TYPE_LABELS = { civile: 'Civile', penale: 'Penale', amm: 'Amministrativo', stra: 'Stragiudiziale', agenda: 'Agenda' };
 
 function DeadlineRow({ d, onSelectPractice, onNavigate }) {
+  const [showPopover, setShowPopover] = useState(false);
+  const popRef = useRef(null);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!showPopover) return;
+    const handler = (e) => { if (popRef.current && !popRef.current.contains(e.target)) setShowPopover(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showPopover]);
+
   const handleClick = () => {
     if (d.source === 'agenda') {
-      if (onNavigate) onNavigate('/agenda');
+      // Navigate to agenda at the deadline's date
+      if (onNavigate) onNavigate('/agenda?date=' + d.date);
     } else if (d.practiceId) {
-      onSelectPractice(d.practiceId);
+      // Show popover with choice: Agenda or Fascicolo
+      setShowPopover(true);
     }
   };
   return (
-    <button
-      type="button"
-      className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] transition cursor-pointer group border border-white/5 hover:border-white/10 text-left w-full"
-      onClick={handleClick}
-    >
+    <div className="relative" ref={popRef}>
+      <button
+        type="button"
+        className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] transition cursor-pointer group border border-white/5 hover:border-white/10 text-left w-full"
+        onClick={handleClick}
+      >
       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${(() => {
         if (d.diff < 0) return 'bg-red-400';
         if (d.diff === 0 || d.diff <= 3) return 'bg-amber-400';
@@ -39,6 +53,19 @@ function DeadlineRow({ d, onSelectPractice, onNavigate }) {
       {d.source === 'agenda' && <Calendar size={12} className="text-primary/60 flex-shrink-0" title="Da Agenda" />}
       <ChevronRight size={14} className="text-text-dim group-hover:text-primary transition flex-shrink-0" />
     </button>
+
+    {/* Popover: Apri in Agenda / Vai al Fascicolo */}
+    {showPopover && (
+      <div className="absolute right-10 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-1 p-1.5 rounded-xl bg-surface border border-white/10 shadow-xl min-w-[160px] animate-slide-up">
+        <button onClick={() => { setShowPopover(false); if (onNavigate) onNavigate('/agenda?date=' + d.date); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-white/[0.06] transition">
+          <Calendar size={14} className="text-primary" /> Apri in Agenda
+        </button>
+        <button onClick={() => { setShowPopover(false); onSelectPractice(d.practiceId); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-white/[0.06] transition">
+          <FolderOpen size={14} className="text-primary" /> Vai al Fascicolo
+        </button>
+      </div>
+    )}
+    </div>
   );
 }
 

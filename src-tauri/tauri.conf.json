@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "LexFlow",
-  "version": "1.0.3",
+  "version": "1.5.0",
   "identifier": "com.pietrolongo.lexflow",
   "build": {
     "frontendDist": "../client/dist",
@@ -55,7 +55,7 @@
     },
     "android": {
       "minSdkVersion": 24,
-      "versionCode": 100
+      "versionCode": 150
     },
     "windows": {
       "webviewInstallMode": {
