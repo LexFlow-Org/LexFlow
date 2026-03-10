@@ -19,8 +19,6 @@ function fmtDuration(min) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function fmtHours(min) { return (min / 60).toFixed(1); }
-
 const DAYS_IT = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 const MONTHS_IT = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
@@ -166,7 +164,10 @@ export default function TimeTrackingPage({ practices }) {
 
   const now = new Date();
   const sow = new Date(now);
-  sow.setDate(now.getDate() - ((now.getDay() + 6) % 7) + weekOffset * 7);
+  // getDay(): 0=Sun..6=Sat → shift to Monday-based week
+  const dayOfWeek = now.getDay(); // 0=Sun
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // if Sun, go back 6; else go to last Mon
+  sow.setDate(now.getDate() + mondayOffset + weekOffset * 7);
   const weekDays = Array.from({ length: 7 }, (_, i) => { const d = new Date(sow); d.setDate(sow.getDate() + i); return d; });
   const weekStart = toDateStr(weekDays[0]);
   const weekEnd = toDateStr(weekDays[6]);
@@ -334,18 +335,14 @@ export default function TimeTrackingPage({ practices }) {
             <div className="inline-flex items-center bg-white/[0.04] rounded-xl p-1 border border-white/5 gap-1">
               <button onClick={() => setWeekOffset(w => w - 1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronLeft size={14} /></button>
               <span className="text-xs font-bold w-48 text-center text-white">
-                {weekDays[0].getDate()} {MONTHS_IT[weekDays[0].getMonth()]} \u2013 {weekDays[6].getDate()} {MONTHS_IT[weekDays[6].getMonth()]}
+                {weekDays[0].getDate()} {MONTHS_IT[weekDays[0].getMonth()]} – {weekDays[6].getDate()} {MONTHS_IT[weekDays[6].getMonth()]}
               </span>
               <button onClick={() => setWeekOffset(w => w + 1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronRight size={14} /></button>
             </div>
             <div className="flex items-center gap-3">
-              <div className="glass-card px-4 py-2 text-center">
-                <span className="text-lg font-bold text-white">{fmtDuration(totalWeekMin)}</span>
-                <span className="text-[10px] text-text-dim block">Settimana</span>
-              </div>
-              <div className="glass-card px-4 py-2 text-center">
-                <span className="text-lg font-bold text-white/80">{fmtHours(totalWeekMin)}h</span>
-                <span className="text-[10px] text-text-dim block">Ore</span>
+              <div className="glass-card px-4 py-2 text-center min-w-[90px]">
+                <span className="text-lg font-bold text-primary tabular-nums">{fmtDuration(totalWeekMin)}</span>
+                <span className="text-[10px] text-text-dim block">Totale Settimana</span>
               </div>
               <button onClick={() => setShowAddModal(true)} className="btn-primary text-xs px-4 py-2">
                 <Plus size={14} /> Manuale

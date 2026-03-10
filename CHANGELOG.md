@@ -4,6 +4,32 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.5.1] -- 2026-03-10
+
+### Fix
+- **Mobile notification priority** -- I reminder su Android/iOS vengono ora ordinati per data/ora (piu vicini prima) prima della schedulazione. Con 80+ eventi, i 60 slot vanno sempre ai piu urgenti; i restanti rientrano automaticamente man mano che gli eventi passano o vengono completati
+- **Email/PEC validation** -- ContactsPage ora valida il formato email e PEC al salvataggio (pattern regex); toast di errore se il formato non e' valido
+- **Dashboard popover fix** -- Il popover "Apri in Agenda / Vai al Fascicolo" ora si apre correttamente al click sugli eventi (fix race condition outside-click listener)
+- **Week range en-dash** -- Corretto `\u2013` che appariva come testo letterale nella barra settimana di Gestione Ore; ora mostra il carattere – corretto
+- **Week start date** -- Corretta la formula di calcolo inizio settimana (lunedi) che in alcuni casi mostrava il giorno precedente (es. 9 marzo invece di 10)
+- **Stats card cleanup** -- Rimossa la card "Ore" ridondante; singola card "Totale Settimana" in primary con min-width uniforme
+- **Biometria reset flow** -- Il fallimento della verifica biometrica non chiude piu il modal ma procede al passo "Conferma"; il re-enrollment verifica la password prima della bio e non blocca se la bio viene annullata
+- **Screenshot protection first launch** -- Il blocco screenshot ora viene applicato al primo avvio (default true) anche se il file settings non contiene ancora la chiave
+- **Toast screenshot uniformi** -- I messaggi toast per attivazione/disattivazione screenshot hanno ora la stessa lunghezza ("Screenshot bloccati" / "Screenshot sbloccati")
+- **Preavviso sync Settings↔Agenda** -- Il preavviso standard in Impostazioni e quello nel popup Avvisi Agenda ora condividono la stessa chiave; modificare uno aggiorna automaticamente l'altro
+
+### UX / UI
+- **PracticeCombobox browsable** -- Il combobox fascicolo mostra la lista completa all'apertura con ChevronDown, icona Briefcase e navigazione Arrow Up/Down con evidenziazione
+- **Factory Reset button redesign** -- Stile unificato con il bottone "Blocca Vault" della sidebar (rounded-2xl, bordo, sfondo semi-trasparente)
+- **Sidebar footer redesign** -- Versione e badge AES-256 su una riga compatta, spaziatura ridotta, tipografia piu leggera
+- **Stats card unificata** -- Rimossa la card "Ore" ridondante; la card "Totale Settimana" ora usa colore primary, larghezza minima uniforme e label chiara
+- **Biometria reset resiliente** -- Il modal di reset biometria non si chiude piu se la verifica biometrica viene annullata; procede al passo di conferma. Il re-enrollment verifica prima la password, poi tenta la bio (senza bloccare se annullata)
+
+### UX
+- **PracticeCombobox browsable** -- Il combobox fascicoli ora mostra la lista completa all'apertura (con icona Briefcase e chevron); il campo di ricerca appare solo dopo il click per filtrare. Aggiunta navigazione Arrow Up/Down con highlight e scroll-into-view
+
+---
+
 ## [1.5.0] -- 2026-03-10
 
 ### UX / UI -- Redesign Contatti (Piano 1)

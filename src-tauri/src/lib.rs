@@ -3555,6 +3555,8 @@ fn schedule_all_briefings(
 }
 
 /// Schedule all per-item reminder notifications.
+/// Items are sorted by date+time (nearest first) so the most urgent events
+/// always get a slot even when total items exceed MAX_SCHEDULED.
 /// Returns number of notifications scheduled.
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn schedule_all_reminders(
@@ -3565,8 +3567,18 @@ fn schedule_all_reminders(
     already: i32,
     max: i32,
 ) -> i32 {
+    // Sort items by date+time ascending so nearest events get priority
+    let mut sorted: Vec<&Value> = items.iter().collect();
+    sorted.sort_by(|a, b| {
+        let key = |v: &Value| {
+            let d = v.get("date").and_then(|x| x.as_str()).unwrap_or("9999-99-99");
+            let t = v.get("time").and_then(|x| x.as_str()).unwrap_or("99:99");
+            format!("{} {}", d, t)
+        };
+        key(a).cmp(&key(b))
+    });
     let mut count = already;
-    for item in items {
+    for item in &sorted {
         if count >= max {
             break;
         }

@@ -76,9 +76,9 @@ export default function App() {
       if (s) {
         setSettings(s);
         if (typeof s.privacyBlurEnabled === 'boolean') setPrivacyEnabled(s.privacyBlurEnabled);
-        if (typeof s.screenshotProtection === 'boolean') {
-          api.setContentProtection?.(s.screenshotProtection);
-        }
+        // Apply screenshot protection — default to true on first launch
+        const screenshotProt = typeof s.screenshotProtection === 'boolean' ? s.screenshotProtection : true;
+        api.setContentProtection?.(screenshotProt);
         if (s.autolockMinutes !== undefined) {
           api.setAutolockMinutes?.(s.autolockMinutes);
         }

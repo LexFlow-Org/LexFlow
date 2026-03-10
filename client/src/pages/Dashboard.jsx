@@ -14,12 +14,18 @@ function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavig
   // Close popover on outside click
   useEffect(() => {
     if (!popoverEventId) return;
-    const handleClick = (e) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target)) setPopoverEventId(null);
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    // Delay registration to avoid the opening click being caught as outside click
+    const timerId = setTimeout(() => {
+      const handleClick = (e) => {
+        if (popoverRef.current && !popoverRef.current.contains(e.target)) setPopoverEventId(null);
+      };
+      document.addEventListener('mousedown', handleClick);
+      // store cleanup ref
+      cleanupRef.current = () => document.removeEventListener('mousedown', handleClick);
+    }, 0);
+    return () => { clearTimeout(timerId); cleanupRef.current?.(); cleanupRef.current = null; };
   }, [popoverEventId]);
+  const cleanupRef = useRef(null);
   const MAX_VISIBLE_HEIGHT = 240; // max height in px before scrolling kicks in
   const needsScroll = relevant.length > 5; // threshold to enable scroll
 

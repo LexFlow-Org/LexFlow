@@ -593,9 +593,19 @@ function ContactModal({ initial, onSave, onClose }) {
     setForm(prev => ({ ...prev, [field]: value }));
   }, []);
 
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   const handleSubmit = () => {
     if (!form.name.trim()) {
       toast.error('Il nome è obbligatorio');
+      return;
+    }
+    if (form.email && form.email.trim() && !EMAIL_RE.test(form.email.trim())) {
+      toast.error('Indirizzo email non valido');
+      return;
+    }
+    if (form.pec && form.pec.trim() && !EMAIL_RE.test(form.pec.trim())) {
+      toast.error('Indirizzo PEC non valido');
       return;
     }
     onSave(form);

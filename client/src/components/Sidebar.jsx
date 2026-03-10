@@ -191,19 +191,19 @@ function DesktopSidebar({ version, onLock }) {
       <div className="p-6 border-t border-white/8 bg-[#0a0b12]">
         <button
           onClick={onLock}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group mb-6"
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group mb-5"
         >
           <Lock size={18} className="transition-transform group-hover:-rotate-12" />
           <span className="font-black text-[11px] uppercase tracking-widest">Blocca Vault</span>
         </button>
-        <div className="flex flex-col gap-3 px-2">
+        <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-bold text-text-dim/80 uppercase tracking-tighter">Versione {version}</span>
+            <span className="text-[10px] font-bold text-text-dim/80 uppercase tracking-tight">v{version}</span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/8">
-            <ShieldCheck size={12} className="text-primary" />
-            <span className="text-[9px] font-black text-text-dim uppercase tracking-widest">AES-256 GCM Secure</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.04] rounded-lg border border-white/[0.06]">
+            <ShieldCheck size={11} className="text-primary" />
+            <span className="text-[8px] font-black text-text-dim/70 uppercase tracking-widest">AES-256 GCM</span>
           </div>
         </div>
       </div>

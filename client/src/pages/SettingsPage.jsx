@@ -320,7 +320,11 @@ function BioResetConfirmModal({ onClose }) {
         const result = await api.bioLogin();
         if (cancelled) return;
         if (result) { setStep('confirm'); }
-        else { toast.error('Autenticazione biometrica fallita'); onClose(); }
+        else {
+          // Bio prompt was dismissed/failed — go to confirm step anyway
+          // (the user already clicked "Reset Bio", so let them proceed with password)
+          if (!cancelled) setStep('confirm');
+        }
       } catch {
         if (!cancelled) { setStep('confirm'); } // fallback to confirm if bio fails
       }
@@ -346,25 +350,23 @@ function BioResetConfirmModal({ onClose }) {
     if (!pwd.trim()) { setError('Inserisci la Master Password.'); return; }
     setLoading(true);
     try {
-      // Trigger system biometric first for extra security
-      try {
-        const bioAvail = await api.checkBio();
-        if (bioAvail) {
-          const bioResult = await api.bioLogin();
-          if (!bioResult) {
-            setError('Verifica biometrica fallita. Riprova.');
-            setLoading(false);
-            return;
-          }
-        }
-      } catch { /* bio unavailable — proceed with password only */ }
-      // Verify the password is correct
+      // Verify the password is correct first
       const verify = await api.verifyVaultPassword(pwd);
       if (!verify?.valid) {
         setError(verify?.error || 'Password errata.');
         setLoading(false);
         return;
       }
+      // Try system biometric for extra security, but don't block on failure
+      try {
+        const bioAvail = await api.checkBio();
+        if (bioAvail) {
+          const bioResult = await api.bioLogin();
+          if (!bioResult) {
+            // User dismissed the bio prompt — still proceed since password is verified
+          }
+        }
+      } catch { /* bio unavailable — proceed with password only */ }
       // Enroll biometrics with the password
       await api.saveBio(pwd);
       toast.success("Biometria riconfigurata con successo!");
@@ -534,7 +536,9 @@ export default function SettingsPage({ onLock }) {
     if (!settings) return;
     if (typeof settings.privacyBlurEnabled === 'boolean') setPrivacyEnabled(settings.privacyBlurEnabled);
     if (typeof settings.notifyEnabled === 'boolean') setNotifyEnabled(settings.notifyEnabled);
-    if (settings.notificationTime) setNotificationTime(settings.notificationTime);
+    // Unify: prefer `preavviso` (Agenda key), fallback to `notificationTime` (legacy Settings key)
+    if (settings.preavviso !== undefined) setNotificationTime(settings.preavviso);
+    else if (settings.notificationTime) setNotificationTime(settings.notificationTime);
     if (typeof settings.screenshotProtection === 'boolean') setScreenshotProtection(settings.screenshotProtection);
     if (settings.autolockMinutes !== undefined) setAutolockMinutes(settings.autolockMinutes);
   };
@@ -565,6 +569,7 @@ export default function SettingsPage({ onLock }) {
     privacyBlurEnabled: privacyEnabled,
     notifyEnabled,
     notificationTime,
+    preavviso: notificationTime, // keep synced with Agenda's key
     screenshotProtection,
     autolockMinutes,
   }), [privacyEnabled, notifyEnabled, notificationTime, screenshotProtection, autolockMinutes]);
@@ -643,7 +648,7 @@ export default function SettingsPage({ onLock }) {
                       type="button"
                       onClick={() => {
                         setNotificationTime(opt.value);
-                        saveNotifySettings({ notificationTime: opt.value });
+                        saveNotifySettings({ notificationTime: opt.value, preavviso: opt.value });
                       }}
                       className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                         notificationTime === opt.value
@@ -704,7 +709,7 @@ export default function SettingsPage({ onLock }) {
                 try {
                   await api.setContentProtection(val);
                   await api.saveSettings({ ...buildFullSettings(), screenshotProtection: val });
-                  toast.success(val ? 'Blocco Screenshot Attivato' : 'Blocco Screenshot Disattivato');
+                  toast.success(val ? 'Screenshot bloccati' : 'Screenshot sbloccati');
                 } catch {
                   toast.error('Errore');
                   setScreenshotProtection(!val);
@@ -872,10 +877,10 @@ export default function SettingsPage({ onLock }) {
       <div className="pt-12 text-center">
         <button 
           onClick={() => setShowFactoryReset(true)}
-          className="text-[10px] font-black text-red-400/50 hover:text-red-500 uppercase tracking-[4px] transition-all flex items-center justify-center gap-3 mx-auto py-4 border border-red-500/10 hover:border-red-500/20 rounded-full px-8 hover:bg-red-500/5"
+          className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-6 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group"
         >
-          <LogOut size={14} />
-          Factory Reset Vault
+          <LogOut size={16} className="transition-transform group-hover:-rotate-12" />
+          <span className="font-black text-[11px] uppercase tracking-widest">Factory Reset Vault</span>
         </button>
       </div>
 

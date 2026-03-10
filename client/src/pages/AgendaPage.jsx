@@ -1118,6 +1118,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
       ...settings,
       notifyEnabled,
       preavviso,
+      notificationTime: preavviso, // keep synced with Settings key
       briefingMattina,
       briefingPomeriggio,
       briefingSera,
