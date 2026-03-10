@@ -3208,6 +3208,18 @@ async fn select_pdf_save_path(
     }
 }
 
+/// Writes raw PDF bytes to a user-chosen path.
+/// This bypasses the FS plugin scope (which is restricted to $APPDATA)
+/// because the user explicitly chose the destination via native save dialog.
+#[tauri::command]
+async fn write_pdf_to_path(path: String, data: Vec<u8>) -> Result<bool, String> {
+    if data.is_empty() {
+        return Err("Cannot write empty PDF data".to_string());
+    }
+    std::fs::write(&path, &data).map_err(|e| format!("Write failed: {}", e))?;
+    Ok(true)
+}
+
 // ═══════════════════════════════════════════════════════════
 //  NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════
@@ -4475,6 +4487,7 @@ pub fn run() {
             select_folder,
             open_path,
             select_pdf_save_path,
+            write_pdf_to_path,
             list_folder_contents,
             warm_swift,
             // Notifications

@@ -4,6 +4,22 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.5.2] -- 2026-03-10
+
+### Fix
+- **PDF export non funzionante** -- L'esportazione PDF falliva silenziosamente perché il plugin FS era limitato a `$APPDATA`. Ora il backend Rust scrive direttamente il file nel percorso scelto dall'utente tramite dialog nativo (`write_pdf_to_path` command)
+- **Export progress toast** -- Durante l'esportazione PDF appare un toast di caricamento "Generazione PDF in corso…" che si aggiorna a successo/errore al completamento
+- **Export password modal centrato** -- Il dialog di verifica password per l'export usa ora `ModalOverlay` centrato con blur e X di chiusura (prima era in alto a sinistra senza blur)
+
+### UX / UI
+- **Diario UX modernizzato** -- Card note con bordi arrotondati `rounded-2xl`, spaziatura migliorata, timeline dot più grande con ring, date in formato "10 mar 2026" leggibile
+- **Contrasto testo migliorato** -- `--text-muted` da `#b0b4cc` → `#c0c4dc`, `--text-dim` da `#8b90ad` → `#9da2be`; tutti i testi secondari in PracticeDetail convertiti da `text-text-dim/text-text-muted` a `text-white/XX` per WCAG AA
+- **Send button centrato** -- Il pulsante invio nel diario ora è `w-9 h-9 flex items-center justify-center` con icona `text-black` centrata nel cerchio dorato
+- **Empty states leggibili** -- Gli stati vuoti (diario, documenti, cartelle, scadenze) usano `text-white/40–50` invece di `text-text-dim` quasi invisibile
+- **Textarea diario moderna** -- Campo di input con `rounded-2xl`, bordi `white/10`, placeholder `white/30`, focus con glow `primary/40`
+
+---
+
 ## [1.5.1] -- 2026-03-10
 
 ### Fix

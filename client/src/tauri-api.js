@@ -3,7 +3,6 @@
 // withGlobalTauri=false + CSP script-src 'self' = XSS cannot access invoke().
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { writeFile } from '@tauri-apps/plugin-fs';
 import { isPermissionGranted as notifPermGranted } from '@tauri-apps/plugin-notification';
 
 function safeInvoke(cmd, args = {}) {
@@ -94,7 +93,7 @@ export const selectFile = async () => (await safeInvoke('select_file')) || null;
 export const selectFolder = async () => (await safeInvoke('select_folder')) || null;
 export const openPath = (path) => safeInvoke('open_path', { path });
 
-// PDF export — bypasses JSON serialization via fs plugin direct write
+// PDF export — uses Rust command to bypass FS plugin scope (restricted to $APPDATA)
 export const exportPDF = async (arrayBuffer, defaultName) => {
   // SECURITY FIX (Gemini Audit Chunk 01): validate buffer before writing
   if (!arrayBuffer || arrayBuffer.byteLength === 0) {
@@ -102,7 +101,9 @@ export const exportPDF = async (arrayBuffer, defaultName) => {
   }
   const savePath = await safeInvoke('select_pdf_save_path', { defaultName });
   if (savePath) {
-    await writeFile(savePath, new Uint8Array(arrayBuffer));
+    // Convert ArrayBuffer to plain Array<u8> for Tauri command serialization
+    const data = Array.from(new Uint8Array(arrayBuffer));
+    await safeInvoke('write_pdf_to_path', { path: savePath, data });
     return { success: true, path: savePath };
   }
   return { success: false, cancelled: true };
