@@ -4,6 +4,23 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.5.4] -- 2026-03-11
+
+### Security
+- **Path traversal PDF** (M1) -- `write_pdf_to_path` ora valida: percorso assoluto, estensione `.pdf` obbligatoria, parent canonicalizzato e controllato contro allowlist (home/documenti/desktop/download). Impedisce scrittura arbitraria di file da potenziale XSS
+- **Bio subprocess timeout** (M3) -- `bio_login` su macOS ora applica timeout di 60 secondi al subprocess Swift. Previene hang indefinito se Touch ID si congela o il dialog viene abbandonato
+- **Lock mutex singolo** (L5) -- `ping_activity` usa ora un solo scope di lock per read+write, eliminando la race condition TOCTOU tra le due acquisizioni consecutive
+- **Lockout crash-safe** (L2) -- `lockout_save` usa `atomic_write_with_sync` invece di `fs::write` grezzo. Previene file `.lockout` corrotto in caso di crash a metà scrittura
+- **Marker file mode 0600** (L3/L4) -- I file sentinella `.bio-enabled` e di notifica ora scritti con `secure_write` (mode 0600). Prima potevano essere world-readable su sistemi con umask permissivo
+- **Helper interno non esposto** (L1) -- Rimosso `#[tauri::command]` da `count_urgent_deadlines` (helper interno chiamato solo da `get_summary`)
+- **verifyLicense bridge corretto** (I3) -- `verifyLicense` ora passa correttamente il parametro `keyString` al comando Rust (prima non passava argomenti, rendendo il comando non invocabile dal frontend)
+- **Parametro spoofabile rimosso** (I4) -- Rimosso `_client_name` da `activate_license`; il nome cliente viene estratto dal token Ed25519 firmato, non accettato dal frontend
+- **DRY vault helpers** (D1/D2) -- Creati `load_vault_field`/`save_vault_field`, refactoring di 5 coppie load/save (practices, agenda, timeLogs, invoices, contacts)
+- **Listener notifiche negate** -- Aggiunto `onNotificationPermissionDenied` in `tauri-api.js` per gestire l'evento backend `notification-permission-denied`
+- **Documentazione trade-off** (M2/M4) -- Documentato il trade-off keychain biometria, il piano deprecazione AAD legacy (v2.0.0), e le limitazioni intrinseche dello zeroing password
+
+---
+
 ## [1.5.3] -- 2026-03-11
 
 ### Fix
