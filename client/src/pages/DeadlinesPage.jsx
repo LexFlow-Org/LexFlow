@@ -84,11 +84,21 @@ DeadlineRow.propTypes = {
   onNavigate: PropTypes.func,
 };
 
-function DeadlineSection({ title, items, onSelectPractice, onNavigate }) {
+function DeadlineSection({ title, items, onSelectPractice, onNavigate, color }) {
   if (items.length === 0) return null;
+  const colorStyles = {
+    red: 'text-red-400 border-red-500/20',
+    amber: 'text-amber-400 border-amber-500/20',
+    blue: 'text-blue-400 border-blue-500/20',
+    dim: 'text-text-dim border-white/10',
+  };
+  const style = colorStyles[color] || colorStyles.dim;
   return (
     <div className="mb-6">
-      <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px] mb-3">{title} ({items.length})</h3>
+      <div className={`flex items-center gap-2 mb-3 pb-2 border-b ${style.split(' ').slice(1).join(' ')}`}>
+        <span className={`w-2 h-2 rounded-full ${color === 'red' ? 'bg-red-400' : color === 'amber' ? 'bg-amber-400' : color === 'blue' ? 'bg-blue-400' : 'bg-white/30'}`} />
+        <h3 className={`text-[10px] font-black uppercase tracking-[2px] ${style.split(' ')[0]}`}>{title} ({items.length})</h3>
+      </div>
       <div className="space-y-2">
         {items.map((d) => <DeadlineRow key={`${d.date}_${d.label}_${d.practiceId || d.id}`} d={d} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />)}
       </div>
@@ -101,6 +111,7 @@ DeadlineSection.propTypes = {
   items: PropTypes.array,
   onSelectPractice: PropTypes.func,
   onNavigate: PropTypes.func,
+  color: PropTypes.string,
 };
 
 export default function DeadlinesPage({ practices, onSelectPractice, settings, agendaEvents, onNavigate }) {
@@ -271,10 +282,10 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         </div>
       ) : (
         <div className="glass-card p-6">
-          <DeadlineSection title="Scadute" items={pastDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />
-          <DeadlineSection title="Oggi" items={todayDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />
-          <DeadlineSection title="Prossimi 7 giorni" items={weekDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />
-          <DeadlineSection title="Future" items={futureDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />
+          <DeadlineSection title="Scadute" items={pastDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} color="red" />
+          <DeadlineSection title="Oggi" items={todayDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} color="amber" />
+          <DeadlineSection title="Prossimi 7 giorni" items={weekDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} color="blue" />
+          <DeadlineSection title="Future" items={futureDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} color="dim" />
         </div>
       )}
     </div>

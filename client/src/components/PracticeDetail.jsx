@@ -17,34 +17,53 @@ import { formatDateIT } from '../utils/helpers';
 /* ---------- Biometric Lock Screen (extracted to reduce cognitive complexity) ---------- */
 function BiometricLockScreen({ practice, onBack, onUnlock }) {
   const [bioAttempted, setBioAttempted] = useState(false);
+  const [bioConfigured, setBioConfigured] = useState(null); // null = checking, true/false
   const [showPasswordFallback, setShowPasswordFallback] = useState(false);
   const [practicePassword, setPracticePassword] = useState('');
   const [practicePasswordError, setPracticePasswordError] = useState('');
 
+  // Check if biometrics are configured on mount
   useEffect(() => {
-    if (!bioAttempted) {
-      setBioAttempted(true);
-      // Only trigger biometric if the window is focused (avoid Touch ID over other apps)
-      const attemptBio = async () => {
-        try {
-          const result = await api.bioLogin();
-          if (result) onUnlock();
-        } catch (err) {
-          console.debug('[PracticeDetail] Biometric auth failed or dismissed', err);
+    let cancelled = false;
+    (async () => {
+      try {
+        const available = await api.checkBio();
+        if (!available) { if (!cancelled) { setBioConfigured(false); setShowPasswordFallback(true); } return; }
+        const saved = await api.hasBioSaved();
+        if (!cancelled) {
+          setBioConfigured(saved);
+          if (!saved) setShowPasswordFallback(true); // Not configured → show password directly
         }
-      };
-      if (document.hasFocus()) {
-        attemptBio();
-      } else {
-        const onFocus = () => {
-          window.removeEventListener('focus', onFocus);
-          attemptBio();
-        };
-        window.addEventListener('focus', onFocus);
+      } catch {
+        if (!cancelled) { setBioConfigured(false); setShowPasswordFallback(true); }
       }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Auto-trigger biometric only if configured
+  useEffect(() => {
+    if (bioConfigured !== true || bioAttempted) return;
+    setBioAttempted(true);
+    const attemptBio = async () => {
+      try {
+        const result = await api.bioLogin();
+        if (result) onUnlock();
+      } catch (err) {
+        console.debug('[PracticeDetail] Biometric auth failed or dismissed', err);
+      }
+    };
+    if (document.hasFocus()) {
+      attemptBio();
+    } else {
+      const onFocus = () => {
+        window.removeEventListener('focus', onFocus);
+        attemptBio();
+      };
+      window.addEventListener('focus', onFocus);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onUnlock is stable via useCallback; bioAttempted gate prevents re-runs
-  }, [bioAttempted]);
+  }, [bioConfigured, bioAttempted]);
 
   const retryBiometric = async () => {
     try {
@@ -84,16 +103,23 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
       </div>
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-6 max-w-xs">
+          {/* Icon: fingerprint if configured, lock if not */}
           <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto border border-primary/20 animate-pulse">
-            <Fingerprint size={36} className="text-primary" />
+            {bioConfigured ? <Fingerprint size={36} className="text-primary" /> : <Lock size={36} className="text-primary" />}
           </div>
           <div>
             <h2 className="text-xl font-bold text-white mb-2">Verifica Identità</h2>
             <p className="text-sm text-white/70">
-              {bioAttempted ? 'Autenticazione non riuscita. Riprova o usa la password.' : 'Autenticazione biometrica in corso...'}
+              {bioConfigured === null && 'Verifica in corso...'}
+              {bioConfigured === false && 'Inserisci la Master Password per accedere.'}
+              {bioConfigured === true && (bioAttempted ? 'Autenticazione non riuscita. Riprova o usa la password.' : 'Autenticazione biometrica in corso...')}
             </p>
+            {bioConfigured === false && (
+              <p className="text-[10px] text-amber-400/70 mt-2 font-semibold">Biometria non configurata — usa la password</p>
+            )}
           </div>
-          {bioAttempted && !showPasswordFallback && (
+          {/* Biometric retry + fallback (only when bio IS configured) */}
+          {bioConfigured === true && bioAttempted && !showPasswordFallback && (
             <div className="space-y-3">
               <button onClick={retryBiometric} className="btn-primary px-8 py-3 text-sm w-full">
                 <Fingerprint size={18} /> Riprova Biometria
@@ -106,6 +132,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
               </button>
             </div>
           )}
+          {/* Password form */}
           {showPasswordFallback && (
             <form onSubmit={handlePasswordFallback} className="space-y-3 text-left">
               <label htmlFor="pd-bio-pwd" className="text-[10px] font-bold text-white/40 uppercase tracking-[2px] ml-1 block">Master Password</label>
@@ -124,13 +151,15 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
               <button type="submit" className="btn-primary w-full py-3 text-sm">
                 <Lock size={16} /> Sblocca Fascicolo
               </button>
-              <button 
-                type="button"
-                onClick={() => { setShowPasswordFallback(false); setPracticePassword(''); setPracticePasswordError(''); }} 
-                className="w-full text-white/50 hover:text-white text-xs font-semibold transition-colors py-2"
-              >
-                Torna alla Biometria
-              </button>
+              {bioConfigured === true && (
+                <button 
+                  type="button"
+                  onClick={() => { setShowPasswordFallback(false); setPracticePassword(''); setPracticePasswordError(''); }} 
+                  className="w-full text-white/50 hover:text-white text-xs font-semibold transition-colors py-2"
+                >
+                  Torna alla Biometria
+                </button>
+              )}
             </form>
           )}
         </div>
@@ -212,7 +241,7 @@ StatusDropdown.propTypes = {
 };
 
 /* ---------- Main Component ---------- */
-export default function PracticeDetail({ practice, onBack, onUpdate }) {
+export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvents }) {
   const [activeTab, setActiveTab] = useState('diary'); // diary, docs, deadlines, info
   const [biometricVerified, setBiometricVerified] = useState(false);
   const [showExportWarning, setShowExportWarning] = useState(false);
@@ -288,7 +317,30 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
 
   const handleExportConfirmed = async () => {
     setShowExportWarning(false);
-    // Open password verification modal instead of prompt()
+    // Check if biometrics are configured — if yes, try biometric first
+    try {
+      const bioAvail = await api.checkBio();
+      const bioSaved = bioAvail ? await api.hasBioSaved() : false;
+      if (bioSaved) {
+        try {
+          const bioResult = await api.bioLogin();
+          if (bioResult) {
+            // Biometric verified — proceed directly with export
+            const toastId = toast.loading('Generazione PDF in corso…', { icon: '📄' });
+            try {
+              const success = await exportPracticePDF(practice);
+              if (success) { toast.success('PDF esportato correttamente', { id: toastId }); }
+              else { toast.dismiss(toastId); }
+            } catch (err) {
+              console.error('[PracticeDetail] PDF export failed:', err);
+              toast.error('Errore durante l\'esportazione', { id: toastId });
+            }
+            return;
+          }
+        } catch { /* bio failed/dismissed — fall through to password */ }
+      }
+    } catch { /* ignore bio check errors */ }
+    // Fallback: open password verification modal
     setExportPwd('');
     setShowExportPwdModal(true);
   };
@@ -412,7 +464,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
   const TABS = [
     { id: 'diary', label: 'Diario', icon: Clock, count: (practice.diary || []).length },
     { id: 'docs', label: 'Documenti', icon: FileText, count: (practice.attachments || []).length + folders.length },
-    { id: 'deadlines', label: 'Scadenze', icon: Calendar, count: (practice.deadlines || []).length },
+    { id: 'deadlines', label: 'Scadenze', icon: Calendar, count: (practice.deadlines || []).length + ((agendaEvents || []).filter(e => e.category === 'scadenza' && e.practiceId === practice.id && !e.autoSync && !e.completed).length) },
     { id: 'info', label: 'Info', icon: Info, count: 0 },
   ];
 
@@ -690,35 +742,59 @@ export default function PracticeDetail({ practice, onBack, onUpdate }) {
             </form>
 
             <div className="space-y-2">
-              {(!practice.deadlines || practice.deadlines.length === 0) ? (
-                 <div className="text-center py-10 text-white/40">
-                  <Calendar size={32} className="mx-auto mb-2 opacity-40" />
-                  <p className="text-white/50">Nessuna scadenza impostata</p>
-                </div>
-              ) : (() => {
+              {(() => {
                 const today = new Date(); today.setHours(0,0,0,0);
-                return practice.deadlines.map((d, idx) => {
+                // Combine practice deadlines + agenda scadenze linked to this practice
+                const practiceDeadlines = (practice.deadlines || []).map((d, idx) => ({
+                  ...d, source: 'practice', idx,
+                }));
+                const agendaDeadlines = (agendaEvents || [])
+                  .filter(e => e.category === 'scadenza' && e.practiceId === practice.id && !e.autoSync && !e.completed)
+                  .map(e => ({
+                    label: e.title, date: e.date, source: 'agenda', id: e.id,
+                  }));
+                const allDeadlines = [...practiceDeadlines, ...agendaDeadlines]
+                  .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                if (allDeadlines.length === 0) {
+                  return (
+                    <div className="text-center py-10 text-white/40">
+                      <Calendar size={32} className="mx-auto mb-2 opacity-40" />
+                      <p className="text-white/50">Nessuna scadenza impostata</p>
+                    </div>
+                  );
+                }
+
+                return allDeadlines.map((d) => {
                   const dDate = new Date(d.date); dDate.setHours(0,0,0,0);
                   const diff = Math.ceil((dDate - today) / (1000 * 60 * 60 * 24));
                   const dotColor = getDeadlineDotColor(diff);
                   const deadlineLabel = getDeadlineLabel(diff);
+                  const key = d.source === 'agenda' ? `agenda_${d.id}` : `${d.date}_${d.label}`;
                   
                   return (
-                    <div key={d.date + d.label} className="glass-card p-3 flex items-center gap-4 group hover:border-primary/30 transition-colors">
+                    <div key={key} className="glass-card p-3 flex items-center gap-4 group hover:border-primary/30 transition-colors">
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
                       
                       <div className="flex-1">
                          <p className="text-sm text-white font-medium">{d.label}</p>
-                         <p className="text-xs text-white/50">{formatDateIT(d.date, '')}</p>
+                         <div className="flex items-center gap-2">
+                           <p className="text-xs text-white/50">{formatDateIT(d.date, '')}</p>
+                           {d.source === 'agenda' && (
+                             <span className="text-[9px] font-bold text-primary/60 uppercase tracking-wider bg-primary/5 px-1.5 py-0.5 rounded">Agenda</span>
+                           )}
+                         </div>
                       </div>
 
                       <div className="text-xs font-bold px-2 py-1 rounded bg-white/5 text-white/70">
                         {deadlineLabel}
                       </div>
 
-                      <button onClick={() => confirmDeleteDeadline(idx)} className="opacity-0 group-hover:opacity-100 p-2 text-white/30 hover:text-red-400 transition-all">
-                        <Trash2 size={16} />
-                      </button>
+                      {d.source === 'practice' && (
+                        <button onClick={() => confirmDeleteDeadline(d.idx)} className="opacity-0 group-hover:opacity-100 p-2 text-white/30 hover:text-red-400 transition-all">
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   );
                 });
@@ -885,4 +961,5 @@ PracticeDetail.propTypes = {
   practice: practiceShape.isRequired,
   onBack: PropTypes.func.isRequired,
   onUpdate: PropTypes.func.isRequired,
+  agendaEvents: PropTypes.array,
 };

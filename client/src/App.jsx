@@ -436,6 +436,7 @@ export default function App() {
                       const newList = practices.map(p => p.id === up.id ? up : p);
                       savePractices(newList);
                     }}
+                    agendaEvents={agendaEvents}
                   />
                 ) : (
                   <PracticesList

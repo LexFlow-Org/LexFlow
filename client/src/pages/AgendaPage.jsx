@@ -401,7 +401,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
 
   return (
     <ModalOverlay onClose={onClose} label={isEdit ? 'Modifica Impegno' : 'Nuovo Impegno'} focusTrap>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] w-full max-w-2xl shadow-3xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] w-full max-w-2xl shadow-3xl overflow-hidden flex flex-col max-h-[95vh]">
         
         {/* Header — stile unificato con Fascicoli */}
         <div className="px-8 py-5 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-white/5 to-transparent">
@@ -420,7 +420,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+        <form onSubmit={handleSubmit} className="px-8 py-5 overflow-y-auto custom-scrollbar flex-1 space-y-4">
           
           {/* Titolo */}
           <div className="space-y-2">

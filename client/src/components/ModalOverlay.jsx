@@ -76,7 +76,7 @@ export default function ModalOverlay({
         aria-modal="true"
         aria-labelledby={labelledBy}
         aria-label={labelledBy ? undefined : label}
-        className={`relative z-10 m-0 p-0 border-none bg-transparent ${className}`}
+        className={`relative z-10 m-0 p-0 border-none bg-transparent outline-none ${className}`}
       >
         {children}
       </dialog>

@@ -4,6 +4,27 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.5.3] -- 2026-03-11
+
+### Fix
+- **Flusso biometria completamente riscritto** -- Il bottone Biometria nelle Impostazioni ora ha due flussi distinti:
+  - **Non configurata** → chiede Master Password → salva biometria (popup nativo del dispositivo) → configurata
+  - **Attiva** → conferma disattivazione → biometria rimossa
+  Prima il flusso era identico in entrambi i casi (partiva con verifica biometrica anche quando non era configurata, il che non ha senso)
+- **Lock Screen fascicoli senza biometria** -- Se la biometria non è configurata ma il fascicolo è protetto, ora mostra direttamente il campo password con avviso "Biometria non configurata — usa la password" (prima tentava Touch ID/Face ID comunque, che falliva)
+- **Export PDF con biometria** -- Se la biometria è configurata, l'export PDF può ora essere autorizzato con Touch ID/Face ID (prima richiedeva sempre la password). Se la biometria fallisce o non è configurata, fallback alla password
+- **Toast biometria corretti** -- "Biometria resettata" appariva durante il flusso; ora il toast appare solo a fine operazione ("Biometria disattivata" / "Biometria configurata con successo!")
+- **Bordo verde dialog export** -- Rimosso l'outline/focus nativo del browser (verde) dal `<dialog>` del ModalOverlay tramite `outline-none`
+- **Caratteri unicode in Gestione Ore** -- `\u00B7` (middot) e `\u2014` (em-dash) apparivano come testo letterale; ora renderizzano correttamente come `·` e `—`
+- **Scadenze Agenda visibili nel fascicolo** -- Le scadenze create in Agenda e collegate a un fascicolo ora appaiono nella tab Scadenze del fascicolo con badge "Agenda" (prima erano visibili solo nell'Agenda)
+- **Dashboard click diretto** -- Gli impegni nella Dashboard ora si cliccano direttamente: click sul titolo → apre in Agenda; icona valigetta → vai al fascicolo collegato. Rimosso il popover intermedio
+
+### UX / UI
+- **Scadenze sezioni colorate** -- La pagina Scadenze ha ora sezioni visivamente distinte: Scadute (rosso), Oggi (ambra), Prossimi 7 giorni (blu), Future (attenuato). Header con dot colorato e bordo inferiore
+- **Modale Agenda compatta** -- La modale evento Agenda usa ora il 95% dell'altezza viewport con padding ridotto, riducendo lo scroll interno
+
+---
+
 ## [1.5.2] -- 2026-03-10
 
 ### Fix

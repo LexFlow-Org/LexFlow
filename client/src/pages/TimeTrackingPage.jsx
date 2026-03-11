@@ -383,7 +383,7 @@ export default function TimeTrackingPage({ practices }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-white truncate">{log.description || 'Senza descrizione'}</p>
-                    <p className="text-[10px] text-text-dim">{getPracticeName(log.practiceId)} \u00B7 {new Date(log.date).toLocaleDateString('it-IT')}</p>
+                    <p className="text-[10px] text-text-dim">{getPracticeName(log.practiceId)} {'·'} {new Date(log.date).toLocaleDateString('it-IT')}</p>
                   </div>
                   <span className="text-sm font-mono font-bold text-primary tabular-nums">{fmtDuration(log.minutes)}</span>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -444,7 +444,7 @@ export default function TimeTrackingPage({ practices }) {
                           {STATUS_LABELS[inv.status] || 'Bozza'}
                         </span>
                       </div>
-                      <p className="text-[10px] text-text-dim">{inv.practiceName || 'Fascicolo'} \u00B7 N.{inv.number || '\u2014'} \u00B7 {inv.date || ''}</p>
+                      <p className="text-[10px] text-text-dim">{inv.practiceName || 'Fascicolo'} {'·'} N.{inv.number || '—'} {'·'} {inv.date || ''}</p>
                     </div>
                     <span className="text-sm font-bold text-primary tabular-nums">{'\u20AC'} {totals.total.toFixed(2)}</span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
