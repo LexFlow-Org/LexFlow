@@ -735,11 +735,13 @@ fn lockout_clear(data_dir: &std::path::Path) {
 ///   1. The compiler may have placed copies in registers or stack frames
 ///   2. The String may have been reallocated during prior operations (old buffer not zeroed)
 ///   3. OS page swapping may have written password bytes to disk
+///
 /// Mitigations (defense in depth, not within this function):
 ///   - macOS FileVault / Windows BitLocker (encrypted swap)
 ///   - Argon2id key derivation (password is only used to derive an AES key, never stored)
 ///   - Autolock zeroes the vault_key (which IS Zeroizing<Vec<u8>>)
 ///   - Short-lived password scope: callers zeroize immediately after use
+///
 /// This is an inherent limitation of ALL userspace languages (Rust, C, Go, Java),
 /// NOT a bug. Only a custom secure allocator (e.g., mmap+mlock+madvise(MADV_DONTDUMP))
 /// could fully solve this, at significant complexity cost.
