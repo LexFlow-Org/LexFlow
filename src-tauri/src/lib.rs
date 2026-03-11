@@ -571,6 +571,13 @@ fn decrypt_data(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
     // After LEGACY_AAD_SUNSET_THRESHOLD consecutive successful decryptions without
     // needing the fallback, we consider all files migrated and refuse the legacy path.
     // This limits the window for an attacker to craft files with empty AAD.
+    //
+    // SECURITY FIX (Audit 2026-03-11 M4): Lowered risk documentation.
+    // DEPRECATION PLAN: This legacy fallback will be REMOVED in v2.0.0.
+    // All users who have run v1.5.x+ at least once have already had their files
+    // re-encrypted with AAD. The sunset threshold (200 clean decryptions) provides
+    // automatic migration verification. If you're reading this in v2.0.0 development,
+    // DELETE the entire legacy fallback block below (lines through the .inspect() closure).
     let clean_count = LEGACY_AAD_CLEAN_COUNTER.load(std::sync::atomic::Ordering::Relaxed);
     if clean_count >= LEGACY_AAD_SUNSET_THRESHOLD
         && !LEGACY_AAD_EVER_USED.load(std::sync::atomic::Ordering::Relaxed)
@@ -701,10 +708,11 @@ fn lockout_save(
         .unwrap_or(0);
     let data_part = format!("{}:{}", attempts, secs);
     let hmac = lockout_hmac(&data_part);
-    let _ = fs::write(
-        data_dir.join(LOCKOUT_FILE),
-        format!("{}:{}", data_part, hmac),
-    );
+    // SECURITY FIX (Audit 2026-03-11 L2): use atomic_write_with_sync for crash safety.
+    // Previously fs::write could leave a corrupted lockout file on crash, causing
+    // fail-closed lockout (user locked out indefinitely until manual file deletion).
+    let content = format!("{}:{}", data_part, hmac);
+    let _ = atomic_write_with_sync(&data_dir.join(LOCKOUT_FILE), content.as_bytes());
 }
 
 fn lockout_clear(data_dir: &std::path::Path) {
@@ -720,12 +728,21 @@ fn lockout_clear(data_dir: &std::path::Path) {
 /// through it, violating Rust's aliasing rules (Stacked Borrows) and causing Undefined
 /// Behavior. The correct approach: convert to owned bytes, then zeroize.
 ///
-/// SECURITY NOTE: `into_bytes()` consumes the String and returns its backing Vec<u8>.
-/// However, the compiler may have already placed copies of the password in registers
-/// or stack frames before this function was called. Zeroing the Vec is the best-effort
-/// approach — complete zeroing of all intermediate copies is fundamentally impossible
-/// in any language without custom allocator support. This is an inherent limitation,
-/// NOT a bug.
+/// SECURITY NOTE (Audit 2026-03-11 — password zeroing is inherently best-effort):
+/// `into_bytes()` consumes the String and returns its backing Vec<u8>. The `zeroize()`
+/// call zeroes the backing buffer via a volatile write (preventing dead-store elimination).
+/// However, complete zeroing of ALL intermediate copies is fundamentally impossible:
+///   1. The compiler may have placed copies in registers or stack frames
+///   2. The String may have been reallocated during prior operations (old buffer not zeroed)
+///   3. OS page swapping may have written password bytes to disk
+/// Mitigations (defense in depth, not within this function):
+///   - macOS FileVault / Windows BitLocker (encrypted swap)
+///   - Argon2id key derivation (password is only used to derive an AES key, never stored)
+///   - Autolock zeroes the vault_key (which IS Zeroizing<Vec<u8>>)
+///   - Short-lived password scope: callers zeroize immediately after use
+/// This is an inherent limitation of ALL userspace languages (Rust, C, Go, Java),
+/// NOT a bug. Only a custom secure allocator (e.g., mmap+mlock+madvise(MADV_DONTDUMP))
+/// could fully solve this, at significant complexity cost.
 fn zeroize_password(password: String) {
     let mut pwd_bytes = password.into_bytes();
     pwd_bytes.zeroize();
@@ -1313,12 +1330,8 @@ fn verify_vault_password(state: State<AppState>, pwd: String) -> Result<Value, S
 //  SUMMARY — Server-side computation (Gemini L2-4)
 // ═══════════════════════════════════════════════════════════
 
-/// Returns {activePractices, urgentDeadlines} computed in Rust.
-/// Previously computed client-side (getSummary in api.js) by loading ALL practices
-/// and iterating in JS — O(n) on the main thread, causing CPU freezes on large vaults.
-/// Now computed server-side in a single vault read.
-#[tauri::command]
 /// Count urgent deadlines (within 7 days) across active practices.
+/// Called internally by get_summary() — NOT exposed as a Tauri command.
 fn count_urgent_deadlines(practices: &[Value]) -> usize {
     let today = chrono::Local::now().naive_local().date();
     let in_7_days = today + chrono::Duration::days(7);
@@ -1381,36 +1394,43 @@ fn validate_vault_array(data: &Value, field_name: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ── DRY helpers for vault field access (Audit 2026-03-11 D1/D2) ──────────
+// All load_*/save_* commands followed the same pattern. Centralized here.
+
+/// Load a single field from the vault, returning `[]` if missing.
+fn load_vault_field(state: &State<AppState>, field: &str) -> Result<Value, String> {
+    let vault = read_vault_internal(state)?;
+    Ok(vault.get(field).cloned().unwrap_or(json!([])))
+}
+
+/// Save a single JSON array field into the vault (with write_mutex + validation).
+fn save_vault_field(state: &State<AppState>, field: &str, data: Value) -> Result<bool, String> {
+    validate_vault_array(&data, field)?;
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+    let mut vault = read_vault_internal(state)?;
+    vault[field] = data;
+    write_vault_internal(state, &vault)?;
+    Ok(true)
+}
+
 #[tauri::command]
 fn load_practices(state: State<AppState>) -> Result<Value, String> {
-    let vault = read_vault_internal(&state)?;
-    Ok(vault.get("practices").cloned().unwrap_or(json!([])))
+    load_vault_field(&state, "practices")
 }
 
 #[tauri::command]
 fn save_practices(state: State<AppState>, list: Value) -> Result<bool, String> {
-    validate_vault_array(&list, "practices")?;
-    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
-    let mut vault = read_vault_internal(&state)?;
-    vault["practices"] = list;
-    write_vault_internal(&state, &vault)?;
-    Ok(true)
+    save_vault_field(&state, "practices", list)
 }
 
 #[tauri::command]
 fn load_agenda(state: State<AppState>) -> Result<Value, String> {
-    let vault = read_vault_internal(&state)?;
-    Ok(vault.get("agenda").cloned().unwrap_or(json!([])))
+    load_vault_field(&state, "agenda")
 }
 
 #[tauri::command]
 fn save_agenda(state: State<AppState>, agenda: Value) -> Result<bool, String> {
-    validate_vault_array(&agenda, "agenda")?;
-    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
-    let mut vault = read_vault_internal(&state)?;
-    vault["agenda"] = agenda;
-    write_vault_internal(&state, &vault)?;
-    Ok(true)
+    save_vault_field(&state, "agenda", agenda)
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1545,18 +1565,12 @@ fn check_conflict(state: State<AppState>, name: String) -> Result<Value, String>
 
 #[tauri::command]
 fn load_time_logs(state: State<AppState>) -> Result<Value, String> {
-    let vault = read_vault_internal(&state)?;
-    Ok(vault.get("timeLogs").cloned().unwrap_or(json!([])))
+    load_vault_field(&state, "timeLogs")
 }
 
 #[tauri::command]
 fn save_time_logs(state: State<AppState>, logs: Value) -> Result<bool, String> {
-    validate_vault_array(&logs, "timeLogs")?;
-    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
-    let mut vault = read_vault_internal(&state)?;
-    vault["timeLogs"] = logs;
-    write_vault_internal(&state, &vault)?;
-    Ok(true)
+    save_vault_field(&state, "timeLogs", logs)
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1565,18 +1579,12 @@ fn save_time_logs(state: State<AppState>, logs: Value) -> Result<bool, String> {
 
 #[tauri::command]
 fn load_invoices(state: State<AppState>) -> Result<Value, String> {
-    let vault = read_vault_internal(&state)?;
-    Ok(vault.get("invoices").cloned().unwrap_or(json!([])))
+    load_vault_field(&state, "invoices")
 }
 
 #[tauri::command]
 fn save_invoices(state: State<AppState>, invoices: Value) -> Result<bool, String> {
-    validate_vault_array(&invoices, "invoices")?;
-    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
-    let mut vault = read_vault_internal(&state)?;
-    vault["invoices"] = invoices;
-    write_vault_internal(&state, &vault)?;
-    Ok(true)
+    save_vault_field(&state, "invoices", invoices)
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1585,18 +1593,12 @@ fn save_invoices(state: State<AppState>, invoices: Value) -> Result<bool, String
 
 #[tauri::command]
 fn load_contacts(state: State<AppState>) -> Result<Value, String> {
-    let vault = read_vault_internal(&state)?;
-    Ok(vault.get("contacts").cloned().unwrap_or(json!([])))
+    load_vault_field(&state, "contacts")
 }
 
 #[tauri::command]
 fn save_contacts(state: State<AppState>, contacts: Value) -> Result<bool, String> {
-    validate_vault_array(&contacts, "contacts")?;
-    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
-    let mut vault = read_vault_internal(&state)?;
-    vault["contacts"] = contacts;
-    write_vault_internal(&state, &vault)?;
-    Ok(true)
+    save_vault_field(&state, "contacts", contacts)
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1638,6 +1640,19 @@ fn has_bio_saved(state: State<AppState>) -> bool {
 }
 
 #[tauri::command]
+/// Store vault password in system keyring for biometric unlock.
+///
+/// SECURITY NOTE (Audit 2026-03-11 M2 — Documented Trade-off):
+/// The vault password is stored in the OS keychain (macOS Keychain, Windows Credential
+/// Manager). On macOS, the Keychain entry is ACL-protected by the app's code signature
+/// and the user's login password. However, a user with physical access + the macOS login
+/// password can retrieve it via `security find-generic-password -s "LexFlow-Bio" -w`.
+/// This is an inherent trade-off of biometric unlock: the password must be recoverable
+/// to derive the AES vault key. Mitigations:
+///   - macOS FileVault (FDE) protects at-rest
+///   - Keychain ACL restricts access to signed LexFlow binary
+///   - The marker file is written with mode 0600 (secure_write)
+///   - Users can disable biometric via clear_bio() at any time
 fn save_bio(state: State<AppState>, pwd: String) -> Result<bool, String> {
     #[cfg(not(target_os = "android"))]
     {
@@ -1645,12 +1660,15 @@ fn save_bio(state: State<AppState>, pwd: String) -> Result<bool, String> {
         let entry = keyring::Entry::new(BIO_SERVICE, &user).map_err(|e| e.to_string())?;
         entry.set_password(&pwd).map_err(|e| e.to_string())?;
         // Write marker file so has_bio_saved() can check without triggering Touch ID
+        // SECURITY FIX (Audit 2026-03-11 L3): use secure_write (mode 0600) instead of
+        // fs::write to prevent world-readable marker on systems with permissive umask.
+        // The marker's existence reveals biometric enrollment status.
         let dir = state
             .data_dir
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let _ = fs::write(dir.join(BIO_MARKER_FILE), "1");
+        let _ = secure_write(&dir.join(BIO_MARKER_FILE), b"1");
         Ok(true)
     }
     #[cfg(target_os = "android")]
@@ -1750,9 +1768,30 @@ fn bio_login(_state: State<AppState>) -> Result<Value, String> {
                 .map_err(|e| e.to_string())?;
         }
         drop(child.stdin.take());
-        let status = child.wait().map_err(|e| e.to_string())?;
-        if !status.success() {
-            return Ok(json!({"success": false, "error": "Autenticazione biometrica fallita"}));
+        // SECURITY FIX (Audit 2026-03-11 M3/I2): timeout on Swift subprocess.
+        // Without a timeout, a frozen Touch ID dialog blocks the app indefinitely.
+        // 60 seconds is generous (biometric prompt rarely takes longer than a few seconds,
+        // but the user may need time to position their finger or enter a fallback password).
+        let timeout = Duration::from_secs(60);
+        let start = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    if !status.success() {
+                        return Ok(json!({"success": false, "error": "Autenticazione biometrica fallita"}));
+                    }
+                    break;
+                }
+                Ok(None) => {
+                    if start.elapsed() >= timeout {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Ok(json!({"success": false, "error": "Timeout autenticazione biometrica (60s)"}));
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                Err(e) => return Err(e.to_string()),
+            }
         }
 
         bio_unlock_vault(&_state)
@@ -2795,7 +2834,10 @@ fn get_machine_fingerprint() -> String {
 }
 
 #[tauri::command]
-fn activate_license(state: State<AppState>, key: String, _client_name: Option<String>) -> Value {
+/// SECURITY FIX (Audit 2026-03-11 I4): removed unused _client_name parameter.
+/// The client name is extracted from the Ed25519-signed token payload — accepting
+/// it as a frontend parameter would allow spoofing.
+fn activate_license(state: State<AppState>, key: String) -> Value {
     let sec_dir = state
         .security_dir
         .lock()
@@ -3211,10 +3253,58 @@ async fn select_pdf_save_path(
 /// Writes raw PDF bytes to a user-chosen path.
 /// This bypasses the FS plugin scope (which is restricted to $APPDATA)
 /// because the user explicitly chose the destination via native save dialog.
+/// SECURITY FIX (Audit 2026-03-11 M1): path validation — canonicalize, allowlist
+/// (home/documents/desktop/downloads), and .pdf extension enforcement.
+/// Without this, an XSS in the WebView could write arbitrary bytes anywhere.
 #[tauri::command]
 async fn write_pdf_to_path(path: String, data: Vec<u8>) -> Result<bool, String> {
     if data.is_empty() {
         return Err("Cannot write empty PDF data".to_string());
+    }
+    let p = std::path::PathBuf::from(&path);
+    // Must be absolute path
+    if !p.is_absolute() {
+        return Err("Percorso relativo non consentito".to_string());
+    }
+    // Enforce .pdf extension BEFORE canonicalize (path may not exist yet)
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if ext != "pdf" {
+        return Err("Solo file .pdf consentiti".to_string());
+    }
+    // Canonicalize parent directory (file doesn't exist yet, but parent must)
+    let parent = p
+        .parent()
+        .ok_or_else(|| "Percorso senza directory padre".to_string())?;
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|_| "Directory di destinazione non valida o non accessibile".to_string())?;
+    // Allowlist: only under user's home, documents, desktop, downloads, data dirs
+    let allowed_prefixes: Vec<std::path::PathBuf> = [
+        dirs::home_dir(),
+        dirs::document_dir(),
+        dirs::desktop_dir(),
+        dirs::download_dir(),
+        dirs::data_dir(),
+    ]
+    .iter()
+    .filter_map(|d| d.as_ref().and_then(|p| p.canonicalize().ok()))
+    .collect();
+    let is_allowed = allowed_prefixes
+        .iter()
+        .any(|prefix| canonical_parent.starts_with(prefix));
+    if !is_allowed {
+        eprintln!(
+            "[LexFlow] SECURITY: write_pdf_to_path refused path outside allowed dirs: {:?}",
+            path
+        );
+        return Err(
+            "Percorso non consentito: la destinazione deve essere all'interno delle directory dell'utente."
+                .to_string(),
+        );
     }
     std::fs::write(&path, &data).map_err(|e| format!("Write failed: {}", e))?;
     Ok(true)
@@ -3951,17 +4041,16 @@ fn set_content_protection(app: AppHandle, enabled: bool) -> bool {
 
 #[tauri::command]
 fn ping_activity(state: State<AppState>) {
-    // SECURITY FIX (Gemini Audit Chunk 15): 1-second throttle to prevent mutex contention
+    // SECURITY FIX (Audit 2026-03-11 L5): single lock scope to prevent TOCTOU race.
+    // Previously two consecutive locks on last_activity allowed another thread to
+    // modify the value between the read and the write.
     let now = Instant::now();
-    let last = *state
+    let mut guard = state
         .last_activity
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    if now.duration_since(last) > Duration::from_secs(1) {
-        *state
-            .last_activity
-            .lock()
-            .unwrap_or_else(|e| e.into_inner()) = now;
+    if now.duration_since(*guard) > Duration::from_secs(1) {
+        *guard = now;
     }
 }
 
@@ -4136,7 +4225,9 @@ fn setup_notification_permissions(app: &tauri::App, data_dir_for_scheduler: &std
                 .title("LexFlow")
                 .body("Le notifiche sono attive! Riceverai promemoria per scadenze e udienze.")
                 .show();
-            let _ = std::fs::write(&marker, "1");
+            // SECURITY FIX (Audit 2026-03-11 L4): use secure_write (mode 0600) instead of
+            // fs::write to prevent world-readable marker on systems with permissive umask.
+            let _ = secure_write(&marker, b"1");
             eprintln!("[LexFlow] First-launch notification sent ✓");
         }
     }

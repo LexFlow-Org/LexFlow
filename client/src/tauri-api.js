@@ -118,7 +118,10 @@ export const testNotification = () => safeInvoke('test_notification');
 
 // Licensing
 export const checkLicense = () => safeInvoke('check_license');
-export const verifyLicense = () => safeInvoke('verify_license');
+// SECURITY FIX (Audit 2026-03-11 I3): verifyLicense now accepts a token string parameter.
+// The Rust command verify_license(key_string: String) requires a token.
+// Previously this bridge passed no arguments, making it unusable.
+export const verifyLicense = (keyString) => safeInvoke('verify_license', { keyString });
 export const activateLicense = (key) => safeInvoke('activate_license', { key });
 export const getMachineFingerprint = () => safeInvoke('get_machine_fingerprint');
 
@@ -163,6 +166,14 @@ export const onVaultWarning = (cb) => {
 // payload: { backup_path: string, timestamp: string }
 export const onSettingsCorrupted = (cb) => {
   const p = listen('settings-corrupted', (e) => cb(e.payload)).catch(() => null);
+  return () => { p.then(fn => fn?.()); };
+};
+
+// SECURITY FIX (Audit 2026-03-11): listen for notification-permission-denied event.
+// Fired by setup_notification_permissions when the OS has denied notification permission.
+// The frontend can use this to show an in-app banner guiding the user to System Settings.
+export const onNotificationPermissionDenied = (cb) => {
+  const p = listen('notification-permission-denied', () => cb()).catch(() => null);
   return () => { p.then(fn => fn?.()); };
 };
 
