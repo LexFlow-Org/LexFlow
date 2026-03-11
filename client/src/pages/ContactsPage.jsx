@@ -454,9 +454,10 @@ export default function ContactsPage({ practices, onSelectPractice }) {
               <div key={c.id}>
                 {/* Row wrapper: on desktop, row + card side by side when expanded */}
                 <div className={`flex flex-col ${isExpanded ? 'lg:flex-row lg:gap-3' : ''}`}>
-                  {/* Contact Row */}
+                  {/* Contact Row — tutta la riga cliccabile per aprire dettaglio */}
                   <div
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${
+                    onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border cursor-pointer ${
                       isExpanded
                         ? 'bg-primary/5 border-primary/20 lg:w-[38%] lg:flex-shrink-0'
                         : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.06] w-full'
@@ -486,18 +487,13 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                           <Edit3 size={14} className="text-text-dim hover:text-primary" />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => setExpandedId(isExpanded ? null : c.id)}
-                        className="p-2 hover:bg-white/10 rounded-lg transition-all"
-                        title={isExpanded ? 'Chiudi dettagli' : 'Mostra dettagli'}
-                      >
+                      <div className="p-2">
                         {isExpanded ? (
                           <ChevronRight size={14} className="text-primary" />
                         ) : (
-                          <Info size={14} className="text-text-dim hover:text-primary" />
+                          <Info size={14} className="text-text-dim" />
                         )}
-                      </button>
+                      </div>
                     </div>
                   </div>
 

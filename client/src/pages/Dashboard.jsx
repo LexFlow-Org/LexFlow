@@ -52,33 +52,34 @@ function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavig
       >
         {relevant.map((ev, i) => (
           <div key={ev.id || i} data-event-row className="relative">
-            <div className="flex items-center gap-3 text-sm rounded-lg px-2 py-1.5 -mx-2 hover:bg-white/[0.06] transition-colors group">
+            <button
+              type="button"
+              onClick={() => { if (onNavigate) onNavigate('/agenda?date=' + ev.date); }}
+              className="w-full flex items-center gap-3 text-sm rounded-xl px-3 py-2 hover:bg-white/[0.07] transition-colors group text-left cursor-pointer"
+              title="Apri in Agenda"
+            >
               <span className="text-[11px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded w-14 text-center flex-shrink-0">
                 {ev.timeStart || '--:--'}
               </span>
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-white/10" style={{ background: CAT_COLOR(ev.category) }} />
-              <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                <button type="button"
-                  onClick={() => { if (onNavigate) onNavigate('/agenda?date=' + ev.date); }}
-                  className="text-white truncate group-hover:text-primary transition-colors cursor-pointer text-left min-w-0"
-                  title="Apri in Agenda"
-                >{ev.title}</button>
-                {ev.practiceId && (
-                  <button type="button"
-                    onClick={(e) => { e.stopPropagation(); if (onSelectPractice) onSelectPractice(ev.practiceId); }}
-                    className="p-1 hover:bg-primary/10 rounded-lg transition-all flex-shrink-0 group/brief"
-                    title="Vai al Fascicolo"
-                  >
-                    <Briefcase size={12} className="text-primary/50 group-hover/brief:text-primary transition-colors" />
-                  </button>
-                )}
-              </div>
+              <span className="text-white truncate group-hover:text-primary transition-colors min-w-0 flex-1 text-left">
+                {ev.title}
+              </span>
               {ev.category && (
                 <span className="text-[9px] font-bold uppercase tracking-wider flex-shrink-0 px-2 py-0.5 rounded-md"
                   style={{ color: CAT_COLOR(ev.category), background: CAT_COLOR(ev.category) + '1a' }}
                 >{ev.category}</span>
               )}
-            </div>
+            </button>
+            {ev.practiceId && (
+              <button type="button"
+                onClick={(e) => { e.stopPropagation(); if (onSelectPractice) onSelectPractice(ev.practiceId); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-primary/15 bg-primary/5 rounded-xl transition-all flex-shrink-0 group/brief border border-primary/10 hover:border-primary/30"
+                title="Vai al Fascicolo"
+              >
+                <Briefcase size={15} className="text-primary/70 group-hover/brief:text-primary transition-colors" />
+              </button>
+            )}
           </div>
         ))}
       </div>

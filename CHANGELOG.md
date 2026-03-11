@@ -22,6 +22,8 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 - **Export PDF mostra il percorso** -- Il toast di successo dell'export PDF ora mostra il nome del file salvato ("PDF salvato: LexFlow_Cliente_2026-03-11.pdf") invece del generico "PDF esportato correttamente"
 
 ### UX / UI
+- **Dashboard riga impegno cliccabile** -- L'intera riga dell'impegno nella Dashboard è ora un unico bottone cliccabile che apre l'Agenda al giorno corrispondente. Fix hover BG tagliato ai bordi (ora `rounded-xl` con padding corretto). Icona fascicolo più grande (`15px`) con sfondo `bg-primary/5` e bordo, posizionata come bottone separato ben visibile
+- **Contatti riga cliccabile** -- Click su tutta la riga del contatto apre la scheda dettaglio (prima bisognava cliccare la piccola icona info). Il bottone Modifica resta accessibile con `stopPropagation`
 - **Scadenze sezioni colorate** -- La pagina Scadenze ha ora sezioni visivamente distinte: Scadute (rosso), Oggi (ambra), Prossimi 7 giorni (blu), Future (attenuato). Header con dot colorato e bordo inferiore
 - **Modale Agenda compatta** -- La modale evento Agenda usa ora il 95% dell'altezza viewport con padding ridotto, riducendo lo scroll interno
 - **Icona fascicolo vicina al nome** -- Nella Dashboard, l'icona valigetta per gli impegni collegati a un fascicolo è ora posizionata subito dopo il titolo (prima era allineata a destra, distante)
