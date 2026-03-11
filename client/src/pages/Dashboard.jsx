@@ -57,20 +57,22 @@ function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavig
                 {ev.timeStart || '--:--'}
               </span>
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-white/10" style={{ background: CAT_COLOR(ev.category) }} />
-              <button type="button"
-                onClick={() => { if (onNavigate) onNavigate('/agenda?date=' + ev.date); }}
-                className="text-white truncate group-hover:text-primary transition-colors cursor-pointer text-left flex-1 min-w-0"
-                title="Apri in Agenda"
-              >{ev.title}</button>
-              {ev.practiceId && (
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
                 <button type="button"
-                  onClick={(e) => { e.stopPropagation(); if (onSelectPractice) onSelectPractice(ev.practiceId); }}
-                  className="p-1.5 hover:bg-primary/10 rounded-lg transition-all flex-shrink-0 group/brief"
-                  title="Vai al Fascicolo"
-                >
-                  <Briefcase size={14} className="text-primary/60 group-hover/brief:text-primary transition-colors" />
-                </button>
-              )}
+                  onClick={() => { if (onNavigate) onNavigate('/agenda?date=' + ev.date); }}
+                  className="text-white truncate group-hover:text-primary transition-colors cursor-pointer text-left min-w-0"
+                  title="Apri in Agenda"
+                >{ev.title}</button>
+                {ev.practiceId && (
+                  <button type="button"
+                    onClick={(e) => { e.stopPropagation(); if (onSelectPractice) onSelectPractice(ev.practiceId); }}
+                    className="p-1 hover:bg-primary/10 rounded-lg transition-all flex-shrink-0 group/brief"
+                    title="Vai al Fascicolo"
+                  >
+                    <Briefcase size={12} className="text-primary/50 group-hover/brief:text-primary transition-colors" />
+                  </button>
+                )}
+              </div>
               {ev.category && (
                 <span className="text-[9px] font-bold uppercase tracking-wider flex-shrink-0 px-2 py-0.5 rounded-md"
                   style={{ color: CAT_COLOR(ev.category), background: CAT_COLOR(ev.category) + '1a' }}

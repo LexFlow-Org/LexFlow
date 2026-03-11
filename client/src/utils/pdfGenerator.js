@@ -192,9 +192,9 @@ export async function exportPracticePDF(practice) {
     // e scriverà il file solo se l'utente conferma.
     const result = await exportPDF(pdfArrayBuffer, defaultName);
 
-    return result.success;
+    return result; // { success, path } or { success: false, cancelled: true }
   } catch (error) {
     console.error("Errore critico export PDF:", error);
-    return false;
+    return { success: false, error };
   }
 }

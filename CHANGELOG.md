@@ -18,10 +18,13 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 - **Caratteri unicode in Gestione Ore** -- `\u00B7` (middot) e `\u2014` (em-dash) apparivano come testo letterale; ora renderizzano correttamente come `·` e `—`
 - **Scadenze Agenda visibili nel fascicolo** -- Le scadenze create in Agenda e collegate a un fascicolo ora appaiono nella tab Scadenze del fascicolo con badge "Agenda" (prima erano visibili solo nell'Agenda)
 - **Dashboard click diretto** -- Gli impegni nella Dashboard ora si cliccano direttamente: click sul titolo → apre in Agenda; icona valigetta → vai al fascicolo collegato. Rimosso il popover intermedio
+- **Toast nascosti sotto i modali** -- Il Toaster z-index era inferiore ai modali (z-9999): i toast di avanzamento/successo/errore non erano visibili durante export PDF e backup. Ora `zIndex: 99999` garantisce visibilità sopra qualsiasi overlay
+- **Export PDF mostra il percorso** -- Il toast di successo dell'export PDF ora mostra il nome del file salvato ("PDF salvato: LexFlow_Cliente_2026-03-11.pdf") invece del generico "PDF esportato correttamente"
 
 ### UX / UI
 - **Scadenze sezioni colorate** -- La pagina Scadenze ha ora sezioni visivamente distinte: Scadute (rosso), Oggi (ambra), Prossimi 7 giorni (blu), Future (attenuato). Header con dot colorato e bordo inferiore
 - **Modale Agenda compatta** -- La modale evento Agenda usa ora il 95% dell'altezza viewport con padding ridotto, riducendo lo scroll interno
+- **Icona fascicolo vicina al nome** -- Nella Dashboard, l'icona valigetta per gli impegni collegati a un fascicolo è ora posizionata subito dopo il titolo (prima era allineata a destra, distante)
 
 ---
 

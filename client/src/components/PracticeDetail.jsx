@@ -328,9 +328,15 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             // Biometric verified — proceed directly with export
             const toastId = toast.loading('Generazione PDF in corso…', { icon: '📄' });
             try {
-              const success = await exportPracticePDF(practice);
-              if (success) { toast.success('PDF esportato correttamente', { id: toastId }); }
-              else { toast.dismiss(toastId); }
+              const result = await exportPracticePDF(practice);
+              if (result?.success) {
+                const fileName = result.path?.split(/[/\\]/).pop() || 'PDF';
+                toast.success(`PDF salvato: ${fileName}`, { id: toastId, duration: 5000 });
+              } else if (result?.cancelled) {
+                toast.dismiss(toastId);
+              } else {
+                toast.dismiss(toastId);
+              }
             } catch (err) {
               console.error('[PracticeDetail] PDF export failed:', err);
               toast.error('Errore durante l\'esportazione', { id: toastId });
@@ -366,12 +372,14 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
     // Progress toast for PDF export
     const toastId = toast.loading('Generazione PDF in corso…', { icon: '📄' });
     try {
-      const success = await exportPracticePDF(practice);
-      if (success) {
-        toast.success('PDF esportato correttamente', { id: toastId });
+      const result = await exportPracticePDF(practice);
+      if (result?.success) {
+        const fileName = result.path?.split(/[/\\]/).pop() || 'PDF';
+        toast.success(`PDF salvato: ${fileName}`, { id: toastId, duration: 5000 });
+      } else if (result?.cancelled) {
+        toast.dismiss(toastId);
       } else {
         toast.dismiss(toastId);
-        // User cancelled the save dialog — no error
       }
     } catch (err) {
       console.error('[PracticeDetail] PDF export failed:', err);

@@ -368,7 +368,7 @@ export default function App() {
           <WindowControls />
           <Toaster
             position="bottom-right"
-            containerStyle={{ bottom: 24, right: 24 }}
+            containerStyle={{ bottom: 24, right: 24, zIndex: 99999 }}
             gutter={10}
             toastOptions={{
               className: 'lexflow-toast',
