@@ -69,7 +69,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
     }
     if (e.key === 'Enter' && filtered.length > 0) {
       e.preventDefault();
-      const idx = highlightIdx >= 0 ? highlightIdx : 0;
+      const idx = Math.max(highlightIdx, 0);
       handleSelect(filtered[idx].id);
     }
   };
