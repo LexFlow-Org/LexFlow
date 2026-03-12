@@ -4,6 +4,18 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.5.5] -- 2026-03-12
+
+### Changed
+- **Componente condiviso ConflictCheckPanel** -- Estratto `ConflictCheckPanel.jsx` (~240 righe) condiviso tra `ConflictCheckPage` e `ContactsPage`, eliminando ~230 righe duplicate
+- **Helper PDF export DRY** -- Estratto `runPdfExport()` in `PracticeDetail.jsx`: sia `handleExportConfirmed` che `handleExportWithPassword` delegano a un unico helper
+
+### Fixed
+- **Accessibilità PracticeCombobox** -- Trigger split in `<button>` (chiuso) / `<div>+<input>` (aperto); rimossi `role="listbox"`, `aria-expanded` da input; pulsante clear estratto come sibling (nessun bottone annidato)
+- **Accessibilità ContactsPage** -- Riga contatto con overlay `<button>` invisibile per espansione + edit button reale in layer z-10 separato
+- **Ternari annidati eliminati** -- ArrowUp usa aritmetica modulare; Enter usa `Math.max()`; bio status className usa map lookup
+- **SonarQube code smells risolti** -- Duplicate functions rimosse in SettingsPage (`initBioStatus` → `refreshBioStatus`), status maps estratte, bottoni nativi ovunque servivano
+
 ## [1.5.4] -- 2026-03-11
 
 ### Security
