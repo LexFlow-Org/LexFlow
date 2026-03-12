@@ -229,16 +229,22 @@ export default function ContactsPage({ practices, onSelectPractice }) {
               <div key={c.id}>
                 {/* Row wrapper: on desktop, row + card side by side when expanded */}
                 <div className={`flex flex-col ${isExpanded ? 'lg:flex-row lg:gap-3' : ''}`}>
-                  {/* Contact Row — tutta la riga cliccabile per aprire dettaglio */}
-                  <button
-                    type="button"
-                    onClick={() => setExpandedId(isExpanded ? null : c.id)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border cursor-pointer text-left ${
+                  {/* Contact Row */}
+                  <div
+                    className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${
                       isExpanded
                         ? 'bg-primary/5 border-primary/20 lg:w-[38%] lg:flex-shrink-0'
-                        : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.06] w-full'
+                        : 'bg-white/[0.03] border-white/[0.06] w-full'
                     }`}
                   >
+                    {/* Invisible full-row expand/collapse button */}
+                    <button
+                      type="button"
+                      aria-expanded={isExpanded}
+                      aria-label={`${isExpanded ? 'Chiudi' : 'Apri'} dettaglio ${c.name}`}
+                      onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                      className="absolute inset-0 z-0 cursor-pointer rounded-xl hover:bg-white/[0.03]"
+                    />
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center border flex-shrink-0 ${typeInfo.color}`}>
                       <TypeIcon size={18} />
                     </div>
@@ -251,18 +257,17 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                         )}
                       </div>
                     </div>
-                    {/* Actions */}
-                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                    {/* Actions — z-10 so they sit above the invisible expand button */}
+                    <div className="relative z-10 flex items-center gap-0.5 flex-shrink-0">
                       {!isExpanded && (
-                        <span
-                          role="img"
-                          aria-label="Modifica"
+                        <button
+                          type="button"
                           onClick={(e) => { e.stopPropagation(); setEditingContact({ ...c }); }}
-                          className="p-2 hover:bg-white/10 rounded-lg transition-all cursor-pointer"
+                          className="p-2 hover:bg-white/10 rounded-lg transition-all"
                           title="Modifica"
                         >
                           <Edit3 size={14} className="text-text-dim hover:text-primary" />
-                        </span>
+                        </button>
                       )}
                       <div className="p-2">
                         {isExpanded ? (
@@ -272,7 +277,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                         )}
                       </div>
                     </div>
-                  </button>
+                  </div>
 
                   {/* Detail Card — desktop: side by side */}
                   {isExpanded && (

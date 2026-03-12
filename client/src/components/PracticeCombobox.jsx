@@ -65,7 +65,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlightIdx(i => (i <= 0 ? filtered.length - 1 : i - 1));
+      setHighlightIdx(i => { const prev = i - 1; return prev >= 0 ? prev : filtered.length - 1; });
     }
     if (e.key === 'Enter' && filtered.length > 0) {
       e.preventDefault();
@@ -92,57 +92,58 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
         </label>
       )}
 
-      {/* Trigger / Input */}
-      <div
-        tabIndex={open ? -1 : 0}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-controls="practice-listbox"
-        className={`flex items-center gap-2 input-field py-2.5 pr-2 cursor-pointer transition-all ${open ? 'border-primary ring-1 ring-primary/20' : ''}`}
-        onClick={() => { if (!open) { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); } }}
-        onKeyDown={(e) => { if (!open && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); } }}
-      >
-        {open ? (
-          <>
-            <Search size={14} className="text-text-dim flex-shrink-0" />
-            <input
-              ref={inputRef}
-              id={id}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Filtra fascicoli..."
-              className="flex-1 bg-transparent outline-none text-white text-sm placeholder:text-text-dim/50"
-              autoComplete="off"
-            />
-          </>
-        ) : (
-          <>
+      {/* Trigger (closed) / Input wrapper (open) */}
+      {open ? (
+        <div className="flex items-center gap-2 input-field py-2.5 pr-2 transition-all w-full border-primary ring-1 ring-primary/20">
+          <Search size={14} className="text-text-dim flex-shrink-0" />
+          <input
+            ref={inputRef}
+            id={id}
+            type="text"
+            aria-expanded
+            aria-controls="practice-listbox"
+            aria-autocomplete="list"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Filtra fascicoli..."
+            className="flex-1 bg-transparent outline-none text-white text-sm placeholder:text-text-dim/50"
+            autoComplete="off"
+          />
+        </div>
+      ) : (
+        <div className="relative">
+          <button
+            type="button"
+            aria-expanded={false}
+            aria-haspopup="listbox"
+            aria-controls="practice-listbox"
+            className={`flex items-center gap-2 input-field py-2.5 cursor-pointer transition-all w-full text-left ${value ? 'pr-8' : 'pr-2'}`}
+            onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}
+          >
             <Briefcase size={14} className="text-text-dim flex-shrink-0" />
             <span className={`flex-1 text-sm truncate ${selected ? 'text-white' : 'text-text-dim/50'}`}>
               {selected ? `${selected.client} — ${selected.object}` : placeholder}
             </span>
-          </>
-        )}
-        {value && !open && (
-          <button
-            type="button"
-            onClick={handleClear}
-            className="p-1 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
-            title="Rimuovi selezione"
-          >
-            <X size={12} className="text-text-dim" />
+            {!value && <ChevronDown size={14} className="text-text-dim flex-shrink-0" />}
           </button>
-        )}
-        {!open && !value && (
-          <ChevronDown size={14} className="text-text-dim flex-shrink-0" />
-        )}
-      </div>
+          {value && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0 z-10"
+              title="Rimuovi selezione"
+              aria-label="Rimuovi selezione"
+            >
+              <X size={12} className="text-text-dim" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Dropdown */}
       {open && (
-        <div id="practice-listbox" role="listbox" ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50 glass-card rounded-xl max-h-52 overflow-y-auto no-scrollbar shadow-2xl border border-white/10">
+        <div id="practice-listbox" ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50 glass-card rounded-xl max-h-52 overflow-y-auto no-scrollbar shadow-2xl border border-white/10">
           {filtered.length === 0 ? (
             <div className="px-4 py-3 text-xs text-text-dim text-center">Nessun fascicolo trovato</div>
           ) : (
