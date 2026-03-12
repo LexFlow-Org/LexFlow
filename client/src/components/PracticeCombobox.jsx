@@ -65,7 +65,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlightIdx(i => { const prev = i - 1; return prev >= 0 ? prev : filtered.length - 1; });
+      setHighlightIdx(i => (i - 1 + filtered.length) % Math.max(filtered.length, 1));
     }
     if (e.key === 'Enter' && filtered.length > 0) {
       e.preventDefault();
@@ -100,7 +100,6 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
             ref={inputRef}
             id={id}
             type="text"
-            aria-expanded
             aria-controls="practice-listbox"
             aria-autocomplete="list"
             value={query}
