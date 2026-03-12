@@ -94,10 +94,10 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
 
       {/* Trigger / Input */}
       <div
-        role="combobox"
         tabIndex={open ? -1 : 0}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-controls="practice-listbox"
         className={`flex items-center gap-2 input-field py-2.5 pr-2 cursor-pointer transition-all ${open ? 'border-primary ring-1 ring-primary/20' : ''}`}
         onClick={() => { if (!open) { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); } }}
         onKeyDown={(e) => { if (!open && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); } }}
@@ -142,7 +142,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
 
       {/* Dropdown */}
       {open && (
-        <div ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50 glass-card rounded-xl max-h-52 overflow-y-auto no-scrollbar shadow-2xl border border-white/10">
+        <div id="practice-listbox" role="listbox" ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50 glass-card rounded-xl max-h-52 overflow-y-auto no-scrollbar shadow-2xl border border-white/10">
           {filtered.length === 0 ? (
             <div className="px-4 py-3 text-xs text-text-dim text-center">Nessun fascicolo trovato</div>
           ) : (

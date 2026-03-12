@@ -315,6 +315,23 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
     setShowExportWarning(true);
   };
 
+  /** Shared helper: show loading toast → run PDF export → resolve toast */
+  const runPdfExport = async () => {
+    const toastId = toast.loading('Generazione PDF in corso…', { icon: '📄' });
+    try {
+      const result = await exportPracticePDF(practice);
+      if (result?.success) {
+        const fileName = result.path?.split(/[/\\]/).pop() || 'PDF';
+        toast.success(`PDF salvato: ${fileName}`, { id: toastId, duration: 5000 });
+      } else {
+        toast.dismiss(toastId);
+      }
+    } catch (err) {
+      console.error('[PracticeDetail] PDF export failed:', err);
+      toast.error('Errore durante l\'esportazione', { id: toastId });
+    }
+  };
+
   const handleExportConfirmed = async () => {
     setShowExportWarning(false);
     // Check if biometrics are configured — if yes, try biometric first
@@ -325,22 +342,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
         try {
           const bioResult = await api.bioLogin();
           if (bioResult) {
-            // Biometric verified — proceed directly with export
-            const toastId = toast.loading('Generazione PDF in corso…', { icon: '📄' });
-            try {
-              const result = await exportPracticePDF(practice);
-              if (result?.success) {
-                const fileName = result.path?.split(/[/\\]/).pop() || 'PDF';
-                toast.success(`PDF salvato: ${fileName}`, { id: toastId, duration: 5000 });
-              } else if (result?.cancelled) {
-                toast.dismiss(toastId);
-              } else {
-                toast.dismiss(toastId);
-              }
-            } catch (err) {
-              console.error('[PracticeDetail] PDF export failed:', err);
-              toast.error('Errore durante l\'esportazione', { id: toastId });
-            }
+            await runPdfExport();
             return;
           }
         } catch { /* bio failed/dismissed — fall through to password */ }
@@ -369,22 +371,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       return;
     }
     setExportPwd('');
-    // Progress toast for PDF export
-    const toastId = toast.loading('Generazione PDF in corso…', { icon: '📄' });
-    try {
-      const result = await exportPracticePDF(practice);
-      if (result?.success) {
-        const fileName = result.path?.split(/[/\\]/).pop() || 'PDF';
-        toast.success(`PDF salvato: ${fileName}`, { id: toastId, duration: 5000 });
-      } else if (result?.cancelled) {
-        toast.dismiss(toastId);
-      } else {
-        toast.dismiss(toastId);
-      }
-    } catch (err) {
-      console.error('[PracticeDetail] PDF export failed:', err);
-      toast.error('Errore durante l\'esportazione', { id: toastId });
-    }
+    await runPdfExport();
   };
 
   // --- Handlers: PDF Upload ---

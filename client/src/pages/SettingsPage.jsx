@@ -534,20 +534,11 @@ export default function SettingsPage({ onLock }) {
     }
   };
 
-  const initBioStatus = async () => {
-    try {
-      const available = await api.checkBio();
-      if (!available) { setBioStatus('unavailable'); return; }
-      const saved = await api.hasBioSaved();
-      setBioStatus(saved ? 'active' : 'available');
-    } catch { setBioStatus('unavailable'); }
-  };
-
   useEffect(() => {
     api.getAppVersion().then(setAppVersion);
     initPlatform();
     api.getSettings().then(applySettings);
-    initBioStatus();
+    refreshBioStatus();
     // Listen for corrupted settings file event from backend
     const unsubscribe = api.onSettingsCorrupted?.((payload) => {
       toast.error(
@@ -765,11 +756,10 @@ export default function SettingsPage({ onLock }) {
             <button 
               onClick={() => setShowBioResetConfirm(true)}
               className={`flex items-center gap-4 p-4 rounded-xl border transition-all group relative ${
-                bioStatus === 'active' 
-                  ? 'bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/20' 
-                  : bioStatus === 'available' 
-                    ? 'bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/20' 
-                    : 'bg-white/5 hover:bg-white/10 border-white/10'
+                {
+                  active: 'bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/20',
+                  available: 'bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/20',
+                }[bioStatus] || 'bg-white/5 hover:bg-white/10 border-white/10'
               }`}
             >
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
