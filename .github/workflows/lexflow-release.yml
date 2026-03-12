@@ -1,6 +1,6 @@
 # LexFlow Release Pipeline v2.1 -- NASA Tier
 # Pure ASCII -- no Unicode (GitHub YAML parser compatibility)
-name: Release LexFlow
+name: Release LexFlow - Suite Legale
 
 on:
   push:

@@ -146,18 +146,18 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         setShowPasswordField(false);
         // Only auto-trigger biometric if the window actually has focus
         // to avoid Touch ID appearing over other apps
+        const triggerBioNow = () => {
+          if (handleBioLoginRef.current) handleBioLoginRef.current(true);
+        };
+        const onWindowFocus = () => {
+          window.removeEventListener('focus', onWindowFocus);
+          setTimeout(triggerBioNow, 300);
+        };
         const triggerWhenFocused = () => {
           if (document.hasFocus()) {
-            if (handleBioLoginRef.current) handleBioLoginRef.current(true);
+            triggerBioNow();
           } else {
-            // Wait for the window to gain focus, then trigger once
-            const onFocus = () => {
-              window.removeEventListener('focus', onFocus);
-              setTimeout(() => {
-                if (handleBioLoginRef.current) handleBioLoginRef.current(true);
-              }, 300);
-            };
-            window.addEventListener('focus', onFocus);
+            window.addEventListener('focus', onWindowFocus);
           }
         };
         setTimeout(triggerWhenFocused, 400);

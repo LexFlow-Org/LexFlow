@@ -92,11 +92,17 @@ function DeadlineSection({ title, items, onSelectPractice, onNavigate, color }) 
     blue: 'text-blue-400 border-blue-500/20',
     dim: 'text-text-dim border-white/10',
   };
+  const dotColors = {
+    red: 'bg-red-400',
+    amber: 'bg-amber-400',
+    blue: 'bg-blue-400',
+  };
   const style = colorStyles[color] || colorStyles.dim;
+  const dotClass = dotColors[color] || 'bg-white/30';
   return (
     <div className="mb-6">
       <div className={`flex items-center gap-2 mb-3 pb-2 border-b ${style.split(' ').slice(1).join(' ')}`}>
-        <span className={`w-2 h-2 rounded-full ${color === 'red' ? 'bg-red-400' : color === 'amber' ? 'bg-amber-400' : color === 'blue' ? 'bg-blue-400' : 'bg-white/30'}`} />
+        <span className={`w-2 h-2 rounded-full ${dotClass}`} />
         <h3 className={`text-[10px] font-black uppercase tracking-[2px] ${style.split(' ')[0]}`}>{title} ({items.length})</h3>
       </div>
       <div className="space-y-2">

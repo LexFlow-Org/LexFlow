@@ -62,7 +62,7 @@ except ImportError:
     sys.exit(1)
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-SCRIPT_DIR = Path(__file__).parent
+SCRIPT_DIR = Path(__file__).resolve().parent
 REGISTRY_FILE = SCRIPT_DIR / ".lexflow-issued-keys.enc"
 REGISTRY_SALT_FILE = SCRIPT_DIR / ".lexflow-registry-salt"
 
@@ -307,7 +307,10 @@ def save_registry(password: str, entries: list):
     ciphertext = aesgcm.encrypt(nonce, plaintext, None)
 
     # Nuovo formato: salt + nonce + ciphertext in un unico file
-    REGISTRY_FILE.write_bytes(salt + nonce + ciphertext)
+    # SECURITY: REGISTRY_FILE is derived from __file__.resolve().parent — not user-controlled
+    out_path = REGISTRY_FILE.resolve()
+    assert out_path.parent == SCRIPT_DIR, "Path traversal detected"
+    out_path.write_bytes(salt + nonce + ciphertext)
 
     # Migrazione: rimuovi vecchio file salt separato (ora è embedded)
     if REGISTRY_SALT_FILE.exists():
@@ -590,6 +593,36 @@ def cmd_list():
     print()
 
 
+def _format_expiry(expiry_ms, now_ms, grace_days):
+    """Format expiry status for display."""
+    grace_ms = grace_days * 86400 * 1000
+    exp_date = datetime.fromtimestamp(expiry_ms / 1000).strftime('%Y-%m-%d')
+    is_expired = now_ms > expiry_ms
+    is_in_grace = is_expired and (now_ms <= (expiry_ms + grace_ms))
+    if is_in_grace:
+        grace_end = datetime.fromtimestamp((expiry_ms + grace_ms) / 1000).strftime('%Y-%m-%d')
+        return f"{C.ORANGE}{exp_date} ⚠️ SCADUTA (Grace Period fino al {grace_end}){C.RESET}"
+    if is_expired:
+        return f"{C.RED}{exp_date} ❌ SCADUTA{C.RESET}"
+    return f"{C.GREEN}{exp_date} ✅ Valida{C.RESET}"
+
+
+def _check_registry_status(burn_hash):
+    """Check burn hash against registry. Returns formatted status string."""
+    try:
+        pwd = get_password()
+        registry = load_registry(pwd)
+        found = [e for e in registry if e.get("burn_hash") == burn_hash]
+        if found:
+            e = found[0]
+            if e.get("status") == "burned":
+                return f"{C.RED}🔥 CHIAVE OBLITERATA — non più valida{C.RESET}"
+            return f"{C.GREEN}✅ Trovata (stato: {e.get('status')}){C.RESET}"
+        return f"{C.YELLOW}❓ NON trovata (v1 o non registrata){C.RESET}"
+    except Exception:
+        return f"{C.YELLOW}❓ Impossibile accedere{C.RESET}"
+
+
 def cmd_verify():
     """Verify a token."""
     if len(sys.argv) >= 3:
@@ -618,46 +651,18 @@ def cmd_verify():
     _field("ID", payload.get('id', '?'), "🏷️")
     _field("Nonce", f"{payload.get('n', 'N/A')[:16]}…", "🔑")
 
-    # Hardware ID (se presente)
     if 'h' in payload:
         _field("Hardware ID", payload.get('h'), "🖥️")
 
-    # Grace Period logic
     grace_days = payload.get('g', 0)
-    grace_ms = grace_days * 86400 * 1000
-
-    exp_date = datetime.fromtimestamp(expiry_ms / 1000).strftime('%Y-%m-%d')
-    is_expired = now_ms > expiry_ms
-    is_in_grace = is_expired and (now_ms <= (expiry_ms + grace_ms))
-
-    if is_in_grace:
-        grace_end = datetime.fromtimestamp((expiry_ms + grace_ms) / 1000).strftime('%Y-%m-%d')
-        _field("Scadenza", f"{C.ORANGE}{exp_date} ⚠️ SCADUTA (Grace Period fino al {grace_end}){C.RESET}", "📅")
-    elif is_expired:
-        _field("Scadenza", f"{C.RED}{exp_date} ❌ SCADUTA{C.RESET}", "📅")
-    else:
-        _field("Scadenza", f"{C.GREEN}{exp_date} ✅ Valida{C.RESET}", "📅")
+    _field("Scadenza", _format_expiry(expiry_ms, now_ms, grace_days), "📅")
 
     if grace_days > 0:
         _field("Grace Period", f"{grace_days} giorni", "🕐")
 
     burn_hash = compute_key_hash(token)
     _field("Burn Hash", f"{C.DARK}{burn_hash[:24]}…{C.RESET}", "🔒")
-
-    try:
-        pwd = get_password()
-        registry = load_registry(pwd)
-        found = [e for e in registry if e.get("burn_hash") == burn_hash]
-        if found:
-            e = found[0]
-            if e.get("status") == "burned":
-                _field("Registro", f"{C.RED}🔥 CHIAVE OBLITERATA — non più valida{C.RESET}", "📋")
-            else:
-                _field("Registro", f"{C.GREEN}✅ Trovata (stato: {e.get('status')}){C.RESET}", "📋")
-        else:
-            _field("Registro", f"{C.YELLOW}❓ NON trovata (v1 o non registrata){C.RESET}", "📋")
-    except Exception:
-        _field("Registro", f"{C.YELLOW}❓ Impossibile accedere{C.RESET}", "📋")
+    _field("Registro", _check_registry_status(burn_hash), "📋")
     print()
 
 

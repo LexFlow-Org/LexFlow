@@ -61,7 +61,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
     if (e.key === 'Escape') { setOpen(false); inputRef.current?.blur(); setHighlightIdx(-1); }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlightIdx(i => (i + 1) % (filtered.length || 1));
+      setHighlightIdx(i => (i + 1) % Math.max(filtered.length, 1));
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
@@ -94,8 +94,13 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
 
       {/* Trigger / Input */}
       <div
+        role="combobox"
+        tabIndex={open ? -1 : 0}
+        aria-expanded={open}
+        aria-haspopup="listbox"
         className={`flex items-center gap-2 input-field py-2.5 pr-2 cursor-pointer transition-all ${open ? 'border-primary ring-1 ring-primary/20' : ''}`}
         onClick={() => { if (!open) { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); } }}
+        onKeyDown={(e) => { if (!open && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); } }}
       >
         {open ? (
           <>

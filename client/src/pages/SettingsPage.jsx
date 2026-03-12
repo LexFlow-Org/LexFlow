@@ -355,26 +355,34 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
     onClose();
   };
 
+  const stepGradients = {
+    enroll: 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)',
+    'done-deactivated': 'linear-gradient(135deg, rgba(96,165,250,0.08) 0%, rgba(96,165,250,0.02) 100%)',
+  };
+  const defaultGradient = 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)';
+
+  const stepIconStyles = {
+    enroll: 'bg-primary/10 border-primary/20',
+    'done-deactivated': 'bg-blue-500/10 border-blue-500/20',
+  };
+  const defaultIconStyle = 'bg-red-500/10 border-red-500/20';
+
+  const stepIcons = {
+    enroll: <Fingerprint size={22} className="text-primary" />,
+    'done-deactivated': <ShieldCheck size={22} className="text-blue-400" />,
+  };
+  const defaultIcon = <RefreshCw size={22} className="text-red-400" />;
+
   return (
     <ModalOverlay onClose={onClose} labelledBy="bio-modal-title" zIndex={200}>
       <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <div className="px-8 pt-8 pb-5" style={{ background: step === 'enroll' 
-          ? 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)'
-          : step === 'done-deactivated'
-            ? 'linear-gradient(135deg, rgba(96,165,250,0.08) 0%, rgba(96,165,250,0.02) 100%)'
-            : 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)' }}>
+        <div className="px-8 pt-8 pb-5" style={{ background: stepGradients[step] || defaultGradient }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
-              step === 'enroll' ? 'bg-primary/10 border-primary/20' :
-              step === 'done-deactivated' ? 'bg-blue-500/10 border-blue-500/20' : 'bg-red-500/10 border-red-500/20'
+              stepIconStyles[step] || defaultIconStyle
             }`}>
-              {step === 'enroll' 
-                ? <Fingerprint size={22} className="text-primary" />
-                : step === 'done-deactivated'
-                  ? <ShieldCheck size={22} className="text-blue-400" />
-                  : <RefreshCw size={22} className="text-red-400" />
-              }
+              {stepIcons[step] || defaultIcon}
             </div>
             <div>
               <h3 id="bio-modal-title" className="text-xl font-bold text-white">
@@ -501,27 +509,45 @@ export default function SettingsPage({ onLock }) {
 
   const applySettings = (settings) => {
     if (!settings) return;
-    if (typeof settings.privacyBlurEnabled === 'boolean') setPrivacyEnabled(settings.privacyBlurEnabled);
-    if (typeof settings.notifyEnabled === 'boolean') setNotifyEnabled(settings.notifyEnabled);
+    const boolFields = [
+      ['privacyBlurEnabled', setPrivacyEnabled],
+      ['notifyEnabled', setNotifyEnabled],
+      ['screenshotProtection', setScreenshotProtection],
+    ];
+    for (const [key, setter] of boolFields) {
+      if (typeof settings[key] === 'boolean') setter(settings[key]);
+    }
     // Unify: prefer `preavviso` (Agenda key), fallback to `notificationTime` (legacy Settings key)
-    if (settings.preavviso !== undefined) setNotificationTime(settings.preavviso);
-    else if (settings.notificationTime) setNotificationTime(settings.notificationTime);
-    if (typeof settings.screenshotProtection === 'boolean') setScreenshotProtection(settings.screenshotProtection);
+    const time = settings.preavviso ?? settings.notificationTime;
+    if (time !== undefined) setNotificationTime(time);
     if (settings.autolockMinutes !== undefined) setAutolockMinutes(settings.autolockMinutes);
+  };
+
+  const initPlatform = async () => {
+    try {
+      const p = await api.getPlatform();
+      const labels = { macos: 'macOS', windows: 'Windows', android: 'Android', ios: 'iOS', linux: 'Linux' };
+      setPlatform(labels[p] || p || 'Desktop');
+    } catch {
+      const m = await api.isMac();
+      setPlatform(m ? 'macOS' : 'Windows');
+    }
+  };
+
+  const initBioStatus = async () => {
+    try {
+      const available = await api.checkBio();
+      if (!available) { setBioStatus('unavailable'); return; }
+      const saved = await api.hasBioSaved();
+      setBioStatus(saved ? 'active' : 'available');
+    } catch { setBioStatus('unavailable'); }
   };
 
   useEffect(() => {
     api.getAppVersion().then(setAppVersion);
-    api.getPlatform().then(p => {
-      const labels = { macos: 'macOS', windows: 'Windows', android: 'Android', ios: 'iOS', linux: 'Linux' };
-      setPlatform(labels[p] || p || 'Desktop');
-    }).catch(() => api.isMac().then(m => setPlatform(m ? 'macOS' : 'Windows')));
+    initPlatform();
     api.getSettings().then(applySettings);
-    // Check biometrics status
-    api.checkBio().then(available => {
-      if (!available) { setBioStatus('unavailable'); return; }
-      api.hasBioSaved().then(saved => setBioStatus(saved ? 'active' : 'available'));
-    }).catch(() => setBioStatus('unavailable'));
+    initBioStatus();
     // Listen for corrupted settings file event from backend
     const unsubscribe = api.onSettingsCorrupted?.((payload) => {
       toast.error(
@@ -550,6 +576,30 @@ export default function SettingsPage({ onLock }) {
     } catch {
       toast.error('Errore salvataggio');
       setPrivacyEnabled(!newValue); 
+    }
+  };
+
+  const handleScreenshotToggle = async () => {
+    const val = !screenshotProtection;
+    setScreenshotProtection(val);
+    try {
+      await api.setContentProtection(val);
+      await api.saveSettings({ ...buildFullSettings(), screenshotProtection: val });
+      toast.success(val ? 'Screenshot bloccati' : 'Screenshot sbloccati');
+    } catch {
+      toast.error('Errore');
+      setScreenshotProtection(!val);
+    }
+  };
+
+  const handleAutolockChange = async (opt) => {
+    setAutolockMinutes(opt.value);
+    try {
+      await api.setAutolockMinutes(opt.value);
+      await api.saveSettings({ ...buildFullSettings(), autolockMinutes: opt.value });
+      toast.success(opt.value === 0 ? 'Blocco automatico disabilitato' : `Blocco dopo ${opt.label} di inattività`);
+    } catch {
+      toast.error('Errore');
     }
   };
 
@@ -670,18 +720,7 @@ export default function SettingsPage({ onLock }) {
               </p>
             </div>
             <button 
-              onClick={async () => {
-                const val = !screenshotProtection;
-                setScreenshotProtection(val);
-                try {
-                  await api.setContentProtection(val);
-                  await api.saveSettings({ ...buildFullSettings(), screenshotProtection: val });
-                  toast.success(val ? 'Screenshot bloccati' : 'Screenshot sbloccati');
-                } catch {
-                  toast.error('Errore');
-                  setScreenshotProtection(!val);
-                }
-              }}
+              onClick={handleScreenshotToggle}
               className={`w-12 h-6 rounded-full transition-colors relative ${screenshotProtection ? 'bg-primary' : 'bg-white/10'}`}
             >
               <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${screenshotProtection ? 'left-7' : 'left-1'}`} />
@@ -702,16 +741,7 @@ export default function SettingsPage({ onLock }) {
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={async () => {
-                    setAutolockMinutes(opt.value);
-                    try {
-                      await api.setAutolockMinutes(opt.value);
-                      await api.saveSettings({ ...buildFullSettings(), autolockMinutes: opt.value });
-                      toast.success(opt.value === 0 ? 'Blocco automatico disabilitato' : `Blocco dopo ${opt.label} di inattività`);
-                    } catch {
-                      toast.error('Errore');
-                    }
-                  }}
+                  onClick={() => handleAutolockChange(opt)}
                   className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                     autolockMinutes === opt.value
                       ? 'bg-primary text-black border-primary shadow-[0_0_12px_rgba(212,169,64,0.3)]'
@@ -743,21 +773,24 @@ export default function SettingsPage({ onLock }) {
               }`}
             >
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                bioStatus === 'active' ? 'bg-emerald-500/15' :
-                bioStatus === 'available' ? 'bg-amber-500/15' : 'bg-white/5'
+                { active: 'bg-emerald-500/15', available: 'bg-amber-500/15' }[bioStatus] || 'bg-white/5'
               }`}>
                 <Fingerprint size={20} className={
-                  bioStatus === 'active' ? 'text-emerald-400' :
-                  bioStatus === 'available' ? 'text-amber-400' :
-                  bioStatus === 'unavailable' ? 'text-text-dim' : 'text-text-dim animate-pulse'
+                  {
+                    active: 'text-emerald-400',
+                    available: 'text-amber-400',
+                    checking: 'text-text-dim animate-pulse',
+                  }[bioStatus] || 'text-text-dim'
                 } />
               </div>
               <div className="flex flex-col items-start">
                 <span className="text-sm font-bold text-white">Biometria</span>
                 <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                  bioStatus === 'active' ? 'text-emerald-400' :
-                  bioStatus === 'available' ? 'text-amber-400' :
-                  bioStatus === 'unavailable' ? 'text-text-dim' : 'text-text-dim'
+                  {
+                    active: 'text-emerald-400',
+                    available: 'text-amber-400',
+                    checking: 'text-text-dim animate-pulse',
+                  }[bioStatus] || 'text-text-dim'
                 }`}>
                   {bioStatus === 'active' && '✓ Attiva — Face ID / Touch ID'}
                   {bioStatus === 'available' && '○ Non configurata'}

@@ -318,36 +318,38 @@ export default function ContactsPage({ practices, onSelectPractice }) {
   }, [practices]);
 
   // Find related contacts via shared practices (e.g. counterparty ↔ opposing_counsel)
+  const ROLE_PAIRS = [
+    { role: 'counterparty', field: 'counterpartyId', label: 'Controparte' },
+    { role: 'opposing_counsel', field: 'opposingCounselId', label: 'Avv. Controparte' },
+    { role: 'client', field: 'clientId', label: 'Cliente' },
+    { role: 'judge', field: 'judgeId', label: 'Giudice' },
+  ];
+
+  const collectFromPractice = useCallback((practice, contactId, seen, related) => {
+    for (const { field, label } of ROLE_PAIRS) {
+      const cid = practice[field];
+      if (cid && cid !== contactId && !seen.has(cid)) {
+        seen.add(cid);
+        const found = contacts.find(ct => ct.id === cid);
+        if (found) related.push({ role: label, contact: found });
+      }
+    }
+    for (const r of (practice.roles || [])) {
+      if (r.contactId && r.contactId !== contactId && !seen.has(r.contactId)) {
+        seen.add(r.contactId);
+        const found = contacts.find(ct => ct.id === r.contactId);
+        if (found) related.push({ role: ROLE_LABELS[r.role] || r.role, contact: found });
+      }
+    }
+  }, [contacts]);
+
   const getRelatedContacts = useCallback((contact) => {
     const linked = getLinkedPractices(contact.id);
     const related = [];
     const seen = new Set();
-    linked.forEach(p => {
-      const pairs = [
-        { role: 'counterparty', field: 'counterpartyId', label: 'Controparte' },
-        { role: 'opposing_counsel', field: 'opposingCounselId', label: 'Avv. Controparte' },
-        { role: 'client', field: 'clientId', label: 'Cliente' },
-        { role: 'judge', field: 'judgeId', label: 'Giudice' },
-      ];
-      pairs.forEach(({ field, label }) => {
-        const cid = p[field];
-        if (cid && cid !== contact.id && !seen.has(cid)) {
-          seen.add(cid);
-          const found = contacts.find(ct => ct.id === cid);
-          if (found) related.push({ role: label, contact: found });
-        }
-      });
-      // Also check roles array
-      (p.roles || []).forEach(r => {
-        if (r.contactId && r.contactId !== contact.id && !seen.has(r.contactId)) {
-          seen.add(r.contactId);
-          const found = contacts.find(ct => ct.id === r.contactId);
-          if (found) related.push({ role: ROLE_LABELS[r.role] || r.role, contact: found });
-        }
-      });
-    });
+    linked.forEach(p => collectFromPractice(p, contact.id, seen, related));
     return related;
-  }, [contacts, getLinkedPractices]);
+  }, [collectFromPractice, getLinkedPractices]);
 
   const typeCounts = useMemo(() => {
     const counts = { all: contacts.length };
@@ -456,7 +458,10 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                 <div className={`flex flex-col ${isExpanded ? 'lg:flex-row lg:gap-3' : ''}`}>
                   {/* Contact Row — tutta la riga cliccabile per aprire dettaglio */}
                   <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(isExpanded ? null : c.id); } }}
                     className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border cursor-pointer ${
                       isExpanded
                         ? 'bg-primary/5 border-primary/20 lg:w-[38%] lg:flex-shrink-0'
@@ -589,18 +594,19 @@ function ContactModal({ initial, onSave, onClose }) {
     setForm(prev => ({ ...prev, [field]: value }));
   }, []);
 
-  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // Use atomic-like groups: domain segments don't include dots, preventing backtracking
+  const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 
   const handleSubmit = () => {
     if (!form.name.trim()) {
       toast.error('Il nome è obbligatorio');
       return;
     }
-    if (form.email && form.email.trim() && !EMAIL_RE.test(form.email.trim())) {
+    if (form.email?.trim() && !EMAIL_RE.test(form.email.trim())) {
       toast.error('Indirizzo email non valido');
       return;
     }
-    if (form.pec && form.pec.trim() && !EMAIL_RE.test(form.pec.trim())) {
+    if (form.pec?.trim() && !EMAIL_RE.test(form.pec.trim())) {
       toast.error('Indirizzo PEC non valido');
       return;
     }

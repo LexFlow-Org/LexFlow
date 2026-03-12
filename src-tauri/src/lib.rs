@@ -1780,7 +1780,9 @@ fn bio_login(_state: State<AppState>) -> Result<Value, String> {
             match child.try_wait() {
                 Ok(Some(status)) => {
                     if !status.success() {
-                        return Ok(json!({"success": false, "error": "Autenticazione biometrica fallita"}));
+                        return Ok(
+                            json!({"success": false, "error": "Autenticazione biometrica fallita"}),
+                        );
                     }
                     break;
                 }
@@ -1788,7 +1790,9 @@ fn bio_login(_state: State<AppState>) -> Result<Value, String> {
                     if start.elapsed() >= timeout {
                         let _ = child.kill();
                         let _ = child.wait();
-                        return Ok(json!({"success": false, "error": "Timeout autenticazione biometrica (60s)"}));
+                        return Ok(
+                            json!({"success": false, "error": "Timeout autenticazione biometrica (60s)"}),
+                        );
                     }
                     std::thread::sleep(Duration::from_millis(100));
                 }
