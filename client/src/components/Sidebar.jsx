@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Briefcase, CalendarClock,
   CalendarDays, Settings, Lock, ShieldCheck, X, Menu,
-  Clock, Users
+  Clock, Users, Sun, Moon
 } from 'lucide-react';
 import logo from '../assets/logo.png';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -126,7 +126,7 @@ function DesktopNavItem({ item }) {
       className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative cursor-pointer ${
         isActive
           ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-[1.02]'
-          : 'text-text-dim hover:text-white hover:bg-white/5'
+          : 'text-text-dim hover:text-[var(--text)] hover:bg-[var(--primary-soft)]'
       }`}
     >
       {isActive && (
@@ -153,10 +153,11 @@ DesktopNavItem.propTypes = {
   }).isRequired,
 };
 
-function DesktopSidebar({ version, onLock }) {
+function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
+  const isLight = theme === 'light';
 
   return (
-    <aside className="w-68 h-screen bg-[#08090f] border-r border-white/8 flex flex-col flex-shrink-0 z-20 pt-14 relative">
+    <aside className={`w-68 h-screen border-r flex flex-col flex-shrink-0 z-20 pt-14 relative ${isLight ? 'bg-white border-gray-200' : 'bg-[#08090f] border-white/8'}`}>
       <div className="absolute top-0 left-0 w-full h-32 bg-primary/5 blur-[80px] -z-10 pointer-events-none" />
 
       {/* Logo */}
@@ -167,7 +168,7 @@ function DesktopSidebar({ version, onLock }) {
             <img src={logo} alt="LexFlow" className="w-10 h-10 object-contain relative z-10" />
           </div>
           <div className="flex flex-col">
-            <span className="text-2xl font-black tracking-tighter text-white leading-none">LexFlow</span>
+            <span className="text-2xl font-black tracking-tighter text-[var(--text)] leading-none">LexFlow</span>
             <span className="text-[9px] font-bold text-primary uppercase tracking-[3px] mt-1">Law Suite</span>
           </div>
         </div>
@@ -188,7 +189,7 @@ function DesktopSidebar({ version, onLock }) {
       </nav>
 
       {/* Footer */}
-      <div className="p-6 border-t border-white/8 bg-[#0a0b12]">
+      <div className={`p-6 border-t ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/8 bg-[#0a0b12]'}`}>
         <button
           onClick={onLock}
           className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group mb-5"
@@ -199,11 +200,21 @@ function DesktopSidebar({ version, onLock }) {
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-bold text-text-dim/80 uppercase tracking-tight">v{version}</span>
+            <span className={`text-[10px] font-bold uppercase tracking-tight ${isLight ? 'text-gray-400' : 'text-text-dim/80'}`}>v{version}</span>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.04] rounded-lg border border-white/[0.06]">
-            <ShieldCheck size={11} className="text-primary" />
-            <span className="text-[8px] font-black text-text-dim/70 uppercase tracking-widest">AES-256 GCM</span>
+          <div className="flex items-center gap-2">
+            {/* Toggle Tema */}
+            <button
+              onClick={onToggleTheme}
+              className={`p-1.5 rounded-lg transition-all duration-300 ${isLight ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' : 'bg-white/[0.04] text-text-dim hover:bg-white/[0.08] hover:text-primary'} border ${isLight ? 'border-amber-200' : 'border-white/[0.06]'}`}
+              title={isLight ? 'Tema scuro' : 'Tema chiaro'}
+            >
+              {isLight ? <Moon size={13} /> : <Sun size={13} />}
+            </button>
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${isLight ? 'bg-gray-100 border-gray-200' : 'bg-white/[0.04] border-white/[0.06]'}`}>
+              <ShieldCheck size={11} className="text-primary" />
+              <span className={`text-[8px] font-black uppercase tracking-widest ${isLight ? 'text-gray-400' : 'text-text-dim/70'}`}>AES-256 GCM</span>
+            </div>
           </div>
         </div>
       </div>
@@ -214,14 +225,17 @@ function DesktopSidebar({ version, onLock }) {
 DesktopSidebar.propTypes = {
   version: PropTypes.string,
   onLock: PropTypes.func,
+  theme: PropTypes.string,
+  onToggleTheme: PropTypes.func,
 };
 
 // ══════════════════════════════════════════════════════════════════════════
 //  MOBILE SIDEBAR — Liquid Curtain fullscreen
 // ══════════════════════════════════════════════════════════════════════════
-function MobileSidebar({ isOpen, onToggle, version, onLock }) {
+function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme }) {
   const location = useLocation();
   const [isClosing, setIsClosing] = useState(false);
+  const isLight = theme === 'light';
 
   // Refs per evitare stale closures negli effect
   const isClosingRef = useRef(false);
@@ -471,6 +485,27 @@ function MobileSidebar({ isOpen, onToggle, version, onLock }) {
                 </button>
               </motion.div>
 
+              {/* ── Toggle Tema ── */}
+              <motion.div variants={itemVariants} style={{ width: '100%', maxWidth: 320, marginTop: 8 }}>
+                <button
+                  onClick={onToggleTheme}
+                  style={{
+                    width: '100%', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                    gap: 10, padding: '10px 24px', borderRadius: 14,
+                    background: isLight ? 'rgba(184,145,46,0.1)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${isLight ? 'rgba(184,145,46,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                    color: isLight ? '#b8912e' : '#d4a940', cursor: 'pointer',
+                    fontWeight: 700, fontSize: 12,
+                    textTransform: 'uppercase', letterSpacing: '0.1em',
+                    transition: 'background 0.2s',
+                  }}
+                >
+                  {isLight ? <Moon size={16} /> : <Sun size={16} />}
+                  {isLight ? 'Tema Scuro' : 'Tema Chiaro'}
+                </button>
+              </motion.div>
+
               {/* ── Footer versione + badge ── */}
               <motion.div
                 variants={itemVariants}
@@ -517,6 +552,8 @@ MobileSidebar.propTypes = {
   onToggle: PropTypes.func,
   version: PropTypes.string,
   onLock: PropTypes.func,
+  theme: PropTypes.string,
+  onToggleTheme: PropTypes.func,
 };
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -552,7 +589,7 @@ HamburgerButton.propTypes = {
 // ══════════════════════════════════════════════════════════════════════════
 //  EXPORT — switch automatico Desktop / Mobile
 // ══════════════════════════════════════════════════════════════════════════
-export default function Sidebar({ version, onLock, isOpen, onToggle }) {
+export default function Sidebar({ version, onLock, isOpen, onToggle, theme, onToggleTheme }) {
   const isMobile = useIsMobile(1024);
 
   if (isMobile) {
@@ -562,11 +599,13 @@ export default function Sidebar({ version, onLock, isOpen, onToggle }) {
         onToggle={onToggle}
         version={version}
         onLock={onLock}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
     );
   }
 
-  return <DesktopSidebar version={version} onLock={onLock} />;
+  return <DesktopSidebar version={version} onLock={onLock} theme={theme} onToggleTheme={onToggleTheme} />;
 }
 
 Sidebar.propTypes = {
@@ -574,4 +613,6 @@ Sidebar.propTypes = {
   onLock: PropTypes.func,
   isOpen: PropTypes.bool,
   onToggle: PropTypes.func,
+  theme: PropTypes.string,
+  onToggleTheme: PropTypes.func,
 };

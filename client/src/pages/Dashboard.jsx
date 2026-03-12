@@ -55,7 +55,7 @@ function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavig
             <button
               type="button"
               onClick={() => { if (onNavigate) onNavigate('/agenda?date=' + ev.date); }}
-              className="w-full flex items-center gap-3 text-sm rounded-xl px-3 py-2 hover:bg-white/[0.07] transition-colors group text-left cursor-pointer"
+              className={`w-full flex items-center gap-3 text-sm rounded-xl px-3 py-2 hover:bg-white/[0.07] transition-colors group text-left cursor-pointer ${ev.practiceId ? 'pr-12' : ''}`}
               title="Apri in Agenda"
             >
               <span className="text-[11px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded w-14 text-center flex-shrink-0">

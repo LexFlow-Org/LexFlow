@@ -2,27 +2,27 @@
 
 /* ========== THEME (Tailwind v4 @theme) ========== */
 @theme {
-  --color-background: #0c0d14;
-  --color-card: #13141e;
-  --color-card-hover: #1a1c2a;
-  --color-surface: #161822;
-  --color-input: #181a26;
-  --color-border: #2e3352;
+  --color-background: var(--bg);
+  --color-card: var(--bg-card);
+  --color-card-hover: var(--bg-card-hover);
+  --color-surface: var(--bg-surface);
+  --color-input: var(--bg-input);
+  --color-border: var(--border);
 
-  --color-primary: #d4a940;
-  --color-primary-hover: #b8912e;
-  --color-primary-soft: rgba(212,169,64,0.12);
-  --color-primary-glow: rgba(212,169,64,0.25);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-glow: var(--primary-glow);
 
-  --color-text: #edeef6;
-  --color-text-muted: #b0b4cc;
-  --color-text-dim: #8b90ad;
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-dim: var(--text-dim);
   --color-text-subtle: #6e7490;
 
-  --color-success: #34d399;
-  --color-warning: #fbbf24;
-  --color-danger: #f87171;
-  --color-info: #60a5fa;
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
 }
 
 /* ========== LEGACY CSS VARS ========== */
@@ -32,11 +32,11 @@
     --primary-hover: #b8912e;
     --primary-soft: rgba(212,169,64,0.12);
     --primary-glow: rgba(212,169,64,0.25);
-    --bg: #0c0d14;
-    --bg-card: #13141e;
-    --bg-card-hover: #1a1c2a;
-    --bg-input: #181a26;
-    --bg-surface: #161822;
+    --bg: #121318;
+    --bg-card: #1a1b24;
+    --bg-card-hover: #22242f;
+    --bg-input: #1e2030;
+    --bg-surface: #1e1f2a;
     --text: #edeef6;
     --text-muted: #c0c4dc;
     --text-dim: #9da2be;
@@ -50,6 +50,33 @@
     --radius-lg: 16px;
     --shadow: 0 2px 8px rgba(0,0,0,0.25);
     --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ── Light Theme ── */
+  :root[data-theme="light"] {
+    --primary: #b8912e;
+    --primary-hover: #a07d28;
+    --primary-soft: rgba(184,145,46,0.10);
+    --primary-glow: rgba(184,145,46,0.18);
+    --bg: #f5f5f7;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f0f0f2;
+    --bg-input: #f0f1f5;
+    --bg-surface: #ffffff;
+    --text: #1a1a2e;
+    --text-muted: #5a5e78;
+    --text-dim: #8b90ad;
+    --border: #d8dae5;
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --info: #2563eb;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    color-scheme: light;
+  }
+
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
   }
 
   body {
@@ -96,6 +123,26 @@
   .glass-card:hover {
     border-color: rgba(255, 255, 255, 0.18);
     box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+  }
+
+  /* Light theme glass overrides */
+  :root[data-theme="light"] .glass-card {
+    background: rgba(255, 255, 255, 0.85);
+    border-color: rgba(0, 0, 0, 0.08);
+  }
+  :root[data-theme="light"] .glass-card:hover {
+    border-color: rgba(0, 0, 0, 0.15);
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.06);
+  }
+
+  /* ── Light theme: remap white text/bg to dark equivalents ── */
+  :root[data-theme="light"] .main-content {
+    background: var(--bg);
+  }
+  /* Main content area scrollbar for light */
+  :root[data-theme="light"] .modal-content {
+    background: var(--bg-card);
+    border-color: var(--border);
   }
 
   /* LAYOUT - FIX: Usiamo flex per affiancare i componenti senza sovrapposizioni */
@@ -737,3 +784,36 @@ body.agenda-dragging .agenda-event:hover {
   }
 }
 
+/* ========== LIGHT THEME OVERRIDES ========== */
+/* Remap Tailwind `text-white` and `bg-white/X` patterns for light mode.
+   This avoids modifying 50+ component files. The CSS specificity of
+   [data-theme] + class selector beats plain utility classes. */
+
+:root[data-theme="light"] {
+  /* Global text-white → dark text */
+  & .text-white { color: var(--text) !important; }
+  /* Hero card & stat card text keep readable */
+  & .bg-surface { background: var(--bg-surface) !important; }
+  & .bg-background { background: var(--bg) !important; }
+  /* Borders: white/X → subtle gray */
+  & .border-white\/5,
+  & .border-white\/8,
+  & .border-white\/10 { border-color: rgba(0, 0, 0, 0.08) !important; }
+  /* hover:bg-white/X → subtle gray hover */
+  & .hover\:bg-white\/5:hover,
+  & .hover\:bg-white\/\[0\.07\]:hover { background: rgba(0, 0, 0, 0.04) !important; }
+  /* bg-white/X transparent layers → light gray layers */
+  & .bg-white\/5,
+  & .bg-white\/\[0\.04\],
+  & .bg-white\/\[0\.06\] { background: rgba(0, 0, 0, 0.04) !important; }
+  /* Input fields */
+  & .input-field {
+    background: var(--bg-input) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+  }
+  & .input-field::placeholder { color: var(--text-dim) !important; }
+  & select.input-field option { background: var(--bg-card) !important; color: var(--text) !important; }
+  /* Toasts */
+  & .lexflow-toast { background: var(--bg-card) !important; border-color: var(--border) !important; color: var(--text) !important; }
+}

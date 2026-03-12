@@ -11,6 +11,7 @@ import LoginScreen from './components/LoginScreen';
 import LicenseActivation from './components/LicenseActivation';
 import Sidebar, { HamburgerButton } from './components/Sidebar';
 import { useIsMobile } from './hooks/useIsMobile';
+import { useTheme } from './hooks/useTheme';
 import WindowControls from './components/WindowControls';
 import PracticeDetail from './components/PracticeDetail';
 import CreatePracticeModal from './components/CreatePracticeModal';
@@ -57,6 +58,13 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
 
   const [showCreate, setShowCreate] = useState(false);
+
+  // --- TEMA CHIARO/SCURO ---
+  const saveSettingsForTheme = useCallback(async (updated) => {
+    setSettings(updated);
+    if (api.saveSettings) await api.saveSettings(updated);
+  }, []);
+  const { theme, toggleTheme } = useTheme(settings, saveSettingsForTheme);
 
   // --- 1. INIZIALIZZAZIONE ---
   useEffect(() => {
@@ -340,7 +348,7 @@ export default function App() {
         {privacyEnabled && blurred && (
           <button 
             type="button"
-            className="fixed inset-0 z-[9999] bg-[#0c0d14]/80 backdrop-blur-3xl flex items-center justify-center transition-opacity duration-300 cursor-pointer animate-fade-in border-none outline-none w-full"
+            className="fixed inset-0 z-[9999] bg-[var(--bg)]/80 backdrop-blur-3xl flex items-center justify-center transition-opacity duration-300 cursor-pointer animate-fade-in border-none outline-none w-full"
             onClick={handleManualLock}
           >
             <div className="text-center">
@@ -359,6 +367,8 @@ export default function App() {
           onLock={handleManualLock}
           isOpen={sidebarOpen}
           onToggle={setSidebarOpen}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
 
         {/* Hamburger button — solo su mobile/Android (<1024px) */}
