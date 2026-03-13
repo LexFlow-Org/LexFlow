@@ -2,30 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { Search, AlertTriangle, Shield, ShieldCheck, User, Briefcase, Scale, ChevronRight, X } from 'lucide-react';
 import * as api from '../tauri-api';
-
-/* ──── Label / colour maps ──── */
-export const ROLE_LABELS = {
-  client: 'Cliente',
-  counterparty: 'Controparte',
-  opposing_counsel: 'Avv. Controparte',
-  judge: 'Giudice',
-  consultant: 'Consulente',
-};
-
-export const FIELD_LABELS = {
-  client: 'Cliente',
-  counterparty: 'Controparte',
-  description: 'Descrizione',
-  court: 'Tribunale',
-  object: 'Oggetto',
-};
-
-export const STATUS_LABELS = { active: 'Attivo', closed: 'Chiuso', archived: 'Archiviato' };
-export const STATUS_COLORS = {
-  active: 'bg-green-500/10 text-green-400 border-green-500/30',
-  closed: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30',
-  archived: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
-};
+import { ROLE_LABELS, FIELD_LABELS, STATUS_LABELS, STATUS_COLORS } from '../utils/conflictConstants';
 
 /**
  * Reusable conflict-check search panel with debounced input,

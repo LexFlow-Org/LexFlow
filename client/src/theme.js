@@ -132,7 +132,7 @@ export function getTimeOfDay(hour = new Date().getHours()) {
  * Ottiene il colore hero per stagione + ora.
  * Colore unico indipendente dal tema — niente gradienti, niente banding.
  */
-export function getHeroGradient(_theme) {
+export function getHeroGradient() {
   const season = getSeason();
   const timeOfDay = getTimeOfDay();
   const background = HERO_COLORS[season]?.[timeOfDay] || HERO_COLORS.winter.morning;

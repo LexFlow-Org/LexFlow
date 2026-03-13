@@ -93,10 +93,12 @@ export default function TimeTrackingPage({ practices }) {
     } else {
       localStorage.removeItem('lexflow_active_timer');
       clearInterval(intervalRef.current);
-      setElapsed(0);
     }
     return () => clearInterval(intervalRef.current);
   }, [activeTimer]);
+
+  // Derived: reset elapsed when no active timer
+  const displayElapsed = activeTimer ? elapsed : 0;
 
   const startTimer = (practiceId, description) => {
     setActiveTimer({ practiceId, description, startedAt: Date.now() });
@@ -285,7 +287,7 @@ export default function TimeTrackingPage({ practices }) {
               )}
               <div className="flex items-center justify-between pt-2">
                 <span className="font-mono text-3xl text-primary font-bold tabular-nums">
-                  {String(Math.floor(elapsed / 3600)).padStart(2, '0')}:{String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
+                  {String(Math.floor(displayElapsed / 3600)).padStart(2, '0')}:{String(Math.floor((displayElapsed % 3600) / 60)).padStart(2, '0')}:{String(displayElapsed % 60).padStart(2, '0')}
                 </span>
                 <button onClick={stopTimer} className="flex items-center gap-2 px-4 py-2.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 rounded-xl transition-colors text-xs font-bold">
                   <Square size={14} fill="currentColor" /> Ferma
@@ -602,18 +604,20 @@ ManualLogModal.propTypes = {
 function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, onSave, onClose }) {
   const [number, setNumber] = useState(initial?.number || String(invoiceCount + 1).padStart(3, '0'));
   const [invDate, setInvDate] = useState(initial?.date || toDateStr(new Date()));
-  const [practiceId, setPracticeId] = useState(initial?.practiceId || '');
+  const [practiceId, setPracticeIdRaw] = useState(initial?.practiceId || '');
   const [clientName, setClientName] = useState(initial?.clientName || '');
   const [practiceName, setPracticeName] = useState(initial?.practiceName || '');
   const [status, setStatus] = useState(initial?.status || 'draft');
   const [items, setItems] = useState(() => (initial?.items || [{ description: '', qty: 1, unit: 'h', unitPrice: 0, total: 0 }]).map((it, i) => ({ ...it, _key: it._key || `inv-${Date.now()}-${i}` })));
 
-  useEffect(() => {
-    if (practiceId) {
-      const p = practices.find(pr => pr.id === practiceId);
+  // Update client/practice names when practiceId changes
+  const setPracticeId = (newId) => {
+    setPracticeIdRaw(newId);
+    if (newId) {
+      const p = practices.find(pr => pr.id === newId);
       if (p) { setClientName(p.client || ''); setPracticeName(`${p.client} \u2014 ${p.object}`); }
     }
-  }, [practiceId, practices]);
+  };
 
   const addItem = () => setItems([...items, { _key: `inv-${Date.now()}`, description: '', qty: 1, unit: 'h', unitPrice: 0, total: 0 }]);
   const removeItem = (idx) => setItems(items.filter((_, i) => i !== idx));

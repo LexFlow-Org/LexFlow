@@ -121,12 +121,15 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
   const [briefingSera, setBriefingSera] = useState(settings?.briefingSera || '19:30');
   const [briefingDirty, setBriefingDirty] = useState(false);
 
+  // Sync local state when settings prop changes (from parent/backend)
+  /* eslint-disable react-hooks/set-state-in-effect -- intentional sync from parent prop */
   useEffect(() => {
     setBriefingMattina(settings?.briefingMattina || '08:30');
     setBriefingPomeriggio(settings?.briefingPomeriggio || '14:30');
     setBriefingSera(settings?.briefingSera || '19:30');
     setBriefingDirty(false);
   }, [settings]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleBriefingSave = async () => {
     try {

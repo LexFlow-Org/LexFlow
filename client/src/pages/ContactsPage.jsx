@@ -6,6 +6,7 @@ import * as api from '../tauri-api';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ModalOverlay from '../components/ModalOverlay';
 import ConflictCheckPanel from '../components/ConflictCheckPanel';
+import { ROLE_LABELS } from '../utils/conflictConstants';
 import { genId } from '../utils/helpers';
 
 const CONTACT_TYPES = [
@@ -18,6 +19,13 @@ const CONTACT_TYPES = [
 ];
 
 const TYPE_MAP = Object.fromEntries(CONTACT_TYPES.map(t => [t.id, t]));
+
+const ROLE_PAIRS = [
+  { role: 'counterparty', field: 'counterpartyId', label: 'Controparte' },
+  { role: 'opposing_counsel', field: 'opposingCounselId', label: 'Avv. Controparte' },
+  { role: 'client', field: 'clientId', label: 'Cliente' },
+  { role: 'judge', field: 'judgeId', label: 'Giudice' },
+];
 
 export default function ContactsPage({ practices, onSelectPractice }) {
   const [activeTab, setActiveTab] = useState('contacts');
@@ -91,13 +99,6 @@ export default function ContactsPage({ practices, onSelectPractice }) {
   }, [practices]);
 
   // Find related contacts via shared practices (e.g. counterparty ↔ opposing_counsel)
-  const ROLE_PAIRS = [
-    { role: 'counterparty', field: 'counterpartyId', label: 'Controparte' },
-    { role: 'opposing_counsel', field: 'opposingCounselId', label: 'Avv. Controparte' },
-    { role: 'client', field: 'clientId', label: 'Cliente' },
-    { role: 'judge', field: 'judgeId', label: 'Giudice' },
-  ];
-
   const collectFromPractice = useCallback((practice, contactId, seen, related) => {
     for (const { field, label } of ROLE_PAIRS) {
       const cid = practice[field];

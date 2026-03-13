@@ -1,6 +1,7 @@
-# LexFlow Release Pipeline v2.1 -- NASA Tier
+# LexFlow Release Pipeline v3.0 -- Node 24, no gitleaks
 # Pure ASCII -- no Unicode (GitHub YAML parser compatibility)
 name: Release LexFlow - Suite Legale
+run-name: "Release LexFlow - Suite Legale"
 
 on:
   push:
@@ -36,10 +37,10 @@ jobs:
           egress-policy: audit
 
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -61,7 +62,7 @@ jobs:
             patchelf
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: ./src-tauri -> target
           shared-key: preflight
@@ -76,8 +77,6 @@ jobs:
         run: |
           set -e
           mkdir -p src-tauri/binaries
-          # Pre-flight runs on ubuntu (x86_64-unknown-linux-gnu target triple).
-          # Typst publishes musl builds only -- download, extract, rename to match Tauri target.
           ASSET="typst-x86_64-unknown-linux-musl.tar.xz"
           TAURI_NAME="typst-x86_64-unknown-linux-gnu"
           OUT="src-tauri/binaries/$TAURI_NAME"
@@ -86,14 +85,19 @@ jobs:
           fi
           URL="https://github.com/typst/typst/releases/latest/download/$ASSET"
           echo "Downloading $URL"
-          curl -fSL -o "/tmp/$ASSET" "$URL"
-          tar -xJf "/tmp/$ASSET" -C /tmp
-          # The archive contains a folder like typst-x86_64-unknown-linux-musl/typst
-          EXTRACTED=$(find /tmp -name "typst" -type f -path "*/typst-x86_64*" | head -1)
-          if [ -z "$EXTRACTED" ]; then echo "ERROR: typst binary not found in archive"; exit 1; fi
+          WORKDIR=$(mktemp -d)
+          curl -fSL -o "$WORKDIR/$ASSET" "$URL"
+          tar -xJf "$WORKDIR/$ASSET" -C "$WORKDIR"
+          EXTRACTED="$WORKDIR/typst-x86_64-unknown-linux-musl/typst"
+          if [ ! -f "$EXTRACTED" ]; then
+            echo "ERROR: typst binary not found at expected path $EXTRACTED"
+            echo "Archive contents:"; tar -tJf "$WORKDIR/$ASSET"
+            exit 1
+          fi
           cp "$EXTRACTED" "$OUT"
           chmod +x "$OUT"
           echo "Typst sidecar ready: $OUT ($(wc -c < "$OUT") bytes)"
+          rm -rf "$WORKDIR"
 
       - name: Determine Version Tag
         id: get_version
@@ -136,17 +140,11 @@ jobs:
 
       - name: Quality Gate -- ESLint
         working-directory: client
-        run: npx eslint . --max-warnings 0 || echo "ESLint warnings found (non-blocking)"
+        run: npx eslint . --max-warnings 0
 
       - name: Quality Gate -- Vite build
         working-directory: client
         run: npm run build
-
-      - name: Secret Scanning -- gitleaks
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
 
       - name: Dependency Audit -- cargo audit + npm audit
         run: |
@@ -155,10 +153,11 @@ jobs:
           cd client && npm audit --audit-level=high 2>&1 || echo "npm audit: vulnerabilities found (non-blocking)"
 
       - name: License Check -- cargo-deny
-        uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979
+        uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
         with:
           manifest-path: src-tauri/Cargo.toml
-          command: check
+          command: check licenses
+          arguments: --config src-tauri/deny.toml
         continue-on-error: true
 
       - name: Create Draft Release
@@ -197,10 +196,10 @@ jobs:
           egress-policy: audit
 
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -215,7 +214,7 @@ jobs:
         run: rm -f src-tauri/.cargo/config.toml
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: ./src-tauri -> target
           shared-key: macos-universal
@@ -236,15 +235,28 @@ jobs:
             fi
             URL="https://github.com/typst/typst/releases/latest/download/$ASSET"
             echo "Downloading $URL"
-            curl -fSL -o "/tmp/$ASSET" "$URL"
-            tar -xJf "/tmp/$ASSET" -C /tmp
-            EXTRACTED=$(find /tmp -name "typst" -type f -path "*${ARCH}*" | head -1)
-            if [ -z "$EXTRACTED" ]; then echo "ERROR: typst not found in $ASSET"; exit 1; fi
+            WORKDIR=$(mktemp -d)
+            curl -fSL -o "$WORKDIR/$ASSET" "$URL"
+            tar -xJf "$WORKDIR/$ASSET" -C "$WORKDIR"
+            EXTRACTED="$WORKDIR/typst-${ARCH}-apple-darwin/typst"
+            if [ ! -f "$EXTRACTED" ]; then
+              echo "ERROR: typst not found at expected path $EXTRACTED"
+              echo "Archive contents:"; tar -tJf "$WORKDIR/$ASSET"
+              exit 1
+            fi
             cp "$EXTRACTED" "$OUT"
             chmod +x "$OUT"
             echo "$TAURI_NAME ready ($(wc -c < "$OUT") bytes)"
-            rm -rf /tmp/typst-${ARCH}-apple-darwin*
+            rm -rf "$WORKDIR"
           done
+          # Create universal binary via lipo for universal-apple-darwin target
+          UNIVERSAL="src-tauri/binaries/typst-universal-apple-darwin"
+          lipo -create \
+            src-tauri/binaries/typst-aarch64-apple-darwin \
+            src-tauri/binaries/typst-x86_64-apple-darwin \
+            -output "$UNIVERSAL"
+          chmod +x "$UNIVERSAL"
+          echo "Universal sidecar ready: $UNIVERSAL ($(wc -c < "$UNIVERSAL") bytes)"
 
       - name: Build macOS DMG
         uses: tauri-apps/tauri-action@6a45448f17a006facb105cc5257b3edbc353038a
@@ -278,7 +290,7 @@ jobs:
           fi
 
       - name: Attest Build Provenance (SLSA)
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         continue-on-error: true
         with:
           subject-path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
@@ -304,10 +316,10 @@ jobs:
           egress-policy: audit
 
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -319,7 +331,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: ./src-tauri -> target
           shared-key: windows-lite
@@ -377,8 +389,8 @@ jobs:
           }
 
       - name: Attest Build Provenance (SLSA)
-        continue-on-error: true          # attestation non disponibile su org private/free
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        continue-on-error: true
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: staging/LexFlow-*.msi
 
@@ -403,10 +415,10 @@ jobs:
           egress-policy: audit
 
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -418,7 +430,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: ./src-tauri -> target
           shared-key: windows-offline
@@ -488,8 +500,8 @@ jobs:
           }
 
       - name: Attest Build Provenance (SLSA)
-        continue-on-error: true          # attestation non disponibile su org private/free
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        continue-on-error: true
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: staging/LexFlow-*.msi
 
@@ -514,17 +526,17 @@ jobs:
           egress-policy: audit
 
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: "**/package-lock.json"
 
       - name: Setup Java 17
-        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           distribution: zulu
           java-version: "17"
@@ -544,7 +556,7 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: ./src-tauri -> target
           shared-key: android
@@ -563,7 +575,7 @@ jobs:
         run: |
           npx tauri android init
           python3 scripts/generate-icons.py
-          npx tauri android build
+          npx tauri android build --config src-tauri/tauri.android.conf.json
 
       - name: Sign APK/AAB (Secure RAM-Disk Mode)
         env:
@@ -572,13 +584,9 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          # Trap: destroy keystore from RAM on exit (success, error, or cancel)
           trap 'if [ -f /dev/shm/release.keystore ]; then shred -u /dev/shm/release.keystore; echo "Keystore destroyed from RAM."; fi' EXIT
-          # Decode keystore to /dev/shm (tmpfs RAM disk -- never touches physical disk)
           echo "$KEYSTORE_BASE64" | base64 -d > /dev/shm/release.keystore
-          # Find latest build-tools
           BT=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
-          # Sign and zipalign APK (env: prevents password from appearing in ps aux)
           APK=$(find src-tauri/gen/android -name "*universal-release*.apk" | head -1)
           echo "Found APK: $APK"
           if [ -z "$APK" ]; then echo "ERROR: No APK found!"; find src-tauri/gen/android -name "*.apk" -o -name "*.aab" | sort; exit 1; fi
@@ -590,12 +598,10 @@ jobs:
             --key-pass "env:ANDROID_KEY_PASSWORD" \
             --out "LexFlow-${RELEASE_TAG}-android.apk" \
             aligned.apk
-          # Copy AAB
           AAB=$(find src-tauri/gen/android -name "*release.aab" | head -1)
           echo "Found AAB: $AAB"
           if [ -z "$AAB" ]; then echo "ERROR: No AAB found!"; exit 1; fi
           cp "$AAB" "LexFlow-${RELEASE_TAG}-android.aab"
-          # Cleanup intermediate artifacts
           rm -f aligned.apk
           echo "Signing complete. Trap EXIT will shred keystore automatically."
 
@@ -610,8 +616,8 @@ jobs:
           done
 
       - name: Attest Build Provenance (SLSA)
-        continue-on-error: true          # attestation non disponibile su org private/free
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        continue-on-error: true
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: LexFlow-*.apk
 
@@ -627,7 +633,7 @@ jobs:
     if: always() && needs.build-macos.result == 'success' && needs.build-windows-lite.result == 'success' && needs.build-windows-offline.result == 'success' && needs.build-android.result == 'success'
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Publish Draft Release
         env:

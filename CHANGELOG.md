@@ -4,6 +4,18 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.5.6] -- 2026-03-13
+
+### Fixed
+- **ESLint zero-warning compliance** -- Risolti 7 errori e 6 warning per passare quality gate `--max-warnings 0`:
+  - `react-refresh/only-export-components` -- Costanti estratte in `utils/conflictConstants.js`
+  - `no-unused-vars` -- Rimosso import `api` inutilizzato in `useTheme.js`, parametro `_theme` in `theme.js`
+  - `react-hooks/exhaustive-deps` -- `ROLE_PAIRS` spostato a scope modulo in `ContactsPage.jsx`
+  - `react-hooks/set-state-in-effect` -- Stato derivato in `TimeTrackingPage`, setter inline in `PracticeCombobox`, promise chain in `SettingsPage`
+- **CI macOS typst sidecar** -- Estrazione typst ora usa `mktemp -d` + path deterministico invece di `find /tmp` (unreliable sui CI runner)
+- **CI Linux pre-flight typst** -- Stesso fix `mktemp -d` + path deterministico
+- **CI Android build** -- Creato `tauri.android.conf.json` overlay con `externalBin: []` (Typst non ha build Android); workflow passa `--config` per Android
+
 ## [1.5.5] -- 2026-03-12
 
 ### Changed

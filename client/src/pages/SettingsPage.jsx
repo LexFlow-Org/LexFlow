@@ -529,20 +529,15 @@ export default function SettingsPage({ onLock }) {
     if (settings.autolockMinutes !== undefined) setAutolockMinutes(settings.autolockMinutes);
   };
 
-  const initPlatform = async () => {
-    try {
-      const p = await api.getPlatform();
-      const labels = { macos: 'macOS', windows: 'Windows', android: 'Android', ios: 'iOS', linux: 'Linux' };
-      setPlatform(labels[p] || p || 'Desktop');
-    } catch {
-      const m = await api.isMac();
-      setPlatform(m ? 'macOS' : 'Windows');
-    }
-  };
-
   useEffect(() => {
     api.getAppVersion().then(setAppVersion);
-    initPlatform();
+    // Detect platform asynchronously
+    api.getPlatform().then(p => {
+      const labels = { macos: 'macOS', windows: 'Windows', android: 'Android', ios: 'iOS', linux: 'Linux' };
+      setPlatform(labels[p] || p || 'Desktop');
+    }).catch(() => {
+      api.isMac().then(m => setPlatform(m ? 'macOS' : 'Windows'));
+    });
     api.getSettings().then((s) => { applySettings(s); setSettingsLoaded(true); });
     // Load lawyer/studio from license token (read-only, not from settings)
     api.checkLicense().then(res => {
@@ -551,7 +546,11 @@ export default function SettingsPage({ onLock }) {
         if (res.studioName) setStudioName(res.studioName);
       }
     }).catch(() => { /* silent */ });
-    refreshBioStatus();
+    // Check biometrics status asynchronously
+    api.checkBio().then(available => {
+      if (!available) { setBioStatus('unavailable'); return; }
+      return api.hasBioSaved().then(saved => setBioStatus(saved ? 'active' : 'available'));
+    }).catch(() => setBioStatus('unavailable'));
     // Listen for corrupted settings file event from backend
     const unsubscribe = api.onSettingsCorrupted?.((payload) => {
       toast.error(

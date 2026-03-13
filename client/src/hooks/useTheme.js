@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import * as api from '../tauri-api';
 
 /**
  * useTheme — gestisce il toggle tra tema 'dark' e 'light'.

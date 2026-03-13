@@ -8,7 +8,8 @@ import { Search, Briefcase, X, ChevronDown } from 'lucide-react';
  * Shows the full browsable list on open; typing filters.
  */
 export default function PracticeCombobox({ value, onChange, practices, placeholder = 'Cerca fascicolo...', label, id }) {
-  const [query, setQuery] = useState('');
+  const [query, setQueryRaw] = useState('');
+  const setQuery = (q) => { setQueryRaw(q); setHighlightIdx(-1); };
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
   const inputRef = useRef(null);
@@ -80,9 +81,6 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
     const items = listRef.current.querySelectorAll('[data-combo-item]');
     items[highlightIdx]?.scrollIntoView({ block: 'nearest' });
   }, [highlightIdx]);
-
-  // Reset highlight when filtered changes
-  useEffect(() => { setHighlightIdx(-1); }, [filtered]);
 
   return (
     <div ref={wrapRef} className="relative">
