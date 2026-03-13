@@ -2158,10 +2158,7 @@ fn monotonic_clock_check(sec_dir: &std::path::Path) -> Result<(), String> {
     let hmac_hex = hex::encode(mac.finalize().into_bytes());
     // SECURITY FIX: use atomic_write_with_sync for crash-safety (prevents partial writes
     // that could corrupt the HMAC-protected timestamp on power loss / forced reboot).
-    let _ = atomic_write_with_sync(
-        &ts_path,
-        format!("{}:{}", ts_str, hmac_hex).as_bytes(),
-    );
+    let _ = atomic_write_with_sync(&ts_path, format!("{}:{}", ts_str, hmac_hex).as_bytes());
 
     Ok(())
 }
@@ -2481,9 +2478,9 @@ fn check_license(state: State<AppState>) -> Value {
 // The corresponding private key is stored securely offline (never in source control).
 // To regenerate: pip install cryptography && python3 -c "from cryptography.hazmat.primitives.asymmetric import ed25519; k=ed25519.Ed25519PrivateKey.generate(); print(list(k.public_key().public_bytes(encoding=__import__('cryptography.hazmat.primitives.serialization',fromlist=['Encoding']).Encoding.Raw, format=__import__('cryptography.hazmat.primitives.serialization',fromlist=['PublicFormat']).PublicFormat.Raw)))"
 const PUBLIC_KEY_BYTES: [u8; 32] = [
-    165u8, 168u8, 18u8, 242u8, 77u8, 185u8, 21u8, 57u8, 73u8, 63u8, 24u8,
-    223u8, 51u8, 205u8, 205u8, 147u8, 14u8, 52u8, 150u8, 216u8, 125u8, 219u8,
-    73u8, 154u8, 80u8, 107u8, 177u8, 59u8, 40u8, 183u8, 104u8, 171u8,
+    165u8, 168u8, 18u8, 242u8, 77u8, 185u8, 21u8, 57u8, 73u8, 63u8, 24u8, 223u8, 51u8, 205u8,
+    205u8, 147u8, 14u8, 52u8, 150u8, 216u8, 125u8, 219u8, 73u8, 154u8, 80u8, 107u8, 177u8, 59u8,
+    40u8, 183u8, 104u8, 171u8,
 ];
 
 #[derive(Deserialize, Serialize)]
@@ -2829,8 +2826,14 @@ fn perform_license_activation(
     let expiry_ms = parsed_payload.as_ref().map(|p| p.e).unwrap_or(0);
     let grace_days = parsed_payload.as_ref().and_then(|p| p.g).unwrap_or(0);
     let hardware_locked = parsed_payload.as_ref().and_then(|p| p.h.as_ref()).is_some();
-    let lawyer_name = parsed_payload.as_ref().and_then(|p| p.a.clone()).unwrap_or_default();
-    let studio_name = parsed_payload.as_ref().and_then(|p| p.s.clone()).unwrap_or_default();
+    let lawyer_name = parsed_payload
+        .as_ref()
+        .and_then(|p| p.a.clone())
+        .unwrap_or_default();
+    let studio_name = parsed_payload
+        .as_ref()
+        .and_then(|p| p.s.clone())
+        .unwrap_or_default();
 
     let record = json!({
         "tokenHmac": token_hmac,
@@ -3417,12 +3420,9 @@ struct TypstPracticeData {
 /// 4. Runs the Typst sidecar to compile it
 /// 5. Reads the resulting PDF and returns it as Vec<u8>
 #[tauri::command]
-async fn generate_typst_pdf(
-    app: AppHandle,
-    data: TypstPracticeData,
-) -> Result<Vec<u8>, String> {
-    use tauri_plugin_shell::ShellExt;
+async fn generate_typst_pdf(app: AppHandle, data: TypstPracticeData) -> Result<Vec<u8>, String> {
     use tauri_plugin_shell::process::CommandEvent;
+    use tauri_plugin_shell::ShellExt;
 
     // ── Read the template ──
     let template_path = app
@@ -3534,8 +3534,7 @@ async fn generate_typst_pdf(
     let file_typst = temp_dir.join(format!("lexflow_{}.typ", run_id));
     let file_pdf = temp_dir.join(format!("lexflow_{}.pdf", run_id));
 
-    std::fs::write(&file_typst, &document)
-        .map_err(|e| format!("Cannot write temp .typ: {}", e))?;
+    std::fs::write(&file_typst, &document).map_err(|e| format!("Cannot write temp .typ: {}", e))?;
 
     // ── Font path ──
     let font_path = app
@@ -3585,8 +3584,8 @@ async fn generate_typst_pdf(
     }
 
     // ── Read generated PDF ──
-    let pdf_bytes = std::fs::read(&file_pdf)
-        .map_err(|e| format!("Cannot read generated PDF: {}", e))?;
+    let pdf_bytes =
+        std::fs::read(&file_pdf).map_err(|e| format!("Cannot read generated PDF: {}", e))?;
 
     // ── Clean up temp files ──
     let _ = std::fs::remove_file(&file_typst);
