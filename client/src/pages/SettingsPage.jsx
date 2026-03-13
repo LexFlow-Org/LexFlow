@@ -26,7 +26,6 @@ import toast from 'react-hot-toast';
 import LicenseSettings from '../components/LicenseSettings';
 import ModalOverlay from '../components/ModalOverlay';
 import * as api from '../tauri-api';
-import { MODAL_GRADIENTS } from '../theme';
 
 const PREAVVISO_OPTIONS = [
   { value: 0, label: 'Al momento' },
@@ -74,7 +73,7 @@ function FactoryResetModal({ onClose }) {
   return (
     <ModalOverlay onClose={onClose} labelledBy="factory-reset-title" zIndex={200}>
       <div className="modal-card modal-card-sm">
-        <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.danger }}>
+        <div className="modal-header-gradient modal-header-gradient-danger">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center border border-red-500/20">
@@ -159,7 +158,7 @@ function ExportBackupModal({ onClose }) {
   return (
     <ModalOverlay onClose={onClose} labelledBy="export-backup-title" zIndex={200}>
       <div className="modal-card modal-card-sm">
-        <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.primary }}>
+        <div className="modal-header-gradient modal-header-gradient-primary">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
@@ -252,7 +251,7 @@ function ImportBackupModal({ onClose }) {
   return (
     <ModalOverlay onClose={onClose} labelledBy="import-backup-title" zIndex={200}>
       <div className="modal-card modal-card-sm">
-        <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.primary }}>
+        <div className="modal-header-gradient modal-header-gradient-primary">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
@@ -357,11 +356,11 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
     onClose();
   };
 
-  const stepGradients = {
-    enroll: MODAL_GRADIENTS.primary,
-    'done-deactivated': 'linear-gradient(135deg, rgba(96,165,250,0.08) 0%, rgba(96,165,250,0.02) 100%)',
+  const stepGradientClass = {
+    enroll: 'modal-header-gradient-primary',
+    'done-deactivated': 'modal-header-gradient-info',
   };
-  const defaultGradient = MODAL_GRADIENTS.danger;
+  const defaultGradientClass = 'modal-header-gradient-danger';
 
   const stepIconStyles = {
     enroll: 'bg-primary/10 border-primary/20',
@@ -378,7 +377,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
   return (
     <ModalOverlay onClose={onClose} labelledBy="bio-modal-title" zIndex={200}>
       <div className="modal-card modal-card-sm">
-        <div className="modal-header-gradient" style={{ background: stepGradients[step] || defaultGradient }}>
+        <div className={`modal-header-gradient ${stepGradientClass[step] || defaultGradientClass}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
@@ -645,7 +644,7 @@ export default function SettingsPage({ onLock }) {
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Nome Avvocato</label>
               <div className="w-full bg-white/3 border border-border rounded-xl px-4 py-3 text-sm text-text">
-                {lawyerName}
+                Avv. {lawyerName}
               </div>
             </div>
             )}

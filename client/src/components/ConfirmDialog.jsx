@@ -1,8 +1,6 @@
 import PropTypes from 'prop-types';
 import { AlertTriangle, X } from 'lucide-react';
 import ModalOverlay from './ModalOverlay';
-import { MODAL_GRADIENTS } from '../theme';
-
 /**
  * Modale di conferma — sostituisce window.confirm()
  * Stile unificato: rounded-[32px], bg-card, gradient header, footer bg-surface
@@ -13,7 +11,7 @@ export default function ConfirmDialog({ open, title, message, confirmLabel = 'Co
   return (
     <ModalOverlay onClose={onCancel} labelledBy="confirm-dialog-title" zIndex={9999} focusTrap>
       <div className="modal-card modal-card-sm mx-4">
-        <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.primary }}>
+        <div className="modal-header-gradient modal-header-gradient-primary">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20">

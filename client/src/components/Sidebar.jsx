@@ -125,20 +125,18 @@ function DesktopNavItem({ item }) {
       to={item.path}
       className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative cursor-pointer ${
         isActive
-          ? 'bg-primary shadow-lg shadow-primary/20 scale-[1.02]'
+          ? 'bg-primary shadow-lg shadow-primary/20 scale-[1.02] sidebar-nav-active'
           : 'text-text-dim hover:text-text hover:bg-primary-soft'
       }`}
-      style={isActive ? { color: 'var(--primary-ink)' } : undefined}
     >
       {isActive && (
-        <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full" style={{ background: 'var(--primary-ink)', opacity: 0.5 }} />
+        <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full sidebar-nav-active-bar" />
       )}
       <item.icon
         size={20}
         className={`transition-all duration-300 ${
-          isActive ? '' : 'group-hover:text-primary group-hover:scale-110'
+          isActive ? 'sidebar-nav-active' : 'group-hover:text-primary group-hover:scale-110'
         }`}
-        style={isActive ? { color: 'var(--primary-ink)' } : undefined}
       />
       <span className={`text-sm tracking-wide ${isActive ? 'font-bold' : 'font-medium'}`}>
         {item.label}

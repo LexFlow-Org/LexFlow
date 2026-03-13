@@ -379,50 +379,26 @@ export default function App() {
           <WindowControls />
           <Toaster
             position="bottom-right"
-            containerStyle={{ bottom: 24, right: 24, zIndex: 99999 }}
+            containerClassName="!bottom-6 !right-6 !z-[99999]"
             gutter={10}
             toastOptions={{
               className: 'lexflow-toast',
-              style: {
-                background: 'rgba(14,15,22,0.92)',
-                color: SEMANTIC.text,
-                border: '1px solid rgba(255,255,255,0.08)',
-                fontSize: '13px',
-                fontWeight: 500,
-                padding: '14px 18px',
-                borderRadius: '14px',
-                boxShadow: '0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                minWidth: 260,
-                maxWidth: 420,
-                backdropFilter: 'blur(16px)',
-                WebkitBackdropFilter: 'blur(16px)',
-                lineHeight: 1.4,
-              },
               success: {
                 duration: 3000,
+                className: 'lexflow-toast lexflow-toast-success',
                 iconTheme: { primary: SEMANTIC.success, secondary: 'transparent' },
-                icon: <CheckCircle2 size={18} style={{ color: SEMANTIC.success, flexShrink: 0 }} />,
-                style: {
-                  borderLeft: `3px solid ${SEMANTIC.success}`,
-                }
+                icon: <CheckCircle2 size={18} className="toast-icon-success" />,
               },
               error: {
                 duration: 5000,
+                className: 'lexflow-toast lexflow-toast-error',
                 iconTheme: { primary: SEMANTIC.danger, secondary: 'transparent' },
-                icon: <AlertCircle size={18} style={{ color: SEMANTIC.danger, flexShrink: 0 }} />,
-                style: {
-                  borderLeft: `3px solid ${SEMANTIC.danger}`,
-                }
+                icon: <AlertCircle size={18} className="toast-icon-danger" />,
               },
               loading: {
                 duration: 15000,
-                icon: <Loader2 size={18} className="animate-spin" style={{ color: SEMANTIC.primary, flexShrink: 0 }} />,
-                style: {
-                  borderLeft: `3px solid ${SEMANTIC.primary}`,
-                }
+                className: 'lexflow-toast lexflow-toast-loading',
+                icon: <Loader2 size={18} className="animate-spin toast-icon-primary" />,
               }
             }}
           />

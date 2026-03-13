@@ -1,8 +1,6 @@
 import PropTypes from 'prop-types';
 import { ShieldAlert, X } from 'lucide-react';
 import ModalOverlay from './ModalOverlay';
-import { MODAL_GRADIENTS } from '../theme';
-
 /**
  * ExportWarningModal
  *
@@ -24,7 +22,7 @@ export default function ExportWarningModal({ isOpen, onClose, onConfirm }) {
       <div className="modal-card modal-card-md">
 
         {/* Header */}
-        <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.warning }}>
+        <div className="modal-header-gradient modal-header-gradient-warning">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20">

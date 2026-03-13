@@ -56,8 +56,8 @@ export const catPill = (cat) => CAT_PILL_STYLES[cat] || CAT_PILL_STYLES.altro;
 //   text-primary, bg-surface, border-border, text-text, ecc.
 // ★ WCAG AAA: tutti i testi ≥ 7:1 su bg #16171e (dark) o #f4f5f8 (light)
 export const SEMANTIC = {
-  primary:      '#d4a940',
-  primaryHover: '#c29735',
+  primary:      '#dab550',
+  primaryHover: '#c9a43e',
   success:      '#22c55e',
   successDark:  '#16a34a',
   danger:       '#ef4444',
@@ -67,8 +67,8 @@ export const SEMANTIC = {
   // Text toni (dark mode) — AAA ≥ 7:1 su #16171e
   text:         '#edeef6',   // 14.8:1 ✅ AAA
   textMuted:    '#b8bcd4',   //  7.2:1 ✅ AAA
-  textDim:      '#A8ADCC',   //  5.9→7.0:1 ✅ AAA (era #9AA0C0 = 4.5:1)
-  textSubtle:   '#B0B6D0',   //  6.5→7.2:1 ✅ AAA (era #A0A8C0 = 5.1:1)
+  textDim:      '#A8ADCC',
+  textSubtle:   '#B0B6D0',
   // Backgrounds (dark mode)
   bg:           '#16171e',
   bgCard:       '#1e1f28',
@@ -81,32 +81,35 @@ export const SEMANTIC = {
 };
 
 // ── Colori Hero Dashboard — Stagionali & Dinamici ────────
-// Colore unico per tema chiaro e scuro — medio, elegante, leggibile.
+// Colore unico per tema chiaro e scuro — IDENTICO in entrambi i temi.
+// Ogni stagione ha una TINTA DOMINANTE unica e riconoscibile.
+// Mattina (più chiara) → Pomeriggio (media) → Sera (profonda).
+// Tutti i 12 colori sono WCAG AAA ≥ 4.5:1 su bianco.
 // 12 combinazioni: 4 stagioni × 3 momenti del giorno
 export const HERO_COLORS = {
-  // 🌿 PRIMAVERA — toni caldi dorati, no verdi
+  // 🌿 PRIMAVERA — Verde oliva caldo — sole caldo tra le foglie nuove
   spring: {
-    morning:   '#8C7A50',   // Sabbia calda — mattina primaverile
-    afternoon: '#8C7848',   // Ocra dorato — pomeriggio di sole
-    evening:   '#6B6888',   // Lavanda grigia — sera di primavera
+    morning:   '#697332',   // Oliva dorato             (5.12:1 AAA ✅)
+    afternoon: '#55642a',   // Oliva bosco              (6.48:1 AAA ✅)
+    evening:   '#445026',   // Verde muschio — sera     (8.67:1 AAA ✅)
   },
-  // ☀️ ESTATE — palette calda e solare
+  // ☀️ ESTATE — Senape/ambra dorata — il sole al suo apice
   summer: {
-    morning:   '#8C8050',   // Grano dorato — mattina d'estate
-    afternoon: '#8C6458',   // Terracotta — pomeriggio rovente
-    evening:   '#585878',   // Indaco caldo — notte estiva
+    morning:   '#826914',   // Senape viva              (5.28:1 AAA ✅)
+    afternoon: '#735812',   // Ambra calda              (6.70:1 AAA ✅)
+    evening:   '#5f480f',   // Bronzo sera              (8.68:1 AAA ✅)
   },
-  // 🍂 AUTUNNO — terra, ambra, vino
+  // 🍂 AUTUNNO — Rame/terracotta — foglie che cadono, caminetto
   autumn: {
-    morning:   '#8C7040',   // Ambra — prima luce d'autunno
-    afternoon: '#7C5860',   // Borgogna — pomeriggio tra le vigne
-    evening:   '#6C5848',   // Noce — sera autunnale
+    morning:   '#aa5528',   // Rame luminoso            (5.20:1 AAA ✅)
+    afternoon: '#944420',   // Terracotta calda         (6.76:1 AAA ✅)
+    evening:   '#73341c',   // Mattone — sera al camino (9.39:1 AAA ✅)
   },
-  // ❄️ INVERNO — toni freddi, pietra e acciaio
+  // ❄️ INVERNO — Blu petrolio/ardesia — freddo elegante
   winter: {
-    morning:   '#6C6C74',   // Pietra — nebbia mattutina
-    afternoon: '#5C6C74',   // Acciaio — cielo invernale
-    evening:   '#505058',   // Antracite — notte gelida
+    morning:   '#525f76',   // Petrolio chiaro          (6.45:1 AAA ✅)
+    afternoon: '#3e4b64',   // Ardesia                  (8.77:1 AAA ✅)
+    evening:   '#303a4e',   // Blu notte                (11.41:1 AAA ✅)
   },
 };
 
@@ -142,8 +145,10 @@ export function getHeroGradient(_theme) {
 }
 
 // ── Gradiente header modali ──────────────────────────────
+// ★ DEPRECATO: usare le classi CSS modal-header-gradient-primary/danger/warning/info/success
+// Mantenuto per retrocompatibilità durante la migrazione
 export const MODAL_GRADIENTS = {
-  primary: 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)',
+  primary: 'linear-gradient(135deg, rgba(218,181,80,0.08) 0%, rgba(218,181,80,0.02) 100%)',
   danger:  'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)',
   warning: 'linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(245,158,11,0.02) 100%)',
 };

@@ -737,7 +737,7 @@ fn lockout_clear(data_dir: &std::path::Path) {
 ///   3. OS page swapping may have written password bytes to disk
 ///
 /// Mitigations (defense in depth, not within this function):
-///   - macOS FileVault / Windows BitLocker (encrypted swap)
+///   - macOS FileVault / Windows BitLocker / Android mandatory encryption (encrypted swap)
 ///   - Argon2id key derivation (password is only used to derive an AES key, never stored)
 ///   - Autolock zeroes the vault_key (which IS Zeroizing<Vec<u8>>)
 ///   - Short-lived password scope: callers zeroize immediately after use
@@ -1082,19 +1082,24 @@ fn reset_vault(state: State<AppState>, password: String) -> Value {
         }
     }
     {
-        // SECURITY NOTE (Audit 2026-03-04): The zero-overwrite below is a best-effort
-        // secure wipe. On modern filesystems with copy-on-write semantics (APFS, Btrfs,
+        // SECURITY NOTE (Audit 2026-03-04 / hardened 2026-03-13):
+        // The zero-overwrite below is a BEST-EFFORT secure wipe.
+        // On modern filesystems with copy-on-write semantics (APFS, Btrfs,
         // ZFS) and on SSDs with wear leveling / TRIM, overwriting a file does NOT
         // guarantee that the original data blocks are physically erased. The filesystem
         // may allocate new blocks for the write, leaving old data in unreferenced sectors.
         // This is a fundamental limitation of all userspace secure-erase on modern storage.
-        // Mitigations at the OS/hardware level include:
-        //   - macOS FileVault (full-disk encryption)
-        //   - Windows BitLocker
-        //   - Linux LUKS/dm-crypt
-        //   - SSD firmware TRIM/secure-erase commands
-        // The zero-overwrite + delete below still prevents trivial `cat` / hex-editor
-        // recovery, which is valuable against casual attackers.
+        //
+        // RECOMMENDED MITIGATIONS (documented in user-facing README):
+        //   - macOS: enable FileVault (full-disk encryption) — default on modern Macs
+        //   - Windows: enable BitLocker — available on Pro/Enterprise editions
+        //   - Linux: use LUKS/dm-crypt for full-disk encryption
+        //   - Android: encryption is mandatory since Android 10+
+        //   - SSD hardware: TRIM + secure-erase commands (handled by firmware)
+        //
+        // Despite CoW/SSD limitations, the zero-overwrite + delete below still
+        // prevents trivial `cat` / hex-editor recovery and is valuable against
+        // casual attackers and forensic tools that scan unencrypted data at rest.
         for sensitive_file in &[
             VAULT_FILE,
             VAULT_SALT_FILE,
@@ -2151,7 +2156,12 @@ fn monotonic_clock_check(sec_dir: &std::path::Path) -> Result<(), String> {
     mac.update(b"CLOCK-CHECK:");
     mac.update(ts_str.as_bytes());
     let hmac_hex = hex::encode(mac.finalize().into_bytes());
-    let _ = fs::write(&ts_path, format!("{}:{}", ts_str, hmac_hex));
+    // SECURITY FIX: use atomic_write_with_sync for crash-safety (prevents partial writes
+    // that could corrupt the HMAC-protected timestamp on power loss / forced reboot).
+    let _ = atomic_write_with_sync(
+        &ts_path,
+        format!("{}:{}", ts_str, hmac_hex).as_bytes(),
+    );
 
     Ok(())
 }

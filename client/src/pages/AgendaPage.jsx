@@ -633,7 +633,7 @@ function UpcomingPanel({ events, onEdit, onToggle }) {
   };
 
   return (
-    <div className="space-y-4 animate-slide-up" style={{animationDelay: '0.1s'}}>
+    <div className="space-y-4 animate-slide-up [animation-delay:0.1s]">
       {overdue.length > 0 && (
         <div className="glass-card p-4 border border-red-500/20 bg-red-500/5">
           <div className="flex items-center gap-2 mb-3">
@@ -1141,7 +1141,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="notif-settings-title" zIndex={200}>
-      <div className="glass-card border border-white/10 shadow-2xl p-6 animate-fade-in relative z-10" style={{ maxWidth: 400, width: '100%' }}>
+      <div className="glass-card border border-white/10 shadow-2xl p-6 animate-fade-in relative z-10 max-w-[400px] w-full">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center">
@@ -1366,7 +1366,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
       </div>
 
       {/* ═══ CONTENUTO PRINCIPALE ═══ */}
-      <div className={`flex-1 overflow-hidden grid gap-5 items-start ${showStats ? 'grid-cols-1 lg:grid-cols-[1fr_260px]' : 'grid-cols-1'}`} style={{ transition: 'grid-template-columns 0.3s' }}>
+      <div className={`flex-1 overflow-hidden grid gap-5 items-start transition-[grid-template-columns] duration-300 ${showStats ? 'grid-cols-1 lg:grid-cols-[1fr_260px]' : 'grid-cols-1'}`}>
         <div className="overflow-hidden h-full">
           {view === 'today' && <TodayView events={events} onToggle={handleToggle} onEdit={openEdit} onAdd={openAdd} onSave={handleSave} activeFilters={activeFilters} />}
           {view === 'week' && <WeekView events={events} onEdit={openEdit} onAdd={openAdd} onSave={handleSave} activeFilters={activeFilters} focusDate={focusDate} onClearFocusDate={() => setFocusDate(null)} />}

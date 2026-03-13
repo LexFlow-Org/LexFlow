@@ -6,13 +6,13 @@ import {
 import * as api from '../tauri-api';
 import ModalOverlay from './ModalOverlay';
 
-// Mappa dei colori dinamici per materia (Premium Glow Style)
-const MATERIA_COLORS = {
-  civile: 'bg-blue-500/10 text-blue-400 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.15)]',
-  penale: 'bg-red-500/10 text-red-400 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.15)]',
-  lavoro: 'bg-orange-500/10 text-orange-400 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.15)]',
-  amm: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.15)]',
-  stra: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.15)]',
+// Mappa delle classi CSS per materia (definite in index.css)
+const MATERIA_CSS = {
+  civile: 'materia-civile',
+  penale: 'materia-penale',
+  lavoro: 'materia-lavoro',
+  amm: 'materia-amm',
+  stra: 'materia-stra',
 };
 
 export default function CreatePracticeModal({ onClose, onSave }) {
@@ -145,7 +145,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                   onClick={() => updateField('type', m.id)}
                   className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 border uppercase tracking-wider ${
                     formData.type === m.id
-                      ? `${MATERIA_COLORS[m.id]} scale-105 ring-2 ring-white/5`
+                      ? `${MATERIA_CSS[m.id]} scale-105 ring-2 ring-white/5`
                       : 'bg-white/5 border-white/10 text-text-dim hover:bg-white/10 hover:border-white/20'
                   }`}
                 >

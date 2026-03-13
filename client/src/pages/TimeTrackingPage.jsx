@@ -9,7 +9,6 @@ import ModalOverlay from '../components/ModalOverlay';
 import PracticeCombobox from '../components/PracticeCombobox';
 import * as api from '../tauri-api';
 import { genId, toDateStr } from '../utils/helpers';
-import { MODAL_GRADIENTS } from '../theme';
 
 /* ======== Helpers ======== */
 
@@ -544,7 +543,7 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
   return (
     <ModalOverlay onClose={onClose} labelledBy="manual-log-title">
       <div className="modal-card modal-card-lg">
-        <div className="modal-header-gradient relative" style={{ background: MODAL_GRADIENTS.primary }}>
+        <div className="modal-header-gradient modal-header-gradient-primary relative">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
@@ -657,7 +656,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
   return (
     <ModalOverlay onClose={onClose} labelledBy="invoice-modal-title">
       <div className="modal-card modal-card-lg max-h-[90vh] flex flex-col">
-        <div className="modal-header-gradient relative flex-shrink-0" style={{ background: MODAL_GRADIENTS.primary }}>
+        <div className="modal-header-gradient modal-header-gradient-primary relative flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">

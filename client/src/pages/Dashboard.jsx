@@ -231,14 +231,11 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
   }, [agendaEvents]);
 
   return (
-    <div className="main-content animate-slide-up pb-8" style={{ overflow: relevant.length === 0 && stats.activeCount === 0 ? 'hidden' : undefined }}>
+    <div className="main-content animate-slide-up pb-8">
 
       {/* ═══ HERO CARD ═══ */}
-      <div className="hero-card relative rounded-[24px] overflow-hidden p-8 mb-8 transition-colors duration-1000 ease-in-out border border-black/10"
-        style={{
-          backgroundColor: hero.background,
-          boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.35)',
-        }}>
+      <div className="hero-card"
+        style={{ backgroundColor: hero.background }}>
         {/* Icona decorativa grande */}
         <div className="absolute right-6 top-6 pointer-events-none select-none text-white/[0.12]">
           {hero.icon}

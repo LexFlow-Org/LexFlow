@@ -21,7 +21,6 @@
     "icons": "python3 scripts/generate-icons.py"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.10.0"
+    "@tauri-apps/cli": "^2.10.1"
   }
 }
-

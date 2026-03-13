@@ -72,6 +72,42 @@ jobs:
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
+      - name: Fetch typst sidecars (platform-specific)
+        run: |
+          set -e
+          mkdir -p src-tauri/binaries
+          # Map runner to typst asset name
+          case "${RUNNER_OS:-$(uname)}" in
+            Linux|linux|LINUX)
+              TARGET="typst-x86_64-unknown-linux-gnu"
+              ;;
+            macOS|Darwin|darwin)
+              # prefer existing aarch64 darwin if present else x86_64
+              TARGET="typst-aarch64-apple-darwin"
+              ;;
+            Windows_NT|Windows|windows)
+              TARGET="typst-x86_64-pc-windows-msvc.exe"
+              ;;
+            *)
+              TARGET="typst-x86_64-unknown-linux-gnu"
+              ;;
+          esac
+          OUT="src-tauri/binaries/$TARGET"
+          if [ -f "$OUT" ]; then
+            echo "Typst sidecar $OUT already exists"
+          else
+            echo "Downloading typst binary for target: $TARGET"
+            # Try GitHub latest release download (typst maintainers provide assets named like typst-<target>)
+            URL="https://github.com/typst/typst/releases/latest/download/$TARGET"
+            echo "Attempting $URL"
+            if curl -fSL -o "$OUT" "$URL"; then
+              chmod +x "$OUT" || true
+              echo "Downloaded $OUT"
+            else
+              echo "Warning: failed to download $URL. Proceeding without sidecar; builds may fail if required."
+            fi
+          fi
+
       - name: Determine Version Tag
         id: get_version
         run: |

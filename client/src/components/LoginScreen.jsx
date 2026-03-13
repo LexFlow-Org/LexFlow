@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import logoSrc from '../assets/logo.png';
 import * as api from '../tauri-api';
-import { MODAL_GRADIENTS } from '../theme';
 import ConfirmDialog from './ConfirmDialog';
 
 export default function LoginScreen({ onUnlock, autoLocked = false }) {
@@ -350,12 +349,12 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   return (
     <div className="flex items-center justify-center min-h-screen bg-background relative drag-region overflow-hidden">
       
-      {/* Background Decor — no blur-[120px] che killava la GPU su Android */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full opacity-30" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full opacity-30" />
+      {/* Background Decor — identici in dark e light grazie a --primary */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/[0.12] rounded-full" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/[0.12] rounded-full" />
 
       {/* Login / Setup Card */}
-      <div className="glass-card p-10 w-full max-w-[440px] mx-4 relative z-10 no-drag animate-slide-up shadow-2xl border-white/10">
+      <div className="glass-card p-10 w-full max-w-[440px] mx-4 relative z-10 no-drag animate-slide-up shadow-2xl border-border/50">
         
         <div className="flex flex-col items-center mb-10">
           <div className="relative mb-6">
@@ -411,7 +410,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                 <input 
                   id="login-master-pwd"
                   type={showPwd ? 'text' : 'password'} 
-                  className="input-field pl-12 pr-12 py-4 rounded-2xl bg-white/5 border-white/10 hover:border-white/20 transition-all text-white placeholder:text-white/20" 
+                  className="input-field pl-12 pr-12 py-4 rounded-2xl bg-input border-border hover:border-primary/30 transition-all text-text placeholder:text-text-dim/40" 
                   placeholder="Inserisci la password..." 
                   value={password} 
                   onChange={e => setPassword(e.target.value)} 
@@ -450,7 +449,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                   <input 
                     id="login-confirm-pwd"
                     type={showPwd ? 'text' : 'password'} 
-                    className="input-field pl-12 py-4 rounded-2xl bg-white/5 border-white/10 text-white placeholder:text-white/20" 
+                    className="input-field pl-12 py-4 rounded-2xl bg-input border-border text-text placeholder:text-text-dim/40" 
                     placeholder="Ripeti la password..." 
                     value={confirm} 
                     onChange={e => setConfirm(e.target.value)} 
@@ -499,7 +498,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         </form>
         )}
 
-        <div className="mt-8 pt-6 border-t border-white/5 flex flex-col items-center gap-4">
+        <div className="mt-8 pt-6 border-t border-border/30 flex flex-col items-center gap-4">
           {!isNew && (
             <button 
               type="button" 
@@ -527,7 +526,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 animate-fade-in">
           <button type="button" className="absolute inset-0 cursor-default" aria-label="Chiudi" onClick={() => setShowResetModal(false)} tabIndex={-1} />
           <div className="relative z-10 modal-card modal-card-sm no-drag">
-            <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.danger }}>
+            <div className="modal-header-gradient modal-header-gradient-danger">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center border border-red-500/20">
@@ -551,7 +550,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               <div className="relative">
                 <input 
                   type="password"
-                  className="input-field w-full py-3 px-4 rounded-xl bg-white/5 border-white/10 text-white placeholder:text-white/20 text-sm"
+                  className="input-field w-full py-3 px-4 rounded-xl bg-input border-border text-text placeholder:text-text-dim/40 text-sm"
                   placeholder="Password attuale..."
                   value={resetPassword}
                   onChange={e => setResetPassword(e.target.value)}
