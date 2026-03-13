@@ -30,6 +30,16 @@ export default defineConfig({
       compress: { drop_console: true, drop_debugger: true },
       mangle: { toplevel: true },
     },
+    // Cache busting: content-hash in ALL output filenames.
+    // Guarantees that after an app update the WebView loads fresh assets
+    // even if its HTTP cache wasn't cleared by the native side.
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
+      },
+    },
   },
 
   server: {

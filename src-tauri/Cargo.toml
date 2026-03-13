@@ -1,6 +1,6 @@
 [package]
 name = "lexflow"
-version = "1.5.6"
+version = "1.5.7"
 description = "LexFlow -- Gestionale Studio Legale con Crittografia Zero-Knowledge"
 authors = ["Pietro Longo"]
 edition = "2021"
@@ -29,6 +29,7 @@ tauri-plugin-fs = "2"
 tauri-plugin-os = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-window-state = "2"
 
 # Utilities
 dirs = "5"
@@ -59,6 +60,10 @@ keyring = { version = "3", features = ["apple-native", "windows-native"] }
 # Unix-only: libc for non-spoofable getuid() syscall (replaces $UID env var)
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# Windows-only: windows-sys for Single Instance Mutex (prevents "file in use" MSI errors)
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security"] }
 
 # macOS-only: (no extra deps needed -- App Nap disabled via defaults write)
 

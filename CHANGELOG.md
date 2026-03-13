@@ -4,6 +4,24 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.5.7] -- 2026-03-13
+
+### Added
+- **Panic Logger** -- `std::panic::set_hook` scrive `crash.log` nella app-data dir (rotazione a 1 MB) con timestamp ISO, thread, location e messaggio; facilita debug crash remoti
+- **Window State Persistence** -- `tauri-plugin-window-state` memorizza posizione, dimensione e stato massimizzato della finestra tra un lancio e l'altro (macOS + Windows, escluso Android)
+- **TCC Location Banner** -- Banner ambra dismissabile (sessionStorage) che avvisa l'utente macOS quando l'app gira fuori da `/Applications` (path non standard / App Translocation); emesso da `check_tcc_location()` via evento `lf-tcc-location-warning`
+
+### Changed
+- **WebView cache invalidation on upgrade** -- `clear_webview_cache_on_upgrade()` cancella la cache WKWebView/WebView2/WebKitGTK ad ogni cambio versione; risolve stale asset post-update
+- **Vite cache busting** -- `rollupOptions.output` con `[hash]` esplicito in tutti i filename (JS, CSS, asset); i contenuti aggiornati non vengono mai serviti dalla cache del browser
+- **Garbage Collection temp files** -- `garbage_collect_temp_files()` rimuove in background file `lexflow_*` più vecchi di 7 giorni da temp dir e cache dir di sistema
+
+### Fixed
+- **Windows Single Instance Mutex** -- `CreateMutexA("Global\\com.pietrolongo.lexflow")` previene avvii multipli simultanei su Windows; handle persistito in `OnceLock`
+- **LaunchServices Gold Standard** -- Memoizzazione via `ls_cleanup_state.txt` + guard Anti-Translocation + `fs::canonicalize()`: pulizia eseguita solo quando necessaria, in thread background
+
+---
+
 ## [1.5.6] -- 2026-03-13
 
 ### Fixed

@@ -17,6 +17,7 @@ import WindowControls from './components/WindowControls';
 import PracticeDetail from './components/PracticeDetail';
 import CreatePracticeModal from './components/CreatePracticeModal';
 import ErrorBoundary from './ErrorBoundary';
+import TccLocationBanner from './components/TccLocationBanner';
 
 // Pagine
 import Dashboard from './pages/Dashboard';
@@ -377,6 +378,7 @@ export default function App() {
 
         <main className="flex-1 h-screen overflow-hidden relative flex flex-col bg-background pt-[env(titlebar-area-height,0px)]">
           <WindowControls />
+          <TccLocationBanner />
           <Toaster
             position="bottom-right"
             containerClassName="!bottom-6 !right-6 !z-[99999]"

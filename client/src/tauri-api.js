@@ -198,6 +198,14 @@ export const onNotificationPermissionDenied = (cb) => {
   return () => { p.then(fn => fn?.()); };
 };
 
+// macOS TCC location warning: fired when the app is running from a non-standard
+// path (Downloads, DMG, AppTranslocation).  The frontend shows a dismissable
+// banner guiding the user to move the app to /Applications.
+export const onTccLocationWarning = (cb) => {
+  const p = listen('lf-tcc-location-warning', (e) => cb(e.payload)).catch(() => null);
+  return () => { p.then(fn => fn?.()); };
+};
+
 // Notification fallback listener (top-level await — Vite ESM)
 try {
   await listen('show-notification', async (event) => {
