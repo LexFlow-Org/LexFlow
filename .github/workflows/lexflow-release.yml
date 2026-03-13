@@ -72,41 +72,28 @@ jobs:
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
-      - name: Fetch typst sidecars (platform-specific)
+      - name: Fetch typst sidecar (Linux)
         run: |
           set -e
           mkdir -p src-tauri/binaries
-          # Map runner to typst asset name
-          case "${RUNNER_OS:-$(uname)}" in
-            Linux|linux|LINUX)
-              TARGET="typst-x86_64-unknown-linux-gnu"
-              ;;
-            macOS|Darwin|darwin)
-              # prefer existing aarch64 darwin if present else x86_64
-              TARGET="typst-aarch64-apple-darwin"
-              ;;
-            Windows_NT|Windows|windows)
-              TARGET="typst-x86_64-pc-windows-msvc.exe"
-              ;;
-            *)
-              TARGET="typst-x86_64-unknown-linux-gnu"
-              ;;
-          esac
-          OUT="src-tauri/binaries/$TARGET"
+          # Pre-flight runs on ubuntu (x86_64-unknown-linux-gnu target triple).
+          # Typst publishes musl builds only -- download, extract, rename to match Tauri target.
+          ASSET="typst-x86_64-unknown-linux-musl.tar.xz"
+          TAURI_NAME="typst-x86_64-unknown-linux-gnu"
+          OUT="src-tauri/binaries/$TAURI_NAME"
           if [ -f "$OUT" ]; then
-            echo "Typst sidecar $OUT already exists"
-          else
-            echo "Downloading typst binary for target: $TARGET"
-            # Try GitHub latest release download (typst maintainers provide assets named like typst-<target>)
-            URL="https://github.com/typst/typst/releases/latest/download/$TARGET"
-            echo "Attempting $URL"
-            if curl -fSL -o "$OUT" "$URL"; then
-              chmod +x "$OUT" || true
-              echo "Downloaded $OUT"
-            else
-              echo "Warning: failed to download $URL. Proceeding without sidecar; builds may fail if required."
-            fi
+            echo "Typst sidecar $OUT already exists"; exit 0
           fi
+          URL="https://github.com/typst/typst/releases/latest/download/$ASSET"
+          echo "Downloading $URL"
+          curl -fSL -o "/tmp/$ASSET" "$URL"
+          tar -xJf "/tmp/$ASSET" -C /tmp
+          # The archive contains a folder like typst-x86_64-unknown-linux-musl/typst
+          EXTRACTED=$(find /tmp -name "typst" -type f -path "*/typst-x86_64*" | head -1)
+          if [ -z "$EXTRACTED" ]; then echo "ERROR: typst binary not found in archive"; exit 1; fi
+          cp "$EXTRACTED" "$OUT"
+          chmod +x "$OUT"
+          echo "Typst sidecar ready: $OUT ($(wc -c < "$OUT") bytes)"
 
       - name: Determine Version Tag
         id: get_version
@@ -236,6 +223,29 @@ jobs:
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
+      - name: Fetch typst sidecars (macOS universal)
+        run: |
+          set -e
+          mkdir -p src-tauri/binaries
+          for ARCH in aarch64 x86_64; do
+            ASSET="typst-${ARCH}-apple-darwin.tar.xz"
+            TAURI_NAME="typst-${ARCH}-apple-darwin"
+            OUT="src-tauri/binaries/$TAURI_NAME"
+            if [ -f "$OUT" ]; then
+              echo "$TAURI_NAME already exists"; continue
+            fi
+            URL="https://github.com/typst/typst/releases/latest/download/$ASSET"
+            echo "Downloading $URL"
+            curl -fSL -o "/tmp/$ASSET" "$URL"
+            tar -xJf "/tmp/$ASSET" -C /tmp
+            EXTRACTED=$(find /tmp -name "typst" -type f -path "*${ARCH}*" | head -1)
+            if [ -z "$EXTRACTED" ]; then echo "ERROR: typst not found in $ASSET"; exit 1; fi
+            cp "$EXTRACTED" "$OUT"
+            chmod +x "$OUT"
+            echo "$TAURI_NAME ready ($(wc -c < "$OUT") bytes)"
+            rm -rf /tmp/typst-${ARCH}-apple-darwin*
+          done
+
       - name: Build macOS DMG
         uses: tauri-apps/tauri-action@6a45448f17a006facb105cc5257b3edbc353038a
         env:
@@ -325,6 +335,21 @@ jobs:
         shell: powershell
         run: Remove-Item -Force -ErrorAction SilentlyContinue src-tauri/.cargo/config.toml
 
+      - name: Fetch typst sidecar (Windows)
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "src-tauri/binaries" | Out-Null
+          $out = "src-tauri/binaries/typst-x86_64-pc-windows-msvc.exe"
+          if (Test-Path $out) { Write-Host "Typst sidecar already exists"; exit 0 }
+          $url = "https://github.com/typst/typst/releases/latest/download/typst-x86_64-pc-windows-msvc.zip"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\typst-windows.zip"
+          Expand-Archive -Path "$env:TEMP\typst-windows.zip" -DestinationPath "$env:TEMP\typst-win" -Force
+          $exe = Get-ChildItem -Recurse -Filter "typst.exe" -Path "$env:TEMP\typst-win" | Select-Object -First 1
+          if (-not $exe) { Write-Error "typst.exe not found in archive"; exit 1 }
+          Copy-Item $exe.FullName $out
+          Write-Host "Typst sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
+
       - name: Build Windows MSI (Lite)
         shell: powershell
         run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi
@@ -408,6 +433,21 @@ jobs:
       - name: Remove local cargo config (CI uses default linker)
         shell: powershell
         run: Remove-Item -Force -ErrorAction SilentlyContinue src-tauri/.cargo/config.toml
+
+      - name: Fetch typst sidecar (Windows)
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "src-tauri/binaries" | Out-Null
+          $out = "src-tauri/binaries/typst-x86_64-pc-windows-msvc.exe"
+          if (Test-Path $out) { Write-Host "Typst sidecar already exists"; exit 0 }
+          $url = "https://github.com/typst/typst/releases/latest/download/typst-x86_64-pc-windows-msvc.zip"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\typst-windows.zip"
+          Expand-Archive -Path "$env:TEMP\typst-windows.zip" -DestinationPath "$env:TEMP\typst-win" -Force
+          $exe = Get-ChildItem -Recurse -Filter "typst.exe" -Path "$env:TEMP\typst-win" | Select-Object -First 1
+          if (-not $exe) { Write-Error "typst.exe not found in archive"; exit 1 }
+          Copy-Item $exe.FullName $out
+          Write-Host "Typst sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
 
       - name: Write WebView2 offline config
         shell: powershell
