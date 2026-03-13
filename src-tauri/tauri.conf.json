@@ -37,6 +37,11 @@
   },
   "bundle": {
     "active": true,
+    "externalBin": ["binaries/typst"],
+    "resources": [
+      "templates/*",
+      "fonts/*"
+    ],
     "targets": [
       "dmg",
       "msi"
@@ -66,5 +71,9 @@
       }
     }
   },
-  "plugins": {}
+  "plugins": {
+    "shell": {
+      "open": false
+    }
+  }
 }

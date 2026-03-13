@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
 import { formatDateIT, mapAgendaToScheduleItems } from '../utils/helpers';
 
-const TYPE_LABELS = { civile: 'Civile', penale: 'Penale', amm: 'Amministrativo', stra: 'Stragiudiziale', agenda: 'Agenda' };
+const TYPE_LABELS = { civile: 'Civile', penale: 'Penale', amm: 'Amministrativo', lavoro: 'Lavoro', stra: 'Stragiudiziale' };
 
 function DeadlineRow({ d, onSelectPractice, onNavigate }) {
   const [showPopover, setShowPopover] = useState(false);
@@ -21,8 +21,9 @@ function DeadlineRow({ d, onSelectPractice, onNavigate }) {
 
   const handleClick = () => {
     if (d.source === 'agenda') {
-      // Navigate to agenda at the deadline's date
-      if (onNavigate) onNavigate('/agenda?date=' + d.date);
+      // Navigate to agenda at the deadline's date + time for auto-scroll
+      const timeParam = d.timeStart ? `&time=${d.timeStart}` : '';
+      if (onNavigate) onNavigate('/agenda?date=' + d.date + timeParam);
     } else if (d.practiceId) {
       // Show popover with choice: Agenda or Fascicolo
       setShowPopover(true);
@@ -32,21 +33,29 @@ function DeadlineRow({ d, onSelectPractice, onNavigate }) {
     <div className="relative" ref={popRef}>
       <button
         type="button"
-        className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] transition cursor-pointer group border border-white/5 hover:border-white/10 text-left w-full"
+        className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] transition cursor-pointer group border border-border hover:border-border text-left w-full"
         onClick={handleClick}
       >
-      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${(() => {
-        if (d.diff < 0) return 'bg-red-400';
-        if (d.diff === 0 || d.diff <= 3) return 'bg-amber-400';
-        return 'bg-blue-400';
-      })()}`} />
+      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-cat-scadenza" />
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold text-white">{d.label}</p>
+        <p className="text-xs font-bold text-text">{d.label}</p>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[10px] text-text-dim">{d.client}</span>
-          <span className="text-[9px] text-text-dim/60 uppercase tracking-wider">
-            {TYPE_LABELS[d.type]}
-          </span>
+          {d.source === 'agenda' ? (
+            <span className="text-[10px] text-text-dim">
+              {d.practiceId && d.client && d.client !== 'Agenda'
+                ? `Fascicolo · ${d.client}`
+                : 'Impegno da Agenda'}
+            </span>
+          ) : (
+            <>
+              <span className="text-[10px] text-text-dim">{d.client}</span>
+              {TYPE_LABELS[d.type] && (
+                <span className="text-[9px] text-text-dim/60 uppercase tracking-wider">
+                  {TYPE_LABELS[d.type]}
+                </span>
+              )}
+            </>
+          )}
         </div>
       </div>
       <div className="text-[10px] font-mono text-text-dim bg-white/5 px-2 py-0.5 rounded">{formatDateIT(d.date)}</div>
@@ -57,7 +66,7 @@ function DeadlineRow({ d, onSelectPractice, onNavigate }) {
     {/* Popover: Apri in Agenda / Vai al Fascicolo */}
     {showPopover && (
       <div className="absolute right-10 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-1 p-1.5 rounded-xl bg-surface border border-white/10 shadow-xl min-w-[160px] animate-slide-up">
-        <button onClick={() => { setShowPopover(false); if (onNavigate) onNavigate('/agenda?date=' + d.date); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-white/[0.06] transition">
+        <button onClick={() => { setShowPopover(false); if (onNavigate) { const timeParam = d.timeStart ? `&time=${d.timeStart}` : ''; onNavigate('/agenda?date=' + d.date + timeParam); } }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-white/[0.06] transition">
           <Calendar size={14} className="text-primary" /> Apri in Agenda
         </button>
         <button onClick={() => { setShowPopover(false); onSelectPractice(d.practiceId); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-white/[0.06] transition">
@@ -76,6 +85,7 @@ DeadlineRow.propTypes = {
     client: PropTypes.string,
     type: PropTypes.string,
     date: PropTypes.string,
+    timeStart: PropTypes.string,
     source: PropTypes.string,
     practiceId: PropTypes.string,
     id: PropTypes.string,
@@ -84,26 +94,12 @@ DeadlineRow.propTypes = {
   onNavigate: PropTypes.func,
 };
 
-function DeadlineSection({ title, items, onSelectPractice, onNavigate, color }) {
+function DeadlineSection({ title, items, onSelectPractice, onNavigate }) {
   if (items.length === 0) return null;
-  const colorStyles = {
-    red: 'text-red-400 border-red-500/20',
-    amber: 'text-amber-400 border-amber-500/20',
-    blue: 'text-blue-400 border-blue-500/20',
-    dim: 'text-text-dim border-white/10',
-  };
-  const dotColors = {
-    red: 'bg-red-400',
-    amber: 'bg-amber-400',
-    blue: 'bg-blue-400',
-  };
-  const style = colorStyles[color] || colorStyles.dim;
-  const dotClass = dotColors[color] || 'bg-white/30';
   return (
     <div className="mb-6">
-      <div className={`flex items-center gap-2 mb-3 pb-2 border-b ${style.split(' ').slice(1).join(' ')}`}>
-        <span className={`w-2 h-2 rounded-full ${dotClass}`} />
-        <h3 className={`text-[10px] font-black uppercase tracking-[2px] ${style.split(' ')[0]}`}>{title} ({items.length})</h3>
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
+        <h3 className="text-[10px] font-black uppercase tracking-[2px] text-text">{title} ({items.length})</h3>
       </div>
       <div className="space-y-2">
         {items.map((d) => <DeadlineRow key={`${d.date}_${d.label}_${d.practiceId || d.id}`} d={d} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />)}
@@ -117,7 +113,6 @@ DeadlineSection.propTypes = {
   items: PropTypes.array,
   onSelectPractice: PropTypes.func,
   onNavigate: PropTypes.func,
-  color: PropTypes.string,
 };
 
 export default function DeadlinesPage({ practices, onSelectPractice, settings, agendaEvents, onNavigate }) {
@@ -186,6 +181,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         id: e.id,
         label: e.title,
         date: e.date,
+        timeStart: e.timeStart || null,
         practiceId: e.practiceId || null,
         client: e.practiceId ? (practicesMap.get(e.practiceId)?.client || 'Agenda') : 'Agenda',
         object: e.notes || '',
@@ -211,7 +207,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-black text-white flex items-center gap-3 tracking-tight">
+          <h1 className="text-2xl font-black text-text flex items-center gap-3 tracking-tight">
             <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
               <CalendarClock size={20} className="text-text-muted" />
             </div>
@@ -226,7 +222,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         {/* In Scadenza Oggi */}
         <div className="glass-card p-5 border border-white/5">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">In Scadenza Oggi</p>
-          <p className="text-3xl font-black text-white">{todayDeadlines.length}</p>
+          <p className="text-3xl font-black text-text">{todayDeadlines.length}</p>
           <p className="text-[10px] text-text-dim mt-1">
             {todayDeadlines.length === 0 ? 'Nessuna scadenza' : todayDeadlines.map(d => d.label).join(', ')}
           </p>
@@ -235,7 +231,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         {/* In Ritardo */}
         <div className="glass-card p-5 border border-white/5">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">In Ritardo</p>
-          <p className={`text-3xl font-black ${pastDeadlines.length > 0 ? 'text-red-400' : 'text-white'}`}>{pastDeadlines.length}</p>
+          <p className="text-3xl font-black text-text">{pastDeadlines.length}</p>
           <p className="text-[10px] text-text-dim mt-1">
             {pastDeadlines.length === 0
               ? 'Tutto in regola'
@@ -250,7 +246,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         {/* Prossimi 30 giorni */}
         <div className="glass-card p-5 border border-white/5">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">Prossimi 30 Giorni</p>
-          <p className="text-3xl font-black text-white">{next30.length}</p>
+          <p className="text-3xl font-black text-text">{next30.length}</p>
           <p className="text-[10px] text-text-dim mt-1">
             {next30.length === 0 ? 'Calendario libero' : `${next30.length} in arrivo`}
           </p>
@@ -273,7 +269,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
               { label: 'Sera', value: briefingSera, onChange: onBriefingChange(setBriefingSera) },
             ].map(({ label, value, onChange }) => (
               <div key={label} className="flex items-center justify-between bg-white/[0.03] rounded-lg px-3 py-2 border border-white/5">
-                <span className="text-xs text-white font-medium">{label}</span>
+                <span className="text-xs text-text font-medium">{label}</span>
                 <input type="time" className="bg-black/30 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white font-mono text-center focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all w-20" value={value} onChange={onChange} />
               </div>
             ))}
@@ -288,10 +284,10 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         </div>
       ) : (
         <div className="glass-card p-6">
-          <DeadlineSection title="Scadute" items={pastDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} color="red" />
-          <DeadlineSection title="Oggi" items={todayDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} color="amber" />
-          <DeadlineSection title="Prossimi 7 giorni" items={weekDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} color="blue" />
-          <DeadlineSection title="Future" items={futureDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} color="dim" />
+          <DeadlineSection title="Scadute" items={pastDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />
+          <DeadlineSection title="Oggi" items={todayDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />
+          <DeadlineSection title="Prossimi 7 giorni" items={weekDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />
+          <DeadlineSection title="Future" items={futureDeadlines} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />
         </div>
       )}
     </div>

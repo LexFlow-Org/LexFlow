@@ -109,6 +109,27 @@ export const exportPDF = async (arrayBuffer, defaultName) => {
   return { success: false, cancelled: true };
 };
 
+// Typst PDF generation — sends practice data to Rust, Typst sidecar compiles to PDF
+export const generateTypstPdf = async (practiceData) => {
+  const pdfBytes = await safeInvoke('generate_typst_pdf', { data: practiceData });
+  if (!pdfBytes || pdfBytes.length === 0) {
+    throw new Error('Typst ha generato un PDF vuoto');
+  }
+  return new Uint8Array(pdfBytes);
+};
+
+// Full Typst export pipeline: generate + save dialog
+export const exportTypstPdf = async (practiceData, defaultName) => {
+  const pdfBytes = await generateTypstPdf(practiceData);
+  const savePath = await safeInvoke('select_pdf_save_path', { defaultName });
+  if (savePath) {
+    const data = Array.from(pdfBytes);
+    await safeInvoke('write_pdf_to_path', { path: savePath, data });
+    return { success: true, path: savePath };
+  }
+  return { success: false, cancelled: true };
+};
+
 // Notifications
 export const sendNotification = ({ title, body }) =>
   safeInvoke('send_notification', { title, body });

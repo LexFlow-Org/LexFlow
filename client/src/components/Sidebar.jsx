@@ -125,18 +125,20 @@ function DesktopNavItem({ item }) {
       to={item.path}
       className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative cursor-pointer ${
         isActive
-          ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-[1.02]'
-          : 'text-text-dim hover:text-[var(--text)] hover:bg-[var(--primary-soft)]'
+          ? 'bg-primary shadow-lg shadow-primary/20 scale-[1.02]'
+          : 'text-text-dim hover:text-text hover:bg-primary-soft'
       }`}
+      style={isActive ? { color: 'var(--primary-ink)' } : undefined}
     >
       {isActive && (
-        <div className="absolute left-0 top-3 bottom-3 w-1 bg-white rounded-r-full shadow-[0_0_8px_white]" />
+        <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full" style={{ background: 'var(--primary-ink)', opacity: 0.5 }} />
       )}
       <item.icon
         size={20}
         className={`transition-all duration-300 ${
-          isActive ? 'text-white' : 'group-hover:text-primary group-hover:scale-110'
+          isActive ? '' : 'group-hover:text-primary group-hover:scale-110'
         }`}
+        style={isActive ? { color: 'var(--primary-ink)' } : undefined}
       />
       <span className={`text-sm tracking-wide ${isActive ? 'font-bold' : 'font-medium'}`}>
         {item.label}
@@ -157,7 +159,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
   const isLight = theme === 'light';
 
   return (
-    <aside className={`w-68 h-screen border-r flex flex-col flex-shrink-0 z-20 pt-14 relative ${isLight ? 'bg-white border-gray-200' : 'bg-[#08090f] border-white/8'}`}>
+    <aside className="w-68 h-screen flex flex-col flex-shrink-0 z-20 pt-14 relative bg-sidebar-bg shadow-[1px_0_0_0_var(--border)]">
       <div className="absolute top-0 left-0 w-full h-32 bg-primary/5 blur-[80px] -z-10 pointer-events-none" />
 
       {/* Logo */}
@@ -168,7 +170,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
             <img src={logo} alt="LexFlow" className="w-10 h-10 object-contain relative z-10" />
           </div>
           <div className="flex flex-col">
-            <span className="text-2xl font-black tracking-tighter text-[var(--text)] leading-none">LexFlow</span>
+            <span className="text-2xl font-black tracking-tighter text-text leading-none">LexFlow</span>
             <span className="text-[9px] font-bold text-primary uppercase tracking-[3px] mt-1">Law Suite</span>
           </div>
         </div>
@@ -176,10 +178,10 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
 
       {/* Nav — scrollbar adattiva: visibile solo su hover se serve */}
       <nav className="flex-1 px-4 py-2 space-y-5 overflow-y-auto sidebar-scroll">
-        {sections.map((section) => (
-          <div key={section.title || 'main'} className="space-y-1">
+        {sections.map((section, sIdx) => (
+          <div key={section.title || 'main'} className={`space-y-1 ${sIdx > 0 && section.title ? 'pt-2' : ''}`}>
             {section.title && (
-              <div className="px-4 mb-2 text-[10px] font-black text-text-dim/60 uppercase tracking-[3px]">
+              <div className="px-4 mb-2 mt-1 text-[10px] font-black text-text-dim/60 uppercase tracking-[3px]">
                 {section.title}
               </div>
             )}
@@ -188,32 +190,35 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
         ))}
       </nav>
 
+      {/* Toggle Tema — fuori dal nav per evitare clipping */}
+      <div className="flex justify-center px-4 py-3 flex-shrink-0">
+        <button
+          onClick={onToggleTheme}
+          className="w-10 h-10 flex items-center justify-center rounded-full text-primary/60 hover:text-primary hover:bg-primary/10 transition-all"
+          title={isLight ? 'Tema scuro' : 'Tema chiaro'}
+        >
+          {isLight ? <Moon size={22} strokeWidth={2.5} /> : <Sun size={22} strokeWidth={2.5} />}
+        </button>
+      </div>
+
       {/* Footer */}
-      <div className={`p-6 border-t ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/8 bg-[#0a0b12]'}`}>
+      <div className="p-6 bg-sidebar-bg">
         <button
           onClick={onLock}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group mb-5"
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group"
         >
           <Lock size={18} className="transition-transform group-hover:-rotate-12" />
           <span className="font-black text-[11px] uppercase tracking-widest">Blocca Vault</span>
         </button>
-        <div className="flex items-center justify-between px-1">
+        <div className="flex items-center justify-between px-1 mt-4">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className={`text-[10px] font-bold uppercase tracking-tight ${isLight ? 'text-gray-400' : 'text-text-dim/80'}`}>v{version}</span>
+            <span className="text-[10px] font-bold uppercase tracking-tight text-text-dim/80">v{version}</span>
           </div>
           <div className="flex items-center gap-2">
-            {/* Toggle Tema */}
-            <button
-              onClick={onToggleTheme}
-              className={`p-1.5 rounded-lg transition-all duration-300 ${isLight ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' : 'bg-white/[0.04] text-text-dim hover:bg-white/[0.08] hover:text-primary'} border ${isLight ? 'border-amber-200' : 'border-white/[0.06]'}`}
-              title={isLight ? 'Tema scuro' : 'Tema chiaro'}
-            >
-              {isLight ? <Moon size={13} /> : <Sun size={13} />}
-            </button>
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${isLight ? 'bg-gray-100 border-gray-200' : 'bg-white/[0.04] border-white/[0.06]'}`}>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border bg-bg-surface">
               <ShieldCheck size={11} className="text-primary" />
-              <span className={`text-[8px] font-black uppercase tracking-widest ${isLight ? 'text-gray-400' : 'text-text-dim/70'}`}>AES-256 GCM</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-text-dim/70">AES-256 GCM</span>
             </div>
           </div>
         </div>
@@ -290,12 +295,7 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
           {/* ── CURTAIN — tenda dall'alto ── */}
           <motion.div
             key="lexflow-curtain"
-            style={{
-              position: 'fixed', inset: 0, zIndex: 100,
-              background: '#08090f',
-              transformOrigin: 'top center',
-              boxShadow: '0 8px 32px -8px rgba(0,0,0,0.6)',
-            }}
+            className="curtain-bg z-[100]"
             variants={curtainVariants}
             initial="hidden"
             animate="visible"
@@ -306,7 +306,7 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
           {/* ── PULSANTE X — appare dopo 0.6s ── */}
           <motion.div
             key="lexflow-close"
-            style={{ position: 'fixed', top: 16, right: 16, zIndex: 110 }}
+            className="fixed top-4 right-4 z-[110]"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
@@ -317,13 +317,7 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
               aria-label="Chiudi menu"
               whileHover={{ rotate: 90 }}
               transition={{ duration: 0.3 }}
-              style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 12, width: 44, height: 44,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#e2e4ef', cursor: 'pointer',
-              }}
+              className="curtain-close-btn"
             >
               <X size={22} />
             </motion.button>
@@ -332,75 +326,40 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
           {/* ── CONTENUTO — fade-in dopo la curtain ── */}
           <motion.div
             key="lexflow-content"
-            style={{
-              position: 'fixed', inset: 0, zIndex: 101,
-              height: '100dvh', width: '100%',
-              overflowY: 'auto', WebkitOverflowScrolling: 'touch',
-            }}
+            className="fixed inset-0 z-[101] h-dvh w-full overflow-y-auto"
+            style={{ WebkitOverflowScrolling: 'touch' }}
             variants={contentVariants}
             initial="hidden"
             animate="visible"
             exit="exit"
           >
             {/* Glow ambientale primario */}
-            <div style={{
-              position: 'absolute', inset: 0, pointerEvents: 'none',
-              background: 'radial-gradient(ellipse at top center, rgba(212,169,64,0.07) 0%, transparent 60%)',
-            }} />
+            <div className="curtain-glow" />
 
             {/* Cascade container — stagger 0.08s */}
             <motion.div
               variants={contentContainerVariants}
               initial="hidden"
               animate="visible"
-              style={{
-                minHeight: '100%',
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                padding: '40px 24px 40px',
-              }}
+              className="curtain-container"
               role="navigation"
               aria-label="Menu principale"
             >
               {/* ── Header logo ── */}
               <motion.div
                 variants={itemVariants}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 20 }}
+                className="flex flex-col items-center mb-5"
               >
-                <div style={{ position: 'relative', marginBottom: 10 }}>
-                  <div style={{
-                    position: 'absolute', inset: -8,
-                    background: 'rgba(212,169,64,0.18)', borderRadius: '50%',
-                    filter: 'blur(14px)',
-                  }} />
-                  <img
-                    src={logo} alt="LexFlow"
-                    style={{ width: 48, height: 48, objectFit: 'contain', position: 'relative', zIndex: 1 }}
-                  />
+                <div className="relative mb-2.5">
+                  <div className="absolute -inset-2 bg-primary/18 rounded-full blur-[14px]" />
+                  <img src={logo} alt="LexFlow" className="w-12 h-12 object-contain relative z-[1]" />
                 </div>
-                <h2 style={{
-                  fontSize: 24, fontWeight: 900, color: '#fff',
-                  letterSpacing: '-0.04em', lineHeight: 1, margin: 0,
-                }}>
-                  LexFlow
-                </h2>
-                <p style={{
-                  fontSize: 9, fontWeight: 700, color: '#d4a940',
-                  textTransform: 'uppercase', letterSpacing: '3px', margin: '4px 0 0',
-                }}>
-                  Law Suite
-                </p>
+                <h2 className="curtain-brand-title">LexFlow</h2>
+                <p className="curtain-brand-sub">Law Suite</p>
               </motion.div>
 
               {/* ── Linea separatrice ── */}
-              <motion.div
-                variants={itemVariants}
-                style={{
-                  width: '100%', maxWidth: 280, height: 1,
-                  background: 'linear-gradient(90deg, transparent, rgba(212,169,64,0.3), transparent)',
-                  marginBottom: 16,
-                }}
-              />
+              <motion.div variants={itemVariants} className="curtain-divider" />
 
               {/* ── Nav items — cascade ── */}
               {navItemsMobile.map((item) => {
@@ -411,43 +370,21 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
                   <motion.div
                     key={item.path}
                     variants={itemVariants}
-                    style={{ width: '100%', maxWidth: 320, padding: '2px 0' }}
+                    className="w-full max-w-80 py-0.5"
                   >
                     <NavLink
                       to={item.path}
                       onClick={handleClose}
-                      style={{
-                        display: 'flex', flexDirection: 'column',
-                        alignItems: 'center', gap: 4,
-                        width: '100%', padding: '10px 0',
-                        textDecoration: 'none', position: 'relative',
-                        color: isActive ? '#d4a940' : '#e2e4ef',
-                        fontWeight: isActive ? 700 : 500,
-                        transition: 'color 0.3s',
-                      }}
+                      data-active={isActive}
+                      className="curtain-nav-link"
                     >
                       <item.icon
                         size={20}
-                        style={{
-                          transition: 'transform 0.3s ease',
-                          transform: isActive ? 'scale(1.15)' : 'scale(1)',
-                        }}
+                        className={`transition-transform duration-300 ${isActive ? 'scale-115' : 'scale-100'}`}
                       />
-                      <span style={{
-                        fontSize: 15, letterSpacing: '0.02em',
-                        position: 'relative', display: 'inline-block',
-                      }}>
+                      <span className="relative inline-block">
                         {item.label}
-                        {/* Underline animato */}
-                        <span style={{
-                          position: 'absolute', bottom: -4, left: 0,
-                          width: '100%', height: 2,
-                          background: '#d4a940', borderRadius: 1,
-                          display: 'block',
-                          transform: isActive ? 'scaleX(1)' : 'scaleX(0)',
-                          transformOrigin: 'center',
-                          transition: 'transform 0.3s ease',
-                        }} />
+                        <span className="underline-bar" />
                       </span>
                     </NavLink>
                   </motion.div>
@@ -455,52 +392,19 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
               })}
 
               {/* ── Separatore ── */}
-              <motion.div
-                variants={itemVariants}
-                style={{
-                  width: '100%', maxWidth: 280, height: 1,
-                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)',
-                  margin: '12px 0',
-                }}
-              />
+              <motion.div variants={itemVariants} className="curtain-divider-subtle" />
 
               {/* ── Blocca Vault ── */}
-              <motion.div variants={itemVariants} style={{ width: '100%', maxWidth: 320 }}>
-                <button
-                  onClick={handleLock}
-                  style={{
-                    width: '100%', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center',
-                    gap: 10, padding: '12px 24px', borderRadius: 14,
-                    background: 'rgba(248,113,113,0.1)',
-                    border: '1px solid rgba(248,113,113,0.2)',
-                    color: '#f87171', cursor: 'pointer',
-                    fontWeight: 700, fontSize: 12,
-                    textTransform: 'uppercase', letterSpacing: '0.1em',
-                    transition: 'background 0.2s',
-                  }}
-                >
+              <motion.div variants={itemVariants} className="w-full max-w-80">
+                <button onClick={handleLock} className="curtain-lock-btn">
                   <Lock size={16} />
                   Blocca Vault
                 </button>
               </motion.div>
 
               {/* ── Toggle Tema ── */}
-              <motion.div variants={itemVariants} style={{ width: '100%', maxWidth: 320, marginTop: 8 }}>
-                <button
-                  onClick={onToggleTheme}
-                  style={{
-                    width: '100%', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center',
-                    gap: 10, padding: '10px 24px', borderRadius: 14,
-                    background: isLight ? 'rgba(184,145,46,0.1)' : 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${isLight ? 'rgba(184,145,46,0.2)' : 'rgba(255,255,255,0.06)'}`,
-                    color: isLight ? '#b8912e' : '#d4a940', cursor: 'pointer',
-                    fontWeight: 700, fontSize: 12,
-                    textTransform: 'uppercase', letterSpacing: '0.1em',
-                    transition: 'background 0.2s',
-                  }}
-                >
+              <motion.div variants={itemVariants} className="w-full max-w-80 mt-2">
+                <button onClick={onToggleTheme} className="curtain-theme-btn">
                   {isLight ? <Moon size={16} /> : <Sun size={16} />}
                   {isLight ? 'Tema Scuro' : 'Tema Chiaro'}
                 </button>
@@ -509,34 +413,15 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
               {/* ── Footer versione + badge ── */}
               <motion.div
                 variants={itemVariants}
-                style={{
-                  marginTop: 16, textAlign: 'center',
-                  display: 'flex', flexDirection: 'column',
-                  gap: 6, alignItems: 'center',
-                }}
+                className="mt-4 text-center flex flex-col gap-1.5 items-center"
               >
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '6px 14px',
-                  background: 'rgba(255,255,255,0.04)',
-                  borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)',
-                }}>
-                  <ShieldCheck size={12} color="#d4a940" />
-                  <span style={{
-                    fontSize: 9, fontWeight: 900, color: '#7c8099',
-                    textTransform: 'uppercase', letterSpacing: '0.15em',
-                  }}>
-                    AES-256 GCM Secure
-                  </span>
+                <div className="curtain-badge">
+                  <ShieldCheck size={12} className="text-primary" />
+                  <span className="curtain-badge-text">AES-256 GCM Secure</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{
-                    width: 6, height: 6, borderRadius: '50%',
-                    background: '#10b981', boxShadow: '0 0 6px #10b981',
-                  }} />
-                  <span style={{ fontSize: 11, color: 'rgba(124,128,153,0.6)', fontWeight: 600 }}>
-                    v{version}
-                  </span>
+                <div className="flex items-center gap-1.5">
+                  <div className="curtain-status-dot" />
+                  <span className="curtain-version">v{version}</span>
                 </div>
               </motion.div>
             </motion.div>
@@ -561,22 +446,7 @@ MobileSidebar.propTypes = {
 // ══════════════════════════════════════════════════════════════════════════
 export function HamburgerButton({ onClick }) {
   return (
-    <button
-      onClick={onClick}
-      aria-label="Apri menu"
-      style={{
-        position: 'fixed', top: 12, right: 16, zIndex: 90,
-        background: 'rgba(19,20,30,0.9)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 12, width: 44, height: 44,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#e2e4ef', cursor: 'pointer',
-        transition: 'background 0.2s',
-        touchAction: 'manipulation',
-      }}
-    >
+    <button onClick={onClick} aria-label="Apri menu" className="hamburger-btn">
       <Menu size={22} />
     </button>
   );

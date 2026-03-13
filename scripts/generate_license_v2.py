@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-LexFlow — Generatore Licenze v2.4 (Ed25519 Signed Tokens + Registro Blindato)
+LexFlow — Generatore Licenze v2.5 (Ed25519 Signed Tokens + Registro Blindato)
 
-Miglioramenti rispetto a v2.3:
+Miglioramenti rispetto a v2.4:
   - Fix bug salt detection: priorità al nuovo formato (salt embedded) se file ≥ 44B
   - Backup automatico: snapshot prima di operazioni distruttive (burn/nuke)
   - Hardware ID (node-locking): campo opzionale 'h' per legare licenza a un PC
@@ -18,7 +18,7 @@ Funzionalità:
   - UNA SOLA PASSWORD per tutti i comandi (session-based)
   - Registro locale crittografato AES-256-GCM con Scrypt (n=2^17)
   - Integrità registro: HMAC-SHA256 interno per detect corruzione
-  - Ogni chiave è tracciata con: ID, cliente, data emissione, scadenza, stato
+  - Ogni chiave è tracciata con: ID, studio, avvocato, data emissione, scadenza, stato
   - Anti-replay: nonce univoco 128-bit per ogni chiave
   - Comando NUKE: distruzione TOTALE del registro (ultra-burn + sovrascrittura)
   - Backup automatico prima di burn/nuke (anti-disastro)
@@ -420,7 +420,7 @@ def _parse_expiry(date_str: str):
 
 def cmd_generate():
     """Generate a new license key."""
-    _header("LEXFLOW — GENERATORE LICENZE", "v2.4 · Ed25519 Signed Tokens", "🔐")
+    _header("LEXFLOW — GENERATORE LICENZE", "v2.5 · Ed25519 Signed Tokens", "🔐")
 
     # 1. Chiave Privata (getpass per evitare leak in terminal history)
     priv_key_raw = _prompt("Chiave Privata (Base64/Hex/PEM)", secret=True)
@@ -437,9 +437,17 @@ def cmd_generate():
 
     # 2. Dati
     print()
-    client_name = _prompt("Nome Cliente/Studio")
-    if not client_name:
-        _error("Nome obbligatorio.")
+    _info("Il nome studio appare nell'intestazione dei PDF e nelle impostazioni.")
+    _info("Scrivi il nome completo, es: Studio Legale Rossi & Associati")
+    print()
+    studio_name = _prompt("Nome Studio completo (come deve apparire nei PDF)")
+    if not studio_name:
+        _error("Nome Studio obbligatorio.")
+        return
+
+    lawyer_name = _prompt("Nome e Cognome Avvocato (es. Avv. Mario Rossi)")
+    if not lawyer_name:
+        _error("Nome Avvocato obbligatorio.")
         return
 
     key_id = _prompt("ID Licenza", default="auto")
@@ -470,13 +478,17 @@ def cmd_generate():
     # 3. Payload + Firma
     nonce = secrets.token_hex(16)
     license_payload = {
-        "c": client_name,
+        "c": studio_name,
         "e": expiry_timestamp,
         "id": key_id,
         "n": nonce,
     }
     if grace_int > 0:
         license_payload["g"] = grace_int
+    if lawyer_name:
+        license_payload["a"] = lawyer_name   # avvocato
+    if studio_name:
+        license_payload["s"] = studio_name   # studio
 
     payload_json = json.dumps(license_payload, separators=(',', ':')).encode('utf-8')
     payload_b64 = base64.urlsafe_b64encode(payload_json).decode('utf-8').rstrip('=')
@@ -503,7 +515,9 @@ def cmd_generate():
 
     entry = {
         "id": key_id,
-        "client": client_name,
+        "studio": studio_name,
+        "lawyer_name": lawyer_name or "",
+        "studio_name": studio_name or "",
         "issued_at": datetime.now().isoformat(),
         "expires_at": datetime.fromtimestamp(expiry_timestamp / 1000).isoformat(),
         "expiry_ms": expiry_timestamp,
@@ -517,7 +531,8 @@ def cmd_generate():
     save_registry(pwd, registry)
 
     _success_box("LICENZA GENERATA E REGISTRATA", [
-        f"{C.DIM}Cliente:{C.RESET}    {C.WHITE}{client_name}{C.RESET}",
+        f"{C.DIM}Studio:{C.RESET}     {C.WHITE}{studio_name}{C.RESET}",
+        f"{C.DIM}Avvocato:{C.RESET}   {C.WHITE}{lawyer_name}{C.RESET}",
         f"{C.DIM}ID:{C.RESET}         {C.CYAN}{key_id}{C.RESET}",
         f"{C.DIM}Scadenza:{C.RESET}   {C.WHITE}{datetime.fromtimestamp(expiry_timestamp / 1000).strftime('%Y-%m-%d')}{C.RESET}",
         *([ f"{C.DIM}Grace:{C.RESET}     {C.WHITE}{grace_int} giorni{C.RESET}" ] if grace_int > 0 else []),
@@ -548,7 +563,7 @@ def cmd_list():
     _header("REGISTRO CHIAVI LEXFLOW", f"{len(registry)} licenze tracciate", "📋")
 
     # Table header
-    hdr = f"  {C.DIM}{'#':<4} {'ID':<12} {'Cliente':<25} {'Emessa':<12} {'Scade':<12} {'Stato'}{C.RESET}"
+    hdr = f"  {C.DIM}{'#':<4} {'ID':<12} {'Studio':<25} {'Emessa':<12} {'Scade':<12} {'Stato'}{C.RESET}"
     print(hdr)
     print(f"  {C.DARK}{'─' * 78}{C.RESET}")
 
@@ -562,24 +577,24 @@ def cmd_list():
         if status == "burned":
             icon = f"{C.RED}🔥{C.RESET}"
             label = f"{C.RED}OBLITERATA{C.RESET}"
-            client_display = f"{C.DARK}██████████{C.RESET}"
+            studio_display = f"{C.DARK}██████████{C.RESET}"
             expires = f"{C.DARK}──────────{C.RESET}"
         elif expiry_ms > 0 and now_ms > expiry_ms:
             icon = f"{C.YELLOW}⏰{C.RESET}"
             label = f"{C.YELLOW}scaduta{C.RESET}"
-            client_display = f"{C.WHITE}{entry.get('client', '?')}{C.RESET}"
+            studio_display = f"{C.WHITE}{entry.get('studio', entry.get('client', '?'))}{C.RESET}"
         elif status == "activated":
             icon = f"{C.GREEN}🟢{C.RESET}"
             label = f"{C.GREEN}attiva{C.RESET}"
-            client_display = f"{C.WHITE}{entry.get('client', '?')}{C.RESET}"
+            studio_display = f"{C.WHITE}{entry.get('studio', entry.get('client', '?'))}{C.RESET}"
         else:
             icon = f"{C.BLUE}🔵{C.RESET}"
             label = f"{C.BLUE}emessa{C.RESET}"
-            client_display = f"{C.WHITE}{entry.get('client', '?')}{C.RESET}"
+            studio_display = f"{C.WHITE}{entry.get('studio', entry.get('client', '?'))}{C.RESET}"
 
         num = f"{C.DIM}{i}{C.RESET}"
         kid = f"{C.CYAN}{entry.get('id', '?')}{C.RESET}"
-        print(f"  {num:<15} {kid:<23} {client_display:<36} {C.DIM}{issued}{C.RESET}   {C.DIM}{expires}{C.RESET}   {icon} {label}")
+        print(f"  {num:<15} {kid:<23} {studio_display:<36} {C.DIM}{issued}{C.RESET}   {C.DIM}{expires}{C.RESET}   {icon} {label}")
 
     # Stats
     total = len(registry)
@@ -647,7 +662,7 @@ def cmd_verify():
 
     _header("VERIFICA TOKEN", payload.get('id', '?'), "🔍")
 
-    _field("Cliente", payload.get('c', '?'), "👤")
+    _field("Studio", payload.get('c', '?'), "🏛️")
     _field("ID", payload.get('id', '?'), "🏷️")
     _field("Nonce", f"{payload.get('n', 'N/A')[:16]}…", "🔑")
 
@@ -695,11 +710,11 @@ def cmd_burn():
     _header("🔥 ULTRA-BURN · Annientamento Totale", "3000 round × 3 algoritmi crittografici", "🔥")
 
     _field("ID", entry.get('id'), "🏷️")
-    _field("Cliente", entry.get('client'), "👤")
+    _field("Studio", entry.get('studio', entry.get('client', '?')), "🏛️")
     _field("Scadenza", entry.get('expires_at', '?')[:10], "📅")
     print()
     _warn(f"{C.RED}{C.BOLD}ATTENZIONE: Questa operazione è IRREVERSIBILE.{C.RESET}")
-    print(f"  {C.DIM}  Client, hash, nonce verranno sovrascritti con 3000 round{C.RESET}")
+    print(f"  {C.DIM}  Studio, hash, nonce verranno sovrascritti con 3000 round{C.RESET}")
     print(f"  {C.DIM}  di cascade multi-algo (SHA-512 → SHA3-256 → BLAKE2b).{C.RESET}")
     print(f"  {C.DIM}  Il token NON potrà MAI più essere verificato o recuperato.{C.RESET}")
     print()
@@ -716,6 +731,7 @@ def cmd_burn():
     entry["status"] = "burned"
     entry["burned_at"] = datetime.now().isoformat()
     entry["client"] = ultra_burn_string(entry.get("client", ""))
+    entry["studio"] = ultra_burn_string(entry.get("studio", ""))
     entry["burn_hash"] = ultra_burn_string(entry.get("burn_hash", ""))
     entry["nonce"] = ultra_burn_string(entry.get("nonce", ""))
     entry["expires_at"] = "0000-00-00T00:00:00"
@@ -726,7 +742,7 @@ def cmd_burn():
 
     _success_box(f"Chiave '{target_id}' OBLITERATA", [
         f"{C.DIM}Algoritmi:{C.RESET}  SHA-512 (1000) → SHA3-256 (1000) → BLAKE2b (1000)",
-        f"{C.DIM}Distrutti:{C.RESET}  client, burn_hash, nonce, issued_at, expires_at",
+        f"{C.DIM}Distrutti:{C.RESET}  studio, burn_hash, nonce, issued_at, expires_at",
         f"{C.DIM}Recupero:{C.RESET}   {C.RED}IMPOSSIBILE{C.RESET}",
     ])
 
@@ -780,14 +796,15 @@ def cmd_export():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID", "Cliente", "Emissione", "Scadenza", "Stato", "Hardware ID", "Grace Days", "Burn Hash (parziale)"])
+    writer.writerow(["ID", "Studio", "Avvocato", "Emissione", "Scadenza", "Stato", "Hardware ID", "Grace Days", "Burn Hash (parziale)"])
     for entry in registry:
-        client = entry.get("client", "")
+        studio = entry.get("studio", entry.get("client", ""))
         if entry.get("status") == "burned":
-            client = "[BRUCIATA]"
+            studio = "[BRUCIATA]"
         writer.writerow([
             entry.get("id", ""),
-            client,
+            studio,
+            entry.get("lawyer_name", ""),
             entry.get("issued_at", "")[:19],
             entry.get("expires_at", "")[:10],
             entry.get("status", ""),
@@ -817,12 +834,12 @@ def cmd_stats():
     burned = sum(1 for e in registry if e.get("status") == "burned")
     expired = sum(1 for e in registry if e.get("expiry_ms", 0) > 0 and now_ms > e.get("expiry_ms", 0) and e.get("status") not in ("burned",))
 
-    clients = {}
+    studi = {}
     for e in registry:
         if e.get("status") == "burned":
             continue
-        c = e.get("client", "?")
-        clients[c] = clients.get(c, 0) + 1
+        s = e.get("studio", e.get("client", "?"))
+        studi[s] = studi.get(s, 0) + 1
 
     _header("📊 STATISTICHE REGISTRO", f"{total} licenze tracciate", "📊")
 
@@ -833,18 +850,18 @@ def cmd_stats():
     print(f"  {C.DARK}├─{C.RESET} {C.YELLOW}⏰ Scadute:   {expired}{C.RESET}")
     print(f"  {C.DARK}╰─{C.RESET} {C.RED}🔥 Bruciate:  {burned}{C.RESET}")
 
-    if clients:
+    if studi:
         print()
-        print(f"  {C.DIM}Per Cliente:{C.RESET}")
-        for i, (client, count) in enumerate(sorted(clients.items(), key=lambda x: -x[1])):
-            connector = "╰─" if i == len(clients) - 1 else "├─"
-            print(f"  {C.DARK}{connector}{C.RESET} {C.WHITE}{client}{C.RESET}: {C.CYAN}{count}{C.RESET}")
+        print(f"  {C.DIM}Per Studio:{C.RESET}")
+        for i, (studio, count) in enumerate(sorted(studi.items(), key=lambda x: -x[1])):
+            connector = "╰─" if i == len(studi) - 1 else "├─"
+            print(f"  {C.DARK}{connector}{C.RESET} {C.WHITE}{studio}{C.RESET}: {C.CYAN}{count}{C.RESET}")
     print()
 
 
 def main():
     if len(sys.argv) < 2:
-        _header("⚖️ LexFlow License Manager", "v2.4 · Ed25519 + AES-256-GCM + Scrypt", "⚖️")
+        _header("⚖️ LexFlow License Manager", "v2.5 · Ed25519 + AES-256-GCM + Scrypt", "⚖️")
         cmds = [
             ("generate", "Genera nuova licenza", f"{C.CYAN}🔐{C.RESET}"),
             ("list", "Mostra registro chiavi", f"{C.BLUE}📋{C.RESET}"),

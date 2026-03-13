@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'self'; 
-                   script-src 'self'; 
+                   script-src 'self' 'unsafe-inline'; 
                    style-src 'self' 'unsafe-inline'; 
                    img-src 'self' data: blob:; 
                    font-src 'self' data:; 
@@ -13,8 +13,25 @@
                    form-action 'self';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LexFlow</title>
+    <!-- ★ Tema istantaneo: applica PRIMA di qualsiasi rendering per evitare flash nero→bianco -->
+    <script>
+      (function(){
+        var t = localStorage.getItem('lexflow-theme');
+        if (t === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
+    <style>
+      /* Background critico pre-rendering: matcha il tema scelto */
+      html:not([data-theme="light"]) body { background: #16171e; color: #edeef6; }
+      html[data-theme="light"] body { background: #f4f5f8; color: #1e1e2e; }
+      /* Nascondi contenuto finché React non è pronto — evita layout shift */
+      #root { opacity: 0; }
+      #root.app-mounted { opacity: 1; transition: opacity 0.15s ease; }
+    </style>
   </head>
-  <body class="bg-[#0c0d14] text-white antialiased overflow-hidden select-none">
+  <body class="antialiased overflow-hidden select-none">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

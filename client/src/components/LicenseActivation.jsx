@@ -291,8 +291,7 @@ export default function LicenseActivation({ children }) {
 
         {/* Footer */}
         <div className="lic-footer">
-          <ShieldCheck size={12} />
-          <span>Verifica crittografica locale — Ed25519</span>
+          <span>La verifica della licenza avviene interamente in locale</span>
         </div>
       </div>
 

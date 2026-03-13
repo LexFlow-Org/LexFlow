@@ -106,7 +106,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Filtra fascicoli..."
-            className="flex-1 bg-transparent outline-none text-white text-sm placeholder:text-text-dim/50"
+            className="flex-1 bg-transparent outline-none text-text text-sm placeholder:text-text-dim/50"
             autoComplete="off"
           />
         </div>
@@ -121,7 +121,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
             onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}
           >
             <Briefcase size={14} className="text-text-dim flex-shrink-0" />
-            <span className={`flex-1 text-sm truncate ${selected ? 'text-white' : 'text-text-dim/50'}`}>
+            <span className={`flex-1 text-sm truncate ${selected ? 'text-text' : 'text-text-dim/50'}`}>
               {selected ? `${selected.client} — ${selected.object}` : placeholder}
             </span>
             {!value && <ChevronDown size={14} className="text-text-dim flex-shrink-0" />}
@@ -155,7 +155,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/[0.06] transition-colors ${p.id === value ? 'bg-primary/5' : ''} ${idx === highlightIdx ? 'bg-white/[0.08]' : ''}`}
               >
                 <Briefcase size={14} className="text-text-dim flex-shrink-0" />
-                <span className="text-sm text-white truncate flex-1">{p.client} — {p.object}</span>
+                <span className="text-sm text-text truncate flex-1">{p.client} — {p.object}</span>
               </button>
             ))
           )}

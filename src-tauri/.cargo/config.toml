@@ -1,10 +1,7 @@
-# Forza Rust a usare lld (il linker ultraveloce) invece di quello di base del Mac
-[target.aarch64-apple-darwin]
-rustflags = [
-    "-C", "link-arg=-fuse-ld=ld64.lld"
-]
-
-[target.x86_64-apple-darwin]
-rustflags = [
-    "-C", "link-arg=-fuse-ld=ld64.lld"
-]
+# Linker configuration for macOS
+# To use lld for faster builds, install it: brew install llvm
+# Then uncomment the lines below:
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=ld64.lld"]
+# [target.x86_64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=ld64.lld"]

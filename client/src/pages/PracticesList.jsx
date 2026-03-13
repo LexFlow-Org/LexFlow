@@ -63,7 +63,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
       {/* Header & Main Action */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-1">
-          <h1 className="text-4xl font-black text-white tracking-tight">Fascicoli</h1>
+          <h1 className="text-4xl font-black text-text tracking-tight">Fascicoli</h1>
           <p className="text-text-dim text-sm uppercase tracking-[2px] font-medium opacity-60">Gestione Archivio Digitale</p>
         </div>
         <button 
@@ -90,7 +90,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <Briefcase size={20} />
           </div>
           <div>
-            <div className="text-2xl font-black text-white leading-none mb-1">{stats.total}</div>
+            <div className="text-2xl font-black text-text leading-none mb-1">{stats.total}</div>
             <div className="text-[10px] text-text-dim uppercase tracking-[2px] font-bold">Totali</div>
           </div>
         </button>
@@ -108,7 +108,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <CheckCircle2 size={20} />
           </div>
           <div>
-            <div className="text-2xl font-black text-white leading-none mb-1">{stats.active}</div>
+            <div className="text-2xl font-black text-text leading-none mb-1">{stats.active}</div>
             <div className="text-[10px] text-text-dim uppercase tracking-[2px] font-bold">Attivi</div>
           </div>
         </button>
@@ -126,7 +126,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <Archive size={20} />
           </div>
           <div>
-            <div className="text-2xl font-black text-white leading-none mb-1">{stats.closed}</div>
+            <div className="text-2xl font-black text-text leading-none mb-1">{stats.closed}</div>
             <div className="text-[10px] text-text-dim uppercase tracking-[2px] font-bold">Chiusi</div>
           </div>
         </button>
@@ -139,7 +139,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           <input 
             type="text" 
             placeholder="Cerca per cliente, oggetto, RG..."
-            className="w-full pl-14 pr-6 py-4 bg-transparent border-none focus:ring-0 text-sm text-white placeholder:text-white/20"
+            className="w-full pl-14 pr-6 py-4 bg-transparent border-none focus:ring-0 text-sm text-text placeholder:text-text-dim/20"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -150,24 +150,24 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <Filter size={14} className="text-text-dim opacity-50" />
             
             <select 
-              className="bg-transparent border-none text-[10px] font-black uppercase tracking-[2px] text-text-muted focus:ring-0 cursor-pointer hover:text-primary transition-colors p-0"
+              className="bg-transparent border-none text-[10px] font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-all p-0"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
-              <option value="all" className="bg-[#10111a]">Stato: Tutti</option>
-              <option value="active" className="bg-[#10111a]">Solo Attivi</option>
-              <option value="closed" className="bg-[#10111a]">Solo Chiusi</option>
+              <option value="all" className="bg-card text-text">Stato: Tutti</option>
+              <option value="active" className="bg-card text-text">Solo Attivi</option>
+              <option value="closed" className="bg-card text-text">Solo Chiusi</option>
             </select>
 
             <div className="w-[1px] h-4 bg-white/10" />
 
             <select 
-              className="bg-transparent border-none text-[10px] font-black uppercase tracking-[2px] text-text-muted focus:ring-0 cursor-pointer hover:text-primary transition-colors p-0"
+              className="bg-transparent border-none text-[10px] font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-all p-0"
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
             >
               {types.map(t => (
-                <option key={t.id} value={t.id} className="bg-[#10111a]">{t.label}</option>
+                <option key={t.id} value={t.id} className="bg-card text-text">{t.label}</option>
               ))}
             </select>
           </div>
@@ -195,7 +195,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-1 min-w-0">
                     <div className="space-y-1 overflow-hidden">
                       <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Cliente</div>
-                      <div className="text-base font-bold text-white truncate">{p?.client || 'N/D'}</div>
+                      <div className="text-base font-bold text-text truncate">{p?.client || 'N/D'}</div>
                     </div>
                     
                     <div className="space-y-1 overflow-hidden">
@@ -212,7 +212,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
                     </div>
 
                     <div className="hidden lg:flex flex-col justify-center items-end pr-4">
-                      <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-white/5 text-white border-white/10' : 'bg-white/5 text-text-dim border-white/10'}`}>
+                      <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-white/5 text-text border-border' : 'bg-white/5 text-text-dim border-border'}`}>
                         <span className="flex items-center gap-1.5">
                           <span className={`w-1.5 h-1.5 rounded-full ${p?.status === 'active' ? 'bg-emerald-400' : 'bg-text-dim'}`} />
                           {p?.status === 'active' ? 'Attivo' : 'Archiviato'}
@@ -235,7 +235,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
               <Search size={40} />
             </div>
             <div className="space-y-2">
-              <h3 className="text-xl font-bold text-white">Nessun fascicolo trovato</h3>
+              <h3 className="text-xl font-bold text-text">Nessun fascicolo trovato</h3>
               <p className="text-text-muted text-sm max-w-xs mx-auto">Affina i filtri di ricerca o crea una nuova pratica digitale per iniziare.</p>
             </div>
           </div>

@@ -6,7 +6,7 @@ import {
   FolderPlus, Lock, ChevronDown,
   FilePlus, Info, Fingerprint, ShieldCheck, Download, X, Users
 } from 'lucide-react';
-import { exportPracticePDF } from '../utils/pdfGenerator';
+import { exportPracticeTypstPDF } from '../utils/typstPdfGenerator';
 import ExportWarningModal from './ExportWarningModal';
 import ConfirmDialog from './ConfirmDialog';
 import ModalOverlay from './ModalOverlay';
@@ -91,14 +91,14 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0c0d14] animate-fade-in">
-      <div className="flex items-center px-6 py-4 border-b border-[#2e3352]">
-        <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white">
+    <div className="h-full flex flex-col bg-background animate-fade-in">
+      <div className="flex items-center px-6 py-4 border-b border-border">
+        <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-text-dim hover:text-text">
           <ArrowLeft size={20} />
         </button>
         <div className="ml-4">
-          <h1 className="text-xl font-bold text-white">{practice.client}</h1>
-          <p className="text-xs text-white/50 mt-0.5">{practice.code ? `RG ${practice.code}` : practice.object}</p>
+          <h1 className="text-xl font-bold text-text">{practice.client}</h1>
+          <p className="text-xs text-text-dim mt-0.5">{practice.code ? `RG ${practice.code}` : practice.object}</p>
         </div>
       </div>
       <div className="flex-1 flex items-center justify-center">
@@ -108,8 +108,8 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
             {bioConfigured ? <Fingerprint size={36} className="text-primary" /> : <Lock size={36} className="text-primary" />}
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white mb-2">Verifica Identità</h2>
-            <p className="text-sm text-white/70">
+            <h2 className="text-xl font-bold text-text mb-2">Verifica Identità</h2>
+            <p className="text-sm text-text-muted">
               {bioConfigured === null && 'Verifica in corso...'}
               {bioConfigured === false && 'Inserisci la Master Password per accedere.'}
               {bioConfigured === true && (bioAttempted ? 'Autenticazione non riuscita. Riprova o usa la password.' : 'Autenticazione biometrica in corso...')}
@@ -126,7 +126,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
               </button>
               <button 
                 onClick={() => setShowPasswordFallback(true)} 
-                className="w-full text-white/50 hover:text-white text-xs font-semibold transition-colors py-2"
+                className="w-full text-text-dim hover:text-text text-xs font-semibold transition-colors py-2"
               >
                 Usa la Master Password
               </button>
@@ -135,11 +135,11 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
           {/* Password form */}
           {showPasswordFallback && (
             <form onSubmit={handlePasswordFallback} className="space-y-3 text-left">
-              <label htmlFor="pd-bio-pwd" className="text-[10px] font-bold text-white/40 uppercase tracking-[2px] ml-1 block">Master Password</label>
+              <label htmlFor="pd-bio-pwd" className="text-[10px] font-bold text-text-dim uppercase tracking-[2px] ml-1 block">Master Password</label>
               <input
                 id="pd-bio-pwd"
                 type="password"
-                className="input-field w-full py-3 px-4 rounded-xl bg-white/5 border-white/10 text-white placeholder:text-white/25 text-sm"
+                className="input-field w-full py-3 px-4 rounded-xl bg-white/5 border-border text-text placeholder:text-text-dim text-sm"
                 placeholder="Inserisci la password..."
                 value={practicePassword}
                 onChange={e => setPracticePassword(e.target.value)}
@@ -155,7 +155,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
                 <button 
                   type="button"
                   onClick={() => { setShowPasswordFallback(false); setPracticePassword(''); setPracticePasswordError(''); }} 
-                  className="w-full text-white/50 hover:text-white text-xs font-semibold transition-colors py-2"
+                  className="w-full text-text-dim hover:text-text text-xs font-semibold transition-colors py-2"
                 >
                   Torna alla Biometria
                 </button>
@@ -175,11 +175,13 @@ BiometricLockScreen.propTypes = {
 };
 
 /* ---------- Helpers ---------- */
+// Pallino scadenza: usa bg-cat-scadenza per coerenza con DeadlinesPage e AgendaPage.
+// Urgenza espressa solo tramite ring/pulse, NON cambiando il colore base.
 function getDeadlineDotColor(diff) {
-  if (diff < 0) return 'bg-red-500';
-  if (diff === 0) return 'bg-orange-500';
-  if (diff > 0 && diff <= 3) return 'bg-yellow-500';
-  return 'bg-blue-500';
+  if (diff < 0) return 'bg-cat-scadenza ring-2 ring-cat-scadenza/40 animate-pulse';  // scaduta
+  if (diff === 0) return 'bg-cat-scadenza ring-2 ring-cat-scadenza/30';               // oggi
+  if (diff <= 3) return 'bg-cat-scadenza ring-1 ring-cat-scadenza/20';                // urgente
+  return 'bg-cat-scadenza';                                                            // normale
 }
 
 function getDeadlineLabel(diff) {
@@ -211,23 +213,23 @@ function StatusDropdown({ status, onChangeStatus }) {
         onClick={() => setOpen(!open)}
         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
           status === 'active'
-            ? 'bg-white/5 text-white border-white/10 hover:bg-white/10'
-            : 'bg-white/5 text-white/50 border-white/10 hover:bg-white/10'
+            ? 'bg-white/5 text-text border-border hover:bg-white/10'
+            : 'bg-white/5 text-text-muted border-border hover:bg-white/10'
         }`}
       >
-        <span className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-emerald-400' : 'bg-white/30'}`} />
+        <span className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-emerald-400' : 'bg-text-dim'}`} />
         {status === 'active' ? 'Attivo' : 'Archiviato'}
-        <ChevronDown size={14} className="text-white/40" />
+        <ChevronDown size={14} className="text-text-dim" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 bg-[#14151d] border border-white/10 rounded-xl shadow-2xl z-50 py-1 min-w-[200px] animate-fade-in">
+        <div className="absolute right-0 top-full mt-2 bg-card border border-border rounded-xl shadow-2xl z-50 py-1 min-w-[200px] animate-fade-in">
           <button onClick={() => doSet('active')}
             className={`w-full flex items-center gap-3 px-4 py-3 text-xs hover:bg-white/5 transition-colors text-left ${status === 'active' ? 'bg-white/[0.03]' : ''}`}>
-            <span className="w-2 h-2 rounded-full bg-emerald-400" /><span className="text-white font-medium">Attivo</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400" /><span className="text-text font-medium">Attivo</span>
           </button>
           <button onClick={() => doSet('closed')}
             className={`w-full flex items-center gap-3 px-4 py-3 text-xs hover:bg-white/5 transition-colors text-left ${status === 'closed' ? 'bg-white/[0.03]' : ''}`}>
-            <span className="w-2 h-2 rounded-full bg-text-dim" /><span className="text-white font-medium">Archiviato</span>
+            <span className="w-2 h-2 rounded-full bg-text-dim" /><span className="text-text font-medium">Archiviato</span>
           </button>
         </div>
       )}
@@ -317,18 +319,32 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
   /** Shared helper: show loading toast → run PDF export → resolve toast */
   const runPdfExport = async () => {
-    const toastId = toast.loading('Generazione PDF in corso…', { icon: '📄' });
+    const toastId = toast.loading('Generazione PDF in corso…', { duration: 30000 });
     try {
-      const result = await exportPracticePDF(practice);
+      const result = await exportPracticeTypstPDF(practice);
+      toast.dismiss(toastId);
       if (result?.success) {
-        const fileName = result.path?.split(/[/\\]/).pop() || 'PDF';
-        toast.success(`PDF salvato: ${fileName}`, { id: toastId, duration: 5000 });
+        const fullPath = result.path || '';
+        const fileName = fullPath.split(/[/\\]/).pop() || 'PDF';
+        const folder = fullPath.split(/[/\\]/).slice(0, -1).pop() || '';
+        toast.success(
+          `PDF salvato con successo!\n${folder}/${fileName}`,
+          { duration: 6000, style: { maxWidth: '420px' } }
+        );
+      } else if (result?.cancelled) {
+        // User closed the save dialog — silent dismiss, no error toast
+      } else if (result?.error) {
+        console.warn('[PracticeDetail] PDF export returned error:', result.error);
+        const msg = result.error?.message || String(result.error);
+        toast.error(`Errore export: ${msg}`);
       } else {
-        toast.dismiss(toastId);
+        console.warn('[PracticeDetail] PDF export returned failure:', result);
+        toast.error('Errore durante la generazione del PDF');
       }
     } catch (err) {
       console.error('[PracticeDetail] PDF export failed:', err);
-      toast.error('Errore durante l\'esportazione', { id: toastId });
+      toast.dismiss(toastId);
+      toast.error(`Errore export: ${err?.message || 'errore sconosciuto'}`);
     }
   };
 
@@ -464,21 +480,21 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   ];
 
   return (
-    <div className="h-full flex flex-col bg-[#0c0d14] animate-fade-in">
+    <div className="h-full flex flex-col bg-background animate-fade-in">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#2e3352] bg-[#0c0d14]/50 backdrop-blur-md sticky top-0 z-10">
+      <div className="flex items-center justify-between px-6 py-4 bg-card sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white">
+          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-text-dim hover:text-text">
             <ArrowLeft size={20} />
           </button>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-white">{practice.client}</h1>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl font-bold text-text">{practice.client}</h1>
               {practice.biometricProtected && (
                 <ShieldCheck size={16} className="text-primary/60" title="Protetto con biometria" />
               )}
             </div>
-            <p className="text-xs text-white/50 mt-0.5">
+            <p className="text-xs text-text-dim mt-0.5">
               {practice.code ? `RG ${practice.code}` : practice.object}
             </p>
           </div>
@@ -496,23 +512,20 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       </div>
 
       {/* Tabs — Segmented Control moderno */}
-      <div className="px-6 py-3 border-b border-[#2e3352]">
-        <div className="inline-flex bg-white/[0.04] rounded-xl p-1 border border-white/5">
+      <div className="px-6 py-3">
+        <div className="tab-switcher">
           {TABS.map(({ id, label, icon: Icon, count }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
-                activeTab === id 
-                  ? 'bg-primary text-black shadow-[0_0_12px_rgba(212,169,64,0.25)]' 
-                  : 'text-white/50 hover:text-white hover:bg-white/[0.06]'
-              }`}
+              className="tab-btn"
+              data-active={activeTab === id}
             >
               <Icon size={14} />
               {label}
               {count > 0 && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                  activeTab === id ? 'bg-black/20 text-black' : 'bg-white/10 text-white/50'
+                  activeTab === id ? 'bg-white/20 text-white' : 'bg-white/10 text-text-dim'
                 }`}>
                   {count}
                 </span>
@@ -531,12 +544,12 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             {/* Header Diario con Export */}
             {practice.diary && practice.diary.length > 0 && (
               <div className="flex items-center justify-between mb-5">
-                <span className="text-xs font-bold text-white/60 uppercase tracking-[2px]">
+                <span className="text-xs font-bold text-text-dim uppercase tracking-[2px]">
                   {practice.diary.length} {practice.diary.length === 1 ? 'annotazione' : 'annotazioni'}
                 </span>
                 <button
                   onClick={handleExport}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-white/[0.06] text-white/70 border border-white/10 hover:bg-white/[0.10] hover:text-white transition-all"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-white/[0.06] text-text-muted border border-border hover:bg-white/[0.10] hover:text-text transition-all"
                 >
                   <Download size={14} />
                   Esporta PDF
@@ -545,9 +558,9 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             )}
             <div className="flex-1 space-y-4 mb-6">
                {(!practice.diary || practice.diary.length === 0) && (
-                <div className="text-center py-16 text-white/40">
+                <div className="text-center py-16 text-text-dim">
                   <Clock size={36} className="mx-auto mb-3 opacity-40" />
-                  <p className="text-base font-medium text-white/50">Il diario è vuoto. Aggiungi note o verbali.</p>
+                  <p className="text-base font-medium text-text-muted">Il diario è vuoto. Aggiungi note o verbali.</p>
                 </div>
               )}
               {practice.diary?.map((note, idx) => (
@@ -565,16 +578,16 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                          <Trash2 size={14} />
                       </button>
                     </div>
-                    <p className="text-sm text-white/85 leading-relaxed whitespace-pre-wrap">{note.text}</p>
+                    <p className="text-sm text-text leading-relaxed whitespace-pre-wrap">{note.text}</p>
                   </div>
                 </div>
               ))}
             </div>
 
-            <form onSubmit={addNote} className="sticky bottom-0 bg-[#0c0d14] pt-4 border-t border-white/[0.08]">
+            <form onSubmit={addNote} className="sticky bottom-0 bg-background pt-4 border-t border-border">
               <div className="relative">
                 <textarea
-                  className="w-full min-h-[80px] pr-14 pl-4 py-3 resize-none rounded-2xl bg-white/[0.05] border border-white/[0.10] text-white placeholder:text-white/30 text-sm focus:border-primary/40 focus:bg-white/[0.07] outline-none transition-all"
+                  className="w-full min-h-[80px] pr-14 pl-4 py-3 resize-none rounded-2xl bg-white/[0.05] border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 focus:bg-white/[0.07] outline-none transition-all"
                   placeholder="Scrivi una nota di udienza, una telefonata o un appunto..."
                   value={newNote}
                   onChange={e => setNewNote(e.target.value)}
@@ -611,8 +624,8 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   <FilePlus size={24} className="text-primary" />
                 </div>
                 <div>
-                  <p className="text-base font-bold text-white">Carica Documento</p>
-                  <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Aggiungi file al vault crittografato</p>
+                  <p className="text-base font-bold text-text">Carica Documento</p>
+                  <p className="text-[10px] text-text-dim uppercase tracking-wider mt-1">Aggiungi file al vault crittografato</p>
                 </div>
               </button>
 
@@ -625,20 +638,20 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   <FolderPlus size={24} className="text-amber-400" />
                 </div>
                 <div>
-                  <p className="text-base font-bold text-white">Collega Cartella</p>
-                  <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Associa una cartella locale al fascicolo</p>
+                  <p className="text-base font-bold text-text">Collega Cartella</p>
+                  <p className="text-[10px] text-text-dim uppercase tracking-wider mt-1">Associa una cartella locale al fascicolo</p>
                 </div>
               </button>
             </div>
 
             {/* Lista allegati crittografati */}
             <div>
-              <h3 className="text-[10px] font-black text-white/40 uppercase tracking-[2px] mb-4">Documenti Allegati</h3>
+              <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px] mb-4">Documenti Allegati</h3>
               {(!practice.attachments || practice.attachments.length === 0) ? (
                 <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-white/10">
-                  <FileText size={28} className="text-white/15 mb-3" />
-                  <p className="text-sm text-white/40">Nessun documento allegato</p>
-                  <p className="text-xs text-white/25 mt-1">Carica PDF o documenti nel vault crittografato</p>
+                  <FileText size={28} className="text-text-dim/40 mb-3" />
+                  <p className="text-sm text-text-muted">Nessun documento allegato</p>
+                  <p className="text-xs text-text-dim mt-1">Carica PDF o documenti nel vault crittografato</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -653,15 +666,15 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       />
                       <FileText size={16} className="text-primary flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white truncate">{att.name}</p>
-                        <p className="text-[10px] text-white/40">
+                        <p className="text-sm text-text truncate">{att.name}</p>
+                        <p className="text-[10px] text-text-dim">
                           {att.addedAt ? formatDateIT(att.addedAt, '') : ''}
                         </p>
                       </div>
                       <button onClick={(e) => { e.stopPropagation(); att.path && api.openPath(att.path); }} className="btn-ghost text-xs p-2 relative z-[1]">
                         <FolderOpen size={14} />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveAttachment(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-white/30 hover:text-red-400 transition-all relative z-[1]">
+                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveAttachment(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-red-400 transition-all relative z-[1]">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -672,12 +685,12 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
             {/* ═══ CARTELLE COLLEGATE ═══ */}
             <div className="mt-6">
-              <h3 className="text-[10px] font-black text-white/40 uppercase tracking-[2px] mb-4">Cartelle Collegate</h3>
+              <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px] mb-4">Cartelle Collegate</h3>
               {folders.length === 0 ? (
                 <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-white/10">
-                  <FolderOpen size={28} className="text-white/15 mb-3" />
-                  <p className="text-sm text-white/40">Nessuna cartella collegata</p>
-                  <p className="text-xs text-white/25 mt-1">Collega cartelle locali al fascicolo</p>
+                  <FolderOpen size={28} className="text-text-dim/40 mb-3" />
+                  <p className="text-sm text-text-muted">Nessuna cartella collegata</p>
+                  <p className="text-xs text-text-dim mt-1">Collega cartelle locali al fascicolo</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -692,15 +705,15 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       />
                       <FolderOpen size={16} className="text-amber-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white truncate">{fld.name}</p>
-                        <p className="text-[10px] text-white/40">
+                        <p className="text-sm text-text truncate">{fld.name}</p>
+                        <p className="text-[10px] text-text-dim">
                           {fld.addedAt ? formatDateIT(fld.addedAt, '') : ''}
                         </p>
                       </div>
                       <button onClick={(e) => { e.stopPropagation(); openFolderAtPath(fld.path); }} className="btn-ghost text-xs p-2 relative z-[1]" title="Apri nel Finder">
                         <FolderOpen size={14} />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveFolder(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-white/30 hover:text-red-400 transition-all relative z-[1]">
+                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveFolder(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-red-400 transition-all relative z-[1]">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -753,9 +766,9 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
                 if (allDeadlines.length === 0) {
                   return (
-                    <div className="text-center py-10 text-white/40">
+                    <div className="text-center py-10 text-text-dim">
                       <Calendar size={32} className="mx-auto mb-2 opacity-40" />
-                      <p className="text-white/50">Nessuna scadenza impostata</p>
+                      <p className="text-text-muted">Nessuna scadenza impostata</p>
                     </div>
                   );
                 }
@@ -772,21 +785,21 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
                       
                       <div className="flex-1">
-                         <p className="text-sm text-white font-medium">{d.label}</p>
+                         <p className="text-sm text-text font-medium">{d.label}</p>
                          <div className="flex items-center gap-2">
-                           <p className="text-xs text-white/50">{formatDateIT(d.date, '')}</p>
+                           <p className="text-xs text-text-dim">{formatDateIT(d.date, '')}</p>
                            {d.source === 'agenda' && (
                              <span className="text-[9px] font-bold text-primary/60 uppercase tracking-wider bg-primary/5 px-1.5 py-0.5 rounded">Agenda</span>
                            )}
                          </div>
                       </div>
 
-                      <div className="text-xs font-bold px-2 py-1 rounded bg-white/5 text-white/70">
+                      <div className="text-xs font-bold px-2 py-1 rounded bg-white/5 text-text-muted">
                         {deadlineLabel}
                       </div>
 
                       {d.source === 'practice' && (
-                        <button onClick={() => confirmDeleteDeadline(d.idx)} className="opacity-0 group-hover:opacity-100 p-2 text-white/30 hover:text-red-400 transition-all">
+                        <button onClick={() => confirmDeleteDeadline(d.idx)} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-red-400 transition-all">
                           <Trash2 size={16} />
                         </button>
                       )}
@@ -803,25 +816,25 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl mx-auto">
             {/* Dati Generali */}
             <div className="glass-card p-6">
-              <h3 className="text-sm font-bold text-white/70 uppercase tracking-wider mb-5 border-b border-white/5 pb-2">Dati Generali</h3>
+              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2">Dati Generali</h3>
               <div className="grid grid-cols-2 gap-y-5 gap-x-8 text-sm">
                 <div>
-                  <span className="block text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1">Materia</span>
-                  <span className="text-white font-medium capitalize">{
+                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Materia</span>
+                  <span className="text-text font-medium capitalize">{
                     {civile:'Civile', penale:'Penale', lavoro:'Lavoro', amm:'Amministrativo', stra:'Stragiudiziale'}[practice.type] || practice.type
                   }</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1">Tribunale</span>
-                  <span className="text-white font-medium">{practice.court || '—'}</span>
+                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Tribunale</span>
+                  <span className="text-text font-medium">{practice.court || '—'}</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1">Riferimento</span>
-                  <span className="text-white font-medium font-mono">{practice.code ? `RG ${practice.code}` : '—'}</span>
+                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Riferimento</span>
+                  <span className="text-text font-medium font-mono">{practice.code ? `RG ${practice.code}` : '—'}</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1">Apertura</span>
-                  <span className="text-white font-medium">
+                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Apertura</span>
+                  <span className="text-text font-medium">
                     {practice.createdAt ? new Date(practice.createdAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'}
                   </span>
                 </div>
@@ -830,25 +843,25 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
             {/* Parti Coinvolte */}
             <div className="glass-card p-6">
-              <h3 className="text-sm font-bold text-white/70 uppercase tracking-wider mb-5 border-b border-white/5 pb-2 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2 flex items-center gap-2">
                 <Users size={14} className="text-primary/60" /> Parti Coinvolte
               </h3>
               <div className="space-y-4 text-sm">
                 <div>
-                  <span className="block text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1">Cliente / Assistito</span>
-                  <span className="text-white font-medium">{practice.client || '—'}</span>
+                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Cliente / Assistito</span>
+                  <span className="text-text font-medium">{practice.client || '—'}</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1">Controparte</span>
-                  <span className="text-white font-medium">{practice.counterparty || '—'}</span>
+                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Controparte</span>
+                  <span className="text-text font-medium">{practice.counterparty || '—'}</span>
                 </div>
               </div>
             </div>
 
             {/* Note Strategiche — full width */}
             <div className="glass-card p-6 lg:col-span-2">
-              <h3 className="text-sm font-bold text-white/70 uppercase tracking-wider mb-5 border-b border-white/5 pb-2">Note Strategiche</h3>
-              <p className="text-sm text-white/70 whitespace-pre-line leading-relaxed">
+              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2">Note Strategiche</h3>
+              <p className="text-sm text-text whitespace-pre-line leading-relaxed">
                 {practice.description || 'Nessun appunto registrato.'}
               </p>
             </div>
@@ -866,7 +879,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       {/* Password verification modal for PDF export — centered with blur overlay */}
       {showExportPwdModal && (
         <ModalOverlay onClose={() => setShowExportPwdModal(false)} labelledBy="export-pwd-title" zIndex={9999} focusTrap>
-          <div className="w-full max-w-sm bg-[#0f1016] border border-white/10 rounded-[28px] shadow-2xl overflow-hidden">
+          <div className="modal-card modal-card-sm">
             {/* Header */}
             <div className="px-6 pt-6 pb-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -874,11 +887,11 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   <Lock size={18} className="text-primary" />
                 </div>
                 <div>
-                  <h3 id="export-pwd-title" className="text-white font-bold text-sm">Verifica Identità</h3>
-                  <p className="text-white/40 text-[10px]">Inserisci la Master Password per esportare</p>
+                  <h3 id="export-pwd-title" className="text-text font-bold text-sm">Verifica Identità</h3>
+                  <p className="text-text-dim text-[10px]">Inserisci la Master Password per esportare</p>
                 </div>
               </div>
-              <button onClick={() => setShowExportPwdModal(false)} className="p-2 hover:bg-white/10 rounded-xl text-white/30 hover:text-white transition-all group">
+              <button onClick={() => setShowExportPwdModal(false)} className="p-2 hover:bg-white/10 rounded-xl text-text-dim hover:text-text transition-all group">
                 <X size={18} className="group-hover:rotate-90 transition-transform" />
               </button>
             </div>
@@ -886,7 +899,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             <form onSubmit={handleExportWithPassword} className="px-6 pb-6">
               <input
                 type="password"
-                className="w-full py-3 px-4 rounded-xl bg-white/[0.05] border border-white/[0.10] text-white placeholder:text-white/25 text-sm focus:border-primary/40 outline-none transition-colors mb-4"
+                className="w-full py-3 px-4 rounded-xl bg-white/[0.05] border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 outline-none transition-colors mb-4"
                 placeholder="Master Password…"
                 value={exportPwd}
                 onChange={e => setExportPwd(e.target.value)}
@@ -894,7 +907,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               />
               <div className="flex gap-3">
                 <button type="button" onClick={() => setShowExportPwdModal(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-white/50 text-xs font-bold uppercase tracking-widest hover:bg-white/5 hover:text-white/70 transition-all">
+                  className="flex-1 py-2.5 rounded-xl border border-border text-text-dim text-xs font-bold uppercase tracking-widest hover:bg-white/5 hover:text-text transition-all">
                   Annulla
                 </button>
                 <button type="submit" disabled={!exportPwd}

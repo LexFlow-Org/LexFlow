@@ -2286,6 +2286,16 @@ fn check_license_burned(
         .and_then(|v| v.as_str())
         .unwrap_or("Studio Legale")
         .to_string();
+    let lawyer_name = data
+        .get("lawyerName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let studio_name = data
+        .get("studioName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     if token_hmac.is_empty() {
         return json!({"activated": false, "reason": "Dati licenza corrotti."});
@@ -2304,6 +2314,8 @@ fn check_license_burned(
                 "activated": true,
                 "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
                 "client": client,
+                "lawyerName": lawyer_name,
+                "studioName": studio_name,
                 "inGracePeriod": true,
                 "graceDays": grace_days,
             });
@@ -2317,6 +2329,8 @@ fn check_license_burned(
         "activated": true,
         "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
         "client": client,
+        "lawyerName": lawyer_name,
+        "studioName": studio_name,
     })
 }
 
@@ -2388,6 +2402,8 @@ fn check_license_legacy(
         "activated": true,
         "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
         "client": client,
+        "lawyerName": "",
+        "studioName": "",
     })
 }
 
@@ -2455,9 +2471,9 @@ fn check_license(state: State<AppState>) -> Value {
 // The corresponding private key is stored securely offline (never in source control).
 // To regenerate: pip install cryptography && python3 -c "from cryptography.hazmat.primitives.asymmetric import ed25519; k=ed25519.Ed25519PrivateKey.generate(); print(list(k.public_key().public_bytes(encoding=__import__('cryptography.hazmat.primitives.serialization',fromlist=['Encoding']).Encoding.Raw, format=__import__('cryptography.hazmat.primitives.serialization',fromlist=['PublicFormat']).PublicFormat.Raw)))"
 const PUBLIC_KEY_BYTES: [u8; 32] = [
-    6u8, 195u8, 27u8, 74u8, 178u8, 167u8, 122u8, 126u8, 185u8, 247u8, 210u8, 133u8, 115u8, 11u8,
-    155u8, 10u8, 145u8, 18u8, 212u8, 154u8, 217u8, 210u8, 125u8, 180u8, 127u8, 242u8, 254u8, 36u8,
-    108u8, 196u8, 244u8, 239u8,
+    165u8, 168u8, 18u8, 242u8, 77u8, 185u8, 21u8, 57u8, 73u8, 63u8, 24u8,
+    223u8, 51u8, 205u8, 205u8, 147u8, 14u8, 52u8, 150u8, 216u8, 125u8, 219u8,
+    73u8, 154u8, 80u8, 107u8, 177u8, 59u8, 40u8, 183u8, 104u8, 171u8,
 ];
 
 #[derive(Deserialize, Serialize)]
@@ -2471,6 +2487,10 @@ struct LicensePayload {
     h: Option<String>,
     #[serde(default)] // v2.4+: grace period in days after expiry (0 = no grace)
     g: Option<u64>,
+    #[serde(default)] // v2.5+: lawyer name (avvocato)
+    a: Option<String>,
+    #[serde(default)] // v2.5+: studio (law firm) name
+    s: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -2799,11 +2819,15 @@ fn perform_license_activation(
     let expiry_ms = parsed_payload.as_ref().map(|p| p.e).unwrap_or(0);
     let grace_days = parsed_payload.as_ref().and_then(|p| p.g).unwrap_or(0);
     let hardware_locked = parsed_payload.as_ref().and_then(|p| p.h.as_ref()).is_some();
+    let lawyer_name = parsed_payload.as_ref().and_then(|p| p.a.clone()).unwrap_or_default();
+    let studio_name = parsed_payload.as_ref().and_then(|p| p.s.clone()).unwrap_or_default();
 
     let record = json!({
         "tokenHmac": token_hmac,
         "activatedAt": now,
         "client": client,
+        "lawyerName": lawyer_name,
+        "studioName": studio_name,
         "keyVersion": "ed25519-burned",
         "machineFingerprint": fingerprint,
         "keyId": key_id,
@@ -3314,6 +3338,251 @@ async fn write_pdf_to_path(path: String, data: Vec<u8>) -> Result<bool, String> 
     }
     std::fs::write(&path, &data).map_err(|e| format!("Write failed: {}", e))?;
     Ok(true)
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TYPST PDF GENERATION (Sidecar)
+// ═══════════════════════════════════════════════════════════
+
+/// Escape Typst special characters in user-provided text.
+/// Characters like #, $, *, @, [, ], \, _, ~ have special meaning in Typst
+/// and must be backslash-escaped when used as literal content.
+fn escape_typst(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() + 16);
+    for ch in input.chars() {
+        match ch {
+            '#' | '$' | '*' | '@' | '[' | ']' | '\\' | '_' | '~' | '<' | '>' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+#[derive(serde::Deserialize)]
+struct TypstDeadline {
+    date: String,
+    label: String,
+}
+
+#[derive(serde::Deserialize)]
+struct TypstDiaryEntry {
+    date: String,
+    text: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+struct TypstPracticeData {
+    // Practice fields
+    client: String,
+    object: Option<String>,
+    #[serde(rename = "type")]
+    practice_type: String,
+    type_label: String,
+    status_label: String,
+    counterparty: Option<String>,
+    court: Option<String>,
+    code: Option<String>,
+    description: Option<String>,
+    // Label overrides per type
+    counterparty_label: String,
+    court_label: String,
+    code_label: String,
+    // Studio info
+    lawyer_name: Option<String>,
+    studio_name: Option<String>,
+    // Dynamic sections
+    deadlines: Option<Vec<TypstDeadline>>,
+    diary: Option<Vec<TypstDiaryEntry>>,
+}
+
+/// Generates a PDF using the Typst sidecar binary.
+/// 1. Reads the template from bundled resources
+/// 2. Replaces placeholders with practice data
+/// 3. Writes a temp .typ file (UUID-named to avoid race conditions)
+/// 4. Runs the Typst sidecar to compile it
+/// 5. Reads the resulting PDF and returns it as Vec<u8>
+#[tauri::command]
+async fn generate_typst_pdf(
+    app: AppHandle,
+    data: TypstPracticeData,
+) -> Result<Vec<u8>, String> {
+    use tauri_plugin_shell::ShellExt;
+    use tauri_plugin_shell::process::CommandEvent;
+
+    // ── Read the template ──
+    let template_path = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Cannot resolve resource dir: {}", e))?
+        .join("templates")
+        .join("fascicolo.typ");
+
+    let template = std::fs::read_to_string(&template_path)
+        .map_err(|e| format!("Cannot read template: {} (path: {:?})", e, template_path))?;
+
+    // ── Build dynamic sections (Apple/Premium style tables) ──
+    // Only render sections that actually have data — empty = nothing in PDF.
+    let deadlines_content = match &data.deadlines {
+        Some(dls) if !dls.is_empty() => {
+            let mut s = String::new();
+            s.push_str("#pagebreak(weak: true)\n");
+            s.push_str("#text(size: 13pt, weight: \"bold\", fill: slate-900, tracking: 0.3pt)[Prossime Scadenze]\n");
+            s.push_str("#v(0.2cm)\n");
+            s.push_str("#line(length: 100%, stroke: 0.5pt + slate-300)\n");
+            s.push_str("#v(0.4cm)\n\n");
+            s.push_str("#table(\n");
+            s.push_str("  columns: (25%, 75%),\n");
+            s.push_str("  stroke: (x, y) => if y == 0 { (bottom: 1pt + slate-300) } else { (bottom: 0.5pt + divider) },\n");
+            s.push_str("  inset: 8pt,\n");
+            s.push_str("  block(fill: slate-100, width: 100%, inset: 8pt)[#text(size: 8.5pt, weight: \"bold\", fill: slate-500, tracking: 1pt)[DATA]],\n");
+            s.push_str("  block(fill: slate-100, width: 100%, inset: 8pt)[#text(size: 8.5pt, weight: \"bold\", fill: slate-500, tracking: 1pt)[SCADENZA]],\n");
+            for dl in dls {
+                let date_safe = escape_typst(&dl.date);
+                let label_safe = escape_typst(&dl.label);
+                s.push_str(&format!(
+                    "  block(inset: 8pt)[#text(fill: slate-700, weight: \"bold\")[{}]], block(inset: 8pt)[#text(fill: slate-900)[{}]],\n",
+                    date_safe, label_safe
+                ));
+            }
+            s.push_str(")\n");
+            s
+        }
+        _ => String::new(),
+    };
+
+    let diary_content = match &data.diary {
+        Some(entries) if !entries.is_empty() => {
+            let mut s = String::new();
+            s.push_str("#pagebreak(weak: true)\n");
+            s.push_str("#text(size: 13pt, weight: \"bold\", fill: slate-900, tracking: 0.3pt)[Diario Attività]\n");
+            s.push_str("#v(0.2cm)\n");
+            s.push_str("#line(length: 100%, stroke: 0.5pt + slate-300)\n");
+            s.push_str("#v(0.4cm)\n\n");
+            s.push_str("#table(\n");
+            s.push_str("  columns: (20%, 80%),\n");
+            s.push_str("  stroke: (x, y) => if y == 0 { (bottom: 1pt + slate-300) } else { (bottom: 0.5pt + divider) },\n");
+            s.push_str("  inset: 8pt,\n");
+            s.push_str("  block(fill: slate-100, width: 100%, inset: 8pt)[#text(size: 8.5pt, weight: \"bold\", fill: slate-500, tracking: 1pt)[DATA]],\n");
+            s.push_str("  block(fill: slate-100, width: 100%, inset: 8pt)[#text(size: 8.5pt, weight: \"bold\", fill: slate-500, tracking: 1pt)[ANNOTAZIONE]],\n");
+            for entry in entries {
+                let date_safe = escape_typst(&entry.date);
+                let text_safe = escape_typst(&entry.text);
+                s.push_str(&format!(
+                    "  block(inset: 8pt)[#text(fill: slate-700, weight: \"bold\")[{}]], block(inset: 8pt)[#text(fill: slate-900)[{}]],\n",
+                    date_safe, text_safe
+                ));
+            }
+            s.push_str(")\n");
+            s
+        }
+        _ => String::new(),
+    };
+
+    // ── Escape all user-provided text for Typst ──
+    let client_safe = escape_typst(&data.client);
+    let type_label_safe = escape_typst(&data.type_label);
+    let status_label_safe = escape_typst(&data.status_label);
+    let object_safe = escape_typst(data.object.as_deref().unwrap_or("—"));
+    let counterparty_safe = escape_typst(data.counterparty.as_deref().unwrap_or("—"));
+    let court_safe = escape_typst(data.court.as_deref().unwrap_or("—"));
+    let code_safe = escape_typst(data.code.as_deref().unwrap_or("—"));
+    let description_safe = escape_typst(data.description.as_deref().unwrap_or(""));
+    let counterparty_label_safe = escape_typst(&data.counterparty_label);
+    let court_label_safe = escape_typst(&data.court_label);
+    let code_label_safe = escape_typst(&data.code_label);
+    let studio_safe = escape_typst(data.studio_name.as_deref().unwrap_or(""));
+    let lawyer_safe = escape_typst(data.lawyer_name.as_deref().unwrap_or(""));
+
+    // ── Replace placeholders ──
+    let now = chrono::Local::now().format("%d/%m/%Y").to_string();
+    let document = template
+        .replace("__STUDIO_NAME__", &studio_safe)
+        .replace("__LAWYER_NAME__", &lawyer_safe)
+        .replace("__TYPE_LABEL__", &type_label_safe)
+        .replace("__STATUS_LABEL__", &status_label_safe)
+        .replace("__CLIENT__", &client_safe)
+        .replace("__OBJECT__", &object_safe)
+        .replace("__COUNTERPARTY__", &counterparty_safe)
+        .replace("__COURT__", &court_safe)
+        .replace("__CODE__", &code_safe)
+        .replace("__DESCRIPTION__", &description_safe)
+        .replace("__COUNTERPARTY_LABEL__", &counterparty_label_safe)
+        .replace("__COURT_LABEL__", &court_label_safe)
+        .replace("__CODE_LABEL__", &code_label_safe)
+        .replace("__DATE_GENERATED__", &now)
+        .replace("__DEADLINES_CONTENT__", &deadlines_content)
+        .replace("__DIARY_CONTENT__", &diary_content);
+
+    // ── Write temp .typ file (UUID to prevent race conditions) ──
+    let temp_dir = std::env::temp_dir();
+    let run_id = format!("{:016x}", rand::random::<u64>());
+    let file_typst = temp_dir.join(format!("lexflow_{}.typ", run_id));
+    let file_pdf = temp_dir.join(format!("lexflow_{}.pdf", run_id));
+
+    std::fs::write(&file_typst, &document)
+        .map_err(|e| format!("Cannot write temp .typ: {}", e))?;
+
+    // ── Font path ──
+    let font_path = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Cannot resolve resource dir: {}", e))?
+        .join("fonts");
+
+    // ── Launch Typst sidecar ──
+    let sidecar_command = app
+        .shell()
+        .sidecar("typst")
+        .map_err(|e| format!("Sidecar typst non trovato: {}", e))?
+        .args([
+            "compile",
+            &file_typst.to_string_lossy(),
+            &file_pdf.to_string_lossy(),
+            "--font-path",
+            &font_path.to_string_lossy(),
+        ]);
+
+    let (mut rx, _child) = sidecar_command
+        .spawn()
+        .map_err(|e| format!("Impossibile avviare Typst: {}", e))?;
+
+    // ── Collect output ──
+    let mut stderr_output = String::new();
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stderr(line) => {
+                stderr_output.push_str(&String::from_utf8_lossy(&line));
+            }
+            CommandEvent::Terminated(payload) => {
+                if payload.code != Some(0) {
+                    // Clean up temp files on error
+                    let _ = std::fs::remove_file(&file_typst);
+                    let _ = std::fs::remove_file(&file_pdf);
+                    return Err(format!(
+                        "Typst compilation failed (exit {}): {}",
+                        payload.code.unwrap_or(-1),
+                        stderr_output
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // ── Read generated PDF ──
+    let pdf_bytes = std::fs::read(&file_pdf)
+        .map_err(|e| format!("Cannot read generated PDF: {}", e))?;
+
+    // ── Clean up temp files ──
+    let _ = std::fs::remove_file(&file_typst);
+    let _ = std::fs::remove_file(&file_pdf);
+
+    Ok(pdf_bytes)
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4167,7 +4436,7 @@ fn verify_binary_integrity() {
 
     // Expected HMAC tag (hex-encoded, computed once at build time and hardcoded)
     const EXPECTED_HMAC_HEX: &str =
-        "14251fa200e33b3a9f3bd04e33a476689c8bc74dba7c55163486f4792a38c36a";
+        "739372d489104efa936092e693f1138af8ae333531fdcaac385f613c2a8c58e0";
     let expected_bytes = match hex::decode(EXPECTED_HMAC_HEX) {
         Ok(b) => b,
         Err(_) => {
@@ -4521,6 +4790,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             data_dir: Mutex::new(data_dir),
             security_dir: Mutex::new(security_dir),
@@ -4588,6 +4858,7 @@ pub fn run() {
             open_path,
             select_pdf_save_path,
             write_pdf_to_path,
+            generate_typst_pdf,
             list_folder_contents,
             warm_swift,
             // Notifications

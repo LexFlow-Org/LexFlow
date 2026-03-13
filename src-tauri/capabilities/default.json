@@ -49,6 +49,22 @@
         { "path": "$APPDATA" }
       ]
     },
-    "os:default"
+    "os:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/typst",
+          "sidecar": true,
+          "args": [
+            "compile",
+            { "validator": "\\S+" },
+            { "validator": "\\S+" },
+            "--font-path",
+            { "validator": "\\S+" }
+          ]
+        }
+      ]
+    }
   ]
 }

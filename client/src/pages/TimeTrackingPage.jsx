@@ -3,12 +3,13 @@ import PropTypes from 'prop-types';
 import { Clock, Play, Square, Plus, Trash2, ChevronLeft, ChevronRight, Edit3, Check, X, DollarSign, Receipt, Download, Briefcase, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ModalOverlay from '../components/ModalOverlay';
 import PracticeCombobox from '../components/PracticeCombobox';
 import * as api from '../tauri-api';
 import { genId, toDateStr } from '../utils/helpers';
+import { MODAL_GRADIENTS } from '../theme';
 
 /* ======== Helpers ======== */
 
@@ -39,7 +40,7 @@ function calcTotals(items) {
 const STATUS_LABELS = { draft: 'Bozza', sent: 'Inviata', paid: 'Pagata' };
 const STATUS_COLORS = {
   draft: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
-  sent: 'bg-white/10 text-white border-white/30',
+  sent: 'bg-white/10 text-text-muted border-white/30',
   paid: 'bg-primary/10 text-primary border-primary/30',
 };
 
@@ -179,6 +180,7 @@ export default function TimeTrackingPage({ practices }) {
   }, [practices]);
 
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [selectedDay, setSelectedDay] = useState(null);
 
   const generatePDF = async (inv) => {
     const doc = new jsPDF();
@@ -212,7 +214,7 @@ export default function TimeTrackingPage({ practices }) {
       `\u20AC ${(it.total || 0).toFixed(2)}`,
     ]);
     const totals = calcTotals(inv.items || []);
-    doc.autoTable({
+    autoTable(doc, {
       startY: y,
       head: [['Descrizione', 'Qt\u00E0', 'Prezzo', 'Importo']],
       body: tableBody,
@@ -249,17 +251,15 @@ export default function TimeTrackingPage({ practices }) {
             <Clock size={24} className="text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Gestione Ore</h1>
+            <h1 className="text-2xl font-bold text-text tracking-tight">Gestione Ore</h1>
             <p className="text-xs text-text-dim">Registra ore e gestisci parcelle</p>
           </div>
         </div>
-        <div className="inline-flex bg-white/[0.04] rounded-xl p-1 border border-white/5">
-          <button onClick={() => setActiveTab('ore')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'ore' ? 'bg-primary/15 text-primary shadow-sm' : 'text-text-dim hover:text-white'}`}>
+        <div className="tab-switcher">
+          <button onClick={() => setActiveTab('ore')} className="tab-btn" data-active={activeTab === 'ore'}>
             <Clock size={14} /> Ore
           </button>
-          <button onClick={() => setActiveTab('parcelle')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'parcelle' ? 'bg-primary/15 text-primary shadow-sm' : 'text-text-dim hover:text-white'}`}>
+          <button onClick={() => setActiveTab('parcelle')} className="tab-btn" data-active={activeTab === 'parcelle'}>
             <Receipt size={14} /> Parcelle
           </button>
         </div>
@@ -276,7 +276,7 @@ export default function TimeTrackingPage({ practices }) {
               </div>
               <div className="flex items-center gap-3">
                 <Briefcase size={14} className="text-text-dim flex-shrink-0" />
-                <span className="text-sm text-white font-medium truncate">{getPracticeName(activeTimer.practiceId)}</span>
+                <span className="text-sm text-text font-medium truncate">{getPracticeName(activeTimer.practiceId)}</span>
               </div>
               {activeTimer.description && (
                 <div className="flex items-center gap-3">
@@ -333,11 +333,11 @@ export default function TimeTrackingPage({ practices }) {
 
           <div className="flex items-center justify-between mb-4">
             <div className="inline-flex items-center bg-white/[0.04] rounded-xl p-1 border border-white/5 gap-1">
-              <button onClick={() => setWeekOffset(w => w - 1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronLeft size={14} /></button>
-              <span className="text-xs font-bold w-48 text-center text-white">
+              <button onClick={() => { setWeekOffset(w => w - 1); setSelectedDay(null); }} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronLeft size={14} /></button>
+              <span className="text-xs font-bold w-48 text-center text-text">
                 {weekDays[0].getDate()} {MONTHS_IT[weekDays[0].getMonth()]} – {weekDays[6].getDate()} {MONTHS_IT[weekDays[6].getMonth()]}
               </span>
-              <button onClick={() => setWeekOffset(w => w + 1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronRight size={14} /></button>
+              <button onClick={() => { setWeekOffset(w => w + 1); setSelectedDay(null); }} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronRight size={14} /></button>
             </div>
             <div className="flex items-center gap-3">
               <div className="glass-card px-4 py-2 text-center min-w-[90px]">
@@ -356,43 +356,80 @@ export default function TimeTrackingPage({ practices }) {
               const dayLogs = weekLogs.filter(l => l.date === ds);
               const dayMin = dayLogs.reduce((s, l) => s + (l.minutes || 0), 0);
               const isToday = ds === toDateStr(now);
+              const isFuture = d > now && !isToday;
+              const isSelected = selectedDay === ds;
               return (
-                <div key={ds} className={`glass-card p-3 text-center transition-all ${isToday ? 'border-primary/30 bg-primary/5' : ''}`}>
+                <button
+                  key={ds}
+                  type="button"
+                  onClick={() => {
+                    if (!isFuture) setSelectedDay(isSelected ? null : ds);
+                  }}
+                  disabled={isFuture}
+                  className={`glass-card p-3 text-center transition-all cursor-pointer ${isToday ? 'border-primary/30 bg-primary/5' : ''} ${isSelected ? 'ring-2 ring-primary border-primary/40 bg-primary/10' : ''} ${isFuture ? 'opacity-40 cursor-not-allowed' : 'hover:border-primary/20 hover:bg-primary/[0.03]'}`}
+                >
                   <div className="text-[10px] text-text-dim font-bold">{DAYS_IT[d.getDay()]}</div>
-                  <div className={`text-sm font-bold ${isToday ? 'text-primary' : 'text-white'}`}>{d.getDate()}</div>
+                  <div className={`text-sm font-bold ${isToday ? 'text-primary' : 'text-text'}`}>{d.getDate()}</div>
                   <div className="text-[10px] text-text-dim mt-1">{fmtDuration(dayMin)}</div>
                   <div className="w-full bg-white/5 rounded-full h-1 mt-1.5">
                     <div className="bg-primary h-1 rounded-full transition-all" style={{ width: `${Math.min((dayMin / 480) * 100, 100)}%` }} />
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
-            {weekLogs.length === 0 ? (
-              <div className="text-center py-10 text-text-dim">
-                <Clock size={32} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Nessuna registrazione questa settimana</p>
-              </div>
-            ) : (
-              weekLogs.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || '')).map(log => (
-                <div key={log.id} className="glass-card p-3 flex items-center gap-4 group hover:border-primary/20 transition-all">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Clock size={18} className="text-primary" />
+            {(() => {
+              const displayLogs = selectedDay ? weekLogs.filter(l => l.date === selectedDay) : weekLogs;
+              // Build the section label
+              let sectionLabel;
+              if (selectedDay) {
+                const selDate = new Date(selectedDay + 'T12:00:00');
+                const todayStr = toDateStr(now);
+                if (selectedDay === todayStr) {
+                  sectionLabel = 'Oggi';
+                } else {
+                  sectionLabel = `${DAYS_IT[selDate.getDay()]} ${selDate.getDate()} ${MONTHS_IT[selDate.getMonth()]}`;
+                }
+              } else {
+                sectionLabel = 'Tutta la settimana';
+              }
+
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">{sectionLabel}</span>
+                    {selectedDay && (
+                      <button onClick={() => setSelectedDay(null)} className="text-[10px] text-primary hover:underline font-bold cursor-pointer">Mostra tutta la settimana</button>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white truncate">{log.description || 'Senza descrizione'}</p>
-                    <p className="text-[10px] text-text-dim">{getPracticeName(log.practiceId)} {'·'} {new Date(log.date).toLocaleDateString('it-IT')}</p>
-                  </div>
-                  <span className="text-sm font-mono font-bold text-primary tabular-nums">{fmtDuration(log.minutes)}</span>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => setEditingLog(log)} className="p-1.5 hover:bg-white/10 rounded-lg text-text-dim"><Edit3 size={14} /></button>
-                    <button onClick={() => confirmDeleteLog(log.id)} className="p-1.5 hover:bg-red-500/10 rounded-lg text-text-dim hover:text-red-400"><Trash2 size={14} /></button>
-                  </div>
-                </div>
-              ))
-            )}
+                  {displayLogs.length === 0 ? (
+                    <div className="text-center py-10 text-text-dim">
+                      <Clock size={32} className="mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">{selectedDay ? 'Nessuna registrazione questo giorno' : 'Nessuna registrazione questa settimana'}</p>
+                    </div>
+                  ) : (
+                    displayLogs.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || '')).map(log => (
+                      <div key={log.id} className="glass-card p-3 flex items-center gap-4 group hover:border-primary/20 transition-all">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <Clock size={18} className="text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-text truncate">{log.description || 'Senza descrizione'}</p>
+                          <p className="text-[10px] text-text-dim">{getPracticeName(log.practiceId)} {'·'} {new Date(log.date).toLocaleDateString('it-IT')}</p>
+                        </div>
+                        <span className="text-sm font-mono font-bold text-primary tabular-nums">{fmtDuration(log.minutes)}</span>
+                        <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => setEditingLog(log)} className="p-1.5 hover:bg-primary/10 rounded-full text-text-dim hover:text-primary transition-colors"><Edit3 size={14} /></button>
+                          <button onClick={() => confirmDeleteLog(log.id)} className="p-1.5 hover:bg-red-500/10 rounded-full text-text-dim hover:text-red-400"><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -402,11 +439,11 @@ export default function TimeTrackingPage({ practices }) {
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="glass-card p-4 text-center">
-              <span className="text-2xl font-bold text-white">{invoices.length}</span>
+              <span className="text-2xl font-bold text-text">{invoices.length}</span>
               <span className="text-[10px] text-text-dim block mt-1">Parcelle</span>
             </div>
             <div className="glass-card p-4 text-center">
-              <span className="text-2xl font-bold text-white/70">{invoices.filter(i => i.status === 'sent').length}</span>
+              <span className="text-2xl font-bold text-text-muted">{invoices.filter(i => i.status === 'sent').length}</span>
               <span className="text-[10px] text-text-dim block mt-1">Inviate</span>
             </div>
             <div className="glass-card p-4 text-center">
@@ -439,7 +476,7 @@ export default function TimeTrackingPage({ practices }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-white truncate">{inv.clientName || 'Cliente'}</p>
+                        <p className="text-sm font-bold text-text truncate">{inv.clientName || 'Cliente'}</p>
                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${STATUS_COLORS[inv.status] || STATUS_COLORS.draft}`}>
                           {STATUS_LABELS[inv.status] || 'Bozza'}
                         </span>
@@ -506,15 +543,15 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="manual-log-title">
-      <div className="w-full max-w-2xl bg-[#0f1016] border border-white/10 rounded-[32px] shadow-2xl overflow-hidden">
-        <div className="relative px-8 pt-8 pb-6" style={{ background: 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)' }}>
+      <div className="modal-card modal-card-lg">
+        <div className="modal-header-gradient relative" style={{ background: MODAL_GRADIENTS.primary }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
                 <Clock size={22} className="text-primary" />
               </div>
               <div>
-                <h2 id="manual-log-title" className="text-xl font-bold text-white">{isEdit ? 'Modifica Registrazione' : 'Registrazione Manuale'}</h2>
+                <h2 id="manual-log-title" className="text-xl font-bold text-text">{isEdit ? 'Modifica Registrazione' : 'Registrazione Manuale'}</h2>
                 <p className="text-xs text-text-dim mt-0.5">Inserisci i dettagli dell&apos;attivit&agrave;</p>
               </div>
             </div>
@@ -546,8 +583,8 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
             </div>
           </div>
         </form>
-        <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
-          <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-cancel">Annulla</button>
           <button onClick={handleSave} className="btn-primary px-8 py-3 text-xs font-bold uppercase tracking-widest">
             <Check size={16} /> {isEdit ? 'Salva' : 'Registra'}
           </button>
@@ -619,15 +656,15 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="invoice-modal-title">
-      <div className="w-full max-w-2xl bg-[#0f1016] border border-white/10 rounded-[32px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="relative px-8 pt-8 pb-6 flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)' }}>
+      <div className="modal-card modal-card-lg max-h-[90vh] flex flex-col">
+        <div className="modal-header-gradient relative flex-shrink-0" style={{ background: MODAL_GRADIENTS.primary }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
                 <DollarSign size={22} className="text-primary" />
               </div>
               <div>
-                <h2 id="invoice-modal-title" className="text-xl font-bold text-white">{editMode ? 'Modifica Parcella' : 'Nuova Parcella'}</h2>
+                <h2 id="invoice-modal-title" className="text-xl font-bold text-text">{editMode ? 'Modifica Parcella' : 'Nuova Parcella'}</h2>
                 <p className="text-xs text-text-dim mt-0.5">Compila i dettagli della parcella</p>
               </div>
             </div>
@@ -664,7 +701,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
             <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">Voci</span>
             <div className="flex gap-2">
               <button type="button" onClick={autoFillFromLogs} className="text-[10px] text-primary hover:underline font-bold">Auto-compila da ore</button>
-              <button type="button" onClick={addItem} className="text-[10px] text-text-muted hover:text-white font-bold flex items-center gap-1"><Plus size={12} /> Aggiungi</button>
+              <button type="button" onClick={addItem} className="text-[10px] text-text-muted hover:text-text font-bold flex items-center gap-1"><Plus size={12} /> Aggiungi</button>
             </div>
           </div>
           {items.map((it, idx) => (
@@ -703,13 +740,13 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
             <div className="flex justify-between text-text-muted"><span>Imponibile</span><span>\u20AC {totals.subtotal.toFixed(2)}</span></div>
             <div className="flex justify-between text-text-dim"><span>CPA 4%</span><span>\u20AC {totals.cpa.toFixed(2)}</span></div>
             <div className="flex justify-between text-text-dim"><span>IVA 22%</span><span>\u20AC {totals.iva.toFixed(2)}</span></div>
-            <div className="flex justify-between text-white font-bold text-base pt-2 border-t border-white/10">
+            <div className="flex justify-between text-text font-bold text-base pt-2 border-t border-border">
               <span>Totale</span><span className="text-primary">\u20AC {totals.total.toFixed(2)}</span>
             </div>
           </div>
         </form>
-        <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5 flex-shrink-0">
-          <button type="button" onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+        <div className="modal-footer flex-shrink-0">
+          <button type="button" onClick={onClose} className="btn-cancel">Annulla</button>
           <button onClick={handleSave} className="btn-primary px-8 py-3 text-xs font-bold uppercase tracking-widest">
             <Check size={16} /> {editMode ? 'Salva' : 'Crea Parcella'}
           </button>

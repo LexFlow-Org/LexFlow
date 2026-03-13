@@ -16,7 +16,7 @@ export default function ConflictCheckPage({ onSelectPractice }) {
           <Shield size={28} className="text-amber-400" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Conflitto di Interessi</h1>
+          <h1 className="text-2xl font-bold text-text tracking-tight">Conflitto di Interessi</h1>
           <p className="text-text-dim text-sm mt-0.5">Verifica deontologica — Cerca un nome per controllare conflitti</p>
         </div>
       </div>

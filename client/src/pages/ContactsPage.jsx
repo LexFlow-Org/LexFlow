@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import PropTypes from 'prop-types';
-import { Users, Plus, Search, User, Scale, Briefcase, Building, Gavel, UserCheck, Edit3, Trash2, X, Check, Phone, Mail, MapPin, Hash, ChevronRight, Info } from 'lucide-react';
+import { Users, Plus, Search, User, Scale, Briefcase, Building, Gavel, UserCheck, Edit3, Trash2, X, Check, Phone, Mail, MapPin, Hash, ChevronRight, Info, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -141,7 +141,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
             <Users size={28} className="text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Contatti & Conflitti</h1>
+            <h1 className="text-2xl font-bold text-text tracking-tight">Contatti & Conflitti</h1>
             <p className="text-text-dim text-sm mt-0.5">{contacts.length} contatti registrati</p>
           </div>
         </div>
@@ -153,21 +153,11 @@ export default function ContactsPage({ practices, onSelectPractice }) {
       </div>
 
       {/* Tab Switcher */}
-      <div className="inline-flex bg-white/[0.04] rounded-xl p-1 border border-white/5">
-        <button onClick={() => setActiveTab('contacts')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-            activeTab === 'contacts'
-              ? 'bg-primary text-black shadow-[0_0_12px_rgba(212,169,64,0.25)]'
-              : 'text-text-dim hover:text-white hover:bg-white/[0.06]'
-          }`}>
+      <div className="tab-switcher">
+        <button onClick={() => setActiveTab('contacts')} className="tab-btn" data-active={activeTab === 'contacts'}>
           <Users size={14} /> Anagrafica
         </button>
-        <button onClick={() => setActiveTab('conflicts')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-            activeTab === 'conflicts'
-              ? 'bg-primary text-black shadow-[0_0_12px_rgba(212,169,64,0.25)]'
-              : 'text-text-dim hover:text-white hover:bg-white/[0.06]'
-          }`}>
+        <button onClick={() => setActiveTab('conflicts')} className="tab-btn" data-active={activeTab === 'conflicts'}>
           <Shield size={14} /> Conflitti
         </button>
       </div>
@@ -190,7 +180,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Cerca per nome, email, CF, P.IVA..."
-            className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-text-dim/50 focus:border-primary/50 outline-none"
+            className="w-full pl-11 pr-4 py-3 bg-white/5 border border-border rounded-xl text-text text-sm placeholder:text-text-dim/50 focus:border-primary/50 outline-none"
           />
         </div>
         {/* Type filter pills — scrollable on mobile */}
@@ -231,7 +221,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                 <div className={`flex flex-col ${isExpanded ? 'lg:flex-row lg:gap-3' : ''}`}>
                   {/* Contact Row */}
                   <div
-                    className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${
+                    className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all border group ${
                       isExpanded
                         ? 'bg-primary/5 border-primary/20 lg:w-[38%] lg:flex-shrink-0'
                         : 'bg-white/[0.03] border-white/[0.06] w-full'
@@ -249,7 +239,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                       <TypeIcon size={18} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-white font-bold text-sm truncate">{c.name}</p>
+                      <p className="text-text font-bold text-sm truncate">{c.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[9px] font-bold uppercase tracking-wider text-text-dim">{typeInfo.label}</span>
                         {linkedCount > 0 && (
@@ -257,25 +247,30 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                         )}
                       </div>
                     </div>
-                    {/* Actions — z-10 so they sit above the invisible expand button */}
-                    <div className="relative z-10 flex items-center gap-0.5 flex-shrink-0">
+                    {/* Actions — visible only on hover (or always when expanded) */}
+                    <div className={`relative z-10 flex items-center gap-0.5 flex-shrink-0 transition-opacity ${isExpanded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                       {!isExpanded && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setEditingContact({ ...c }); }}
-                          className="p-2 hover:bg-white/10 rounded-lg transition-all"
+                          className="p-2 hover:bg-white/10 rounded-full transition-all cursor-pointer"
                           title="Modifica"
                         >
-                          <Edit3 size={14} className="text-text-dim hover:text-primary" />
+                          <Edit3 size={14} className="text-text-dim hover:text-primary transition-colors" />
                         </button>
                       )}
-                      <div className="p-2">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : c.id); }}
+                        className="p-2 hover:bg-white/10 rounded-lg transition-all cursor-pointer"
+                        title={isExpanded ? 'Chiudi dettaglio' : 'Apri dettaglio'}
+                      >
                         {isExpanded ? (
                           <ChevronRight size={14} className="text-primary" />
                         ) : (
-                          <Info size={14} className="text-text-dim" />
+                          <Info size={14} className="text-text-dim hover:text-primary transition-colors" />
                         )}
-                      </div>
+                      </button>
                     </div>
                   </div>
 
@@ -392,16 +387,16 @@ function ContactModal({ initial, onSave, onClose }) {
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="contact-modal-title" focusTrap>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] w-full max-w-2xl shadow-3xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="modal-card modal-card-lg flex flex-col max-h-[95vh]">
         
         {/* Header — stile unificato */}
-        <div className="px-8 py-5 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-white/5 to-transparent">
+        <div className="modal-header">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary border border-primary/20">
               <Users size={28} />
             </div>
             <div>
-              <h2 id="contact-modal-title" className="text-xl font-bold text-white tracking-tight">{initial ? 'Modifica Contatto' : 'Nuovo Contatto'}</h2>
+              <h2 id="contact-modal-title" className="text-xl font-bold text-text tracking-tight">{initial ? 'Modifica Contatto' : 'Nuovo Contatto'}</h2>
               <p className="text-text-dim text-xs uppercase tracking-widest font-medium opacity-60">Anagrafica</p>
             </div>
           </div>
@@ -411,7 +406,7 @@ function ContactModal({ initial, onSave, onClose }) {
         </div>
 
         {/* Body */}
-        <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+        <div className="px-8 py-5 space-y-4 overflow-y-auto custom-scrollbar flex-1">
           {/* Type pills */}
           <div className="space-y-3">
             <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Tipo</span>
@@ -430,7 +425,7 @@ function ContactModal({ initial, onSave, onClose }) {
             <label htmlFor="ct-name" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Nome / Ragione Sociale *</label>
             <input id="ct-name" value={form.name} onChange={e => updateField('name', e.target.value)}
               placeholder="Nome completo o ragione sociale"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-text-dim/50 focus:border-primary/50 outline-none" autoFocus />
+              className="input-field w-full bg-white/5 border-white/10 focus:border-primary/50 text-lg font-semibold" autoFocus />
           </div>
 
           {/* CF + P.IVA */}
@@ -439,13 +434,13 @@ function ContactModal({ initial, onSave, onClose }) {
               <label htmlFor="ct-cf" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Codice Fiscale</label>
               <input id="ct-cf" value={form.fiscalCode || ''} onChange={e => updateField('fiscalCode', e.target.value.toUpperCase())}
                 placeholder="RSSMRA80A01H501Z" maxLength={16}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm font-mono placeholder:text-text-dim/40 focus:border-primary/50 outline-none" />
+                className="input-field w-full bg-white/5 border-white/10 font-mono focus:border-primary/50" />
             </div>
             <div className="space-y-2">
               <label htmlFor="ct-vat" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">P.IVA</label>
               <input id="ct-vat" value={form.vatNumber || ''} onChange={e => updateField('vatNumber', e.target.value)}
                 placeholder="01234567890" maxLength={11}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm font-mono placeholder:text-text-dim/40 focus:border-primary/50 outline-none" />
+                className="input-field w-full bg-white/5 border-white/10 font-mono focus:border-primary/50" />
             </div>
           </div>
 
@@ -455,13 +450,13 @@ function ContactModal({ initial, onSave, onClose }) {
               <label htmlFor="ct-phone" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Telefono</label>
               <input id="ct-phone" value={form.phone || ''} onChange={e => updateField('phone', e.target.value)}
                 placeholder="+39 333 1234567" type="tel"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-text-dim/40 focus:border-primary/50 outline-none" />
+                className="input-field w-full bg-white/5 border-white/10 focus:border-primary/50" />
             </div>
             <div className="space-y-2">
               <label htmlFor="ct-email" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Email</label>
               <input id="ct-email" value={form.email || ''} onChange={e => updateField('email', e.target.value)}
                 placeholder="email@esempio.it" type="email"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-text-dim/40 focus:border-primary/50 outline-none" />
+                className="input-field w-full bg-white/5 border-white/10 focus:border-primary/50" />
             </div>
           </div>
 
@@ -470,7 +465,7 @@ function ContactModal({ initial, onSave, onClose }) {
             <label htmlFor="ct-pec" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">PEC</label>
             <input id="ct-pec" value={form.pec || ''} onChange={e => updateField('pec', e.target.value)}
               placeholder="nome@pec-avvocati.it" type="email"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-text-dim/40 focus:border-primary/50 outline-none" />
+              className="input-field w-full bg-white/5 border-white/10 focus:border-primary/50" />
           </div>
 
           {/* Address */}
@@ -478,7 +473,7 @@ function ContactModal({ initial, onSave, onClose }) {
             <label htmlFor="ct-address" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Indirizzo</label>
             <input id="ct-address" value={form.address || ''} onChange={e => updateField('address', e.target.value)}
               placeholder="Via Roma 1, 00100 Roma (RM)"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-text-dim/40 focus:border-primary/50 outline-none" />
+              className="input-field w-full bg-white/5 border-white/10 focus:border-primary/50" />
           </div>
 
           {/* Conditional fields based on type */}
@@ -487,7 +482,7 @@ function ContactModal({ initial, onSave, onClose }) {
               <label htmlFor="ct-bar" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Ordine / Albo</label>
               <input id="ct-bar" value={form.barAssociation || ''} onChange={e => updateField('barAssociation', e.target.value)}
                 placeholder="Ordine Avvocati di Roma"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-text-dim/40 focus:border-primary/50 outline-none" />
+                className="input-field w-full bg-white/5 border-white/10 focus:border-primary/50" />
             </div>
           )}
 
@@ -496,7 +491,7 @@ function ContactModal({ initial, onSave, onClose }) {
               <label htmlFor="ct-court" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Tribunale / Sezione</label>
               <input id="ct-court" value={form.court || ''} onChange={e => updateField('court', e.target.value)}
                 placeholder="Tribunale di Milano, Sez. III"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-text-dim/40 focus:border-primary/50 outline-none" />
+                className="input-field w-full bg-white/5 border-white/10 focus:border-primary/50" />
             </div>
           )}
 
@@ -505,13 +500,13 @@ function ContactModal({ initial, onSave, onClose }) {
             <label htmlFor="ct-notes" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Note</label>
             <textarea id="ct-notes" value={form.notes || ''} onChange={e => updateField('notes', e.target.value)}
               placeholder="Annotazioni libere..." rows={2}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-text-dim/40 focus:border-primary/50 outline-none resize-none" />
+              className="input-field w-full bg-white/5 border-white/10 min-h-[80px] resize-none focus:border-primary/50" />
           </div>
         </div>
 
         {/* Footer — stile unificato */}
-        <div className="px-8 py-5 border-t border-white/5 bg-[#14151d] flex justify-end gap-4">
-          <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+        <div className="modal-footer gap-4">
+          <button onClick={onClose} className="btn-cancel">Annulla</button>
           <button onClick={handleSubmit} className="btn-primary px-10 py-3 flex items-center gap-3 shadow-xl shadow-primary/20 hover:scale-[1.05] active:scale-[0.98] transition-all">
             <Check size={18} />
             <span className="font-black uppercase tracking-widest text-xs">{initial ? 'Aggiorna' : 'Salva Contatto'}</span>
@@ -538,85 +533,115 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
   const showFiscalCode = c.type === 'client' || c.type === 'counterparty';
   const showVat = c.type === 'client';
 
+  const hasAnyInfo = c.phone || c.email || c.pec || c.address || (showFiscalCode && c.fiscalCode) || (showVat && c.vatNumber) || (showBarAssociation && c.barAssociation) || (showCourt && c.court);
+
   return (
     <>
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header — unified with modal style */}
+      <div className="flex items-center justify-between pb-4 border-b border-border">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${typeInfo.color}`}>
-            <TypeIcon size={18} />
+          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border ${typeInfo.color}`}>
+            <TypeIcon size={20} />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">{c.name}</h3>
-            <span className={`text-[9px] font-bold uppercase tracking-wider ${typeInfo.color.split(' ')[0]}`}>
+            <h3 className="text-lg font-bold text-text tracking-tight">{c.name}</h3>
+            <span className={`text-[9px] font-black uppercase tracking-[2px] ${typeInfo.color.split(' ')[0]}`}>
               {typeInfo.label}
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-0.5">
-          <button type="button" onClick={onEdit} className="p-2 hover:bg-white/10 rounded-lg transition-all" title="Modifica">
-            <Edit3 size={14} className="text-text-dim" />
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={onEdit} className="p-2.5 hover:bg-primary/10 rounded-full transition-all group/edit cursor-pointer" title="Modifica">
+            <Edit3 size={15} className="text-text-dim group-hover/edit:text-primary transition-colors" />
           </button>
-          <button type="button" onClick={onDelete} className="p-2 hover:bg-red-500/10 rounded-lg transition-all" title="Elimina">
-            <Trash2 size={14} className="text-red-400/60 hover:text-red-400" />
+          <button type="button" onClick={onDelete} className="p-2.5 hover:bg-red-500/10 rounded-full transition-all cursor-pointer" title="Elimina">
+            <Trash2 size={15} className="text-red-400/60 hover:text-red-400" />
           </button>
         </div>
       </div>
 
-      {/* Contact Info — only non-empty fields */}
-      <div className="space-y-2">
-        {c.phone && (
-          <div className="flex items-center gap-3 text-sm">
-            <Phone size={13} className="text-text-dim flex-shrink-0" />
-            <span className="text-white text-xs">{c.phone}</span>
-          </div>
-        )}
-        {c.email && (
-          <div className="flex items-center gap-3 text-sm">
-            <Mail size={13} className="text-text-dim flex-shrink-0" />
-            <span className="text-white text-xs">{c.email}</span>
-          </div>
-        )}
-        {c.pec && (
-          <div className="flex items-center gap-3 text-sm">
-            <Mail size={13} className="text-primary/60 flex-shrink-0" />
-            <span className="text-white text-xs">PEC: {c.pec}</span>
-          </div>
-        )}
-        {c.address && (
-          <div className="flex items-center gap-3 text-sm">
-            <MapPin size={13} className="text-text-dim flex-shrink-0" />
-            <span className="text-white text-xs">{c.address}</span>
-          </div>
-        )}
-        {showFiscalCode && c.fiscalCode && (
-          <div className="flex items-center gap-3 text-sm">
-            <Hash size={13} className="text-text-dim flex-shrink-0" />
-            <span className="text-white font-mono text-xs">{c.fiscalCode}</span>
-          </div>
-        )}
-        {showVat && c.vatNumber && (
-          <div className="flex items-center gap-3 text-sm">
-            <Building size={13} className="text-text-dim flex-shrink-0" />
-            <span className="text-white font-mono text-xs">P.IVA {c.vatNumber}</span>
-          </div>
-        )}
-        {showBarAssociation && c.barAssociation && (
-          <div className="flex items-center gap-3 text-sm">
-            <Scale size={13} className="text-text-dim flex-shrink-0" />
-            <span className="text-white text-xs">{c.barAssociation}</span>
-          </div>
-        )}
-        {showCourt && c.court && (
-          <div className="flex items-center gap-3 text-sm">
-            <Gavel size={13} className="text-text-dim flex-shrink-0" />
-            <span className="text-white text-xs">{c.court}</span>
-          </div>
-        )}
-        {c.notes && (
-          <p className="text-text-dim text-xs italic border-l-2 border-white/10 pl-3 mt-1">{c.notes}</p>
-        )}
-      </div>
+      {/* Contact Info — grid layout */}
+      {hasAnyInfo && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 pt-2">
+          {c.phone && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+              <Phone size={14} className="text-primary/60 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Telefono</p>
+                <span className="text-text text-xs font-medium">{c.phone}</span>
+              </div>
+            </div>
+          )}
+          {c.email && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+              <Mail size={14} className="text-primary/60 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Email</p>
+                <span className="text-text text-xs font-medium truncate block">{c.email}</span>
+              </div>
+            </div>
+          )}
+          {c.pec && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+              <Mail size={14} className="text-amber-400/70 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">PEC</p>
+                <span className="text-text text-xs font-medium truncate block">{c.pec}</span>
+              </div>
+            </div>
+          )}
+          {c.address && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+              <MapPin size={14} className="text-primary/60 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Indirizzo</p>
+                <span className="text-text text-xs font-medium truncate block">{c.address}</span>
+              </div>
+            </div>
+          )}
+          {showFiscalCode && c.fiscalCode && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+              <Hash size={14} className="text-primary/60 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Codice Fiscale</p>
+                <span className="text-text text-xs font-mono font-medium">{c.fiscalCode}</span>
+              </div>
+            </div>
+          )}
+          {showVat && c.vatNumber && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+              <Building size={14} className="text-primary/60 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">P.IVA</p>
+                <span className="text-text text-xs font-mono font-medium">{c.vatNumber}</span>
+              </div>
+            </div>
+          )}
+          {showBarAssociation && c.barAssociation && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+              <Scale size={14} className="text-primary/60 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Ordine / Albo</p>
+                <span className="text-text text-xs font-medium">{c.barAssociation}</span>
+              </div>
+            </div>
+          )}
+          {showCourt && c.court && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+              <Gavel size={14} className="text-primary/60 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Tribunale</p>
+                <span className="text-text text-xs font-medium">{c.court}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Notes */}
+      {c.notes && (
+        <p className="text-text-dim text-xs italic border-l-2 border-primary/30 pl-3 mt-1 bg-primary/[0.03] py-2 rounded-r-lg">{c.notes}</p>
+      )}
 
       {/* Related Contacts (cross-practice relationships) */}
       {relatedContacts.length > 0 && (
@@ -632,7 +657,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
                     <RcIcon size={12} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-xs font-medium truncate">{rc.name}</p>
+                    <p className="text-text text-xs font-medium truncate">{rc.name}</p>
                     <p className="text-[9px] text-text-dim">{role}</p>
                   </div>
                 </div>
@@ -651,7 +676,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
               <button type="button" key={p.id} onClick={() => onSelectPractice?.(p.id)}
                 className="flex items-center gap-2.5 px-3 py-2 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] rounded-lg transition-all group text-left w-full">
                 <Briefcase size={13} className="text-text-dim flex-shrink-0" />
-                <p className="text-white text-xs truncate flex-1 group-hover:text-primary transition-colors">{p.client} — {p.object}</p>
+                <p className="text-text text-xs truncate flex-1 group-hover:text-primary transition-colors">{p.client} — {p.object}</p>
                 <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${p.status === 'active' ? 'bg-green-500/10 text-green-400' : 'bg-zinc-500/10 text-zinc-400'}`}>
                   {p.status === 'active' ? 'Attivo' : 'Chiuso'}
                 </span>

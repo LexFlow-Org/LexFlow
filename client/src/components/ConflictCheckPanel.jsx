@@ -86,7 +86,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
           value={query}
           onChange={e => handleInput(e.target.value)}
           placeholder="Nome, cognome, società, codice fiscale, P.IVA..."
-          className="w-full pl-14 pr-12 py-4 bg-white/5 border border-white/10 rounded-2xl text-white text-lg placeholder:text-text-dim/50 focus:border-primary/50 focus:bg-white/[0.07] focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+          className="w-full pl-14 pr-12 py-4 bg-white/5 border border-border rounded-2xl text-text text-lg placeholder:text-text-dim/50 focus:border-primary/50 focus:bg-white/[0.07] focus:ring-2 focus:ring-primary/20 transition-all outline-none"
           autoFocus
         />
         {query && (
@@ -111,7 +111,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
           </div>
           <h3 className="text-xl font-bold text-green-400">Nessun Conflitto Rilevato</h3>
           <p className="text-text-dim text-sm mt-2">
-            La ricerca per &ldquo;<span className="text-white font-semibold">{query}</span>&rdquo; non ha trovato corrispondenze nei fascicoli o nell&apos;anagrafica contatti.
+            La ricerca per &ldquo;<span className="text-text font-semibold">{query}</span>&rdquo; non ha trovato corrispondenze nei fascicoli o nell&apos;anagrafica contatti.
           </p>
         </div>
       )}
@@ -127,7 +127,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
             <div>
               <h3 className="text-lg font-bold text-red-400">Conflitto Potenziale</h3>
               <p className="text-text-dim text-sm mt-1">
-                Trovate <span className="text-white font-bold">{practiceMatches.length}</span> pratiche e <span className="text-white font-bold">{contactMatches.length}</span> contatti corrispondenti a &ldquo;<span className="text-white font-semibold">{query}</span>&rdquo;.
+                Trovate <span className="text-text font-bold">{practiceMatches.length}</span> pratiche e <span className="text-text font-bold">{contactMatches.length}</span> contatti corrispondenti a &ldquo;<span className="text-text font-semibold">{query}</span>&rdquo;.
               </p>
             </div>
           </div>
@@ -152,7 +152,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 flex-wrap">
-                            <span className="text-white font-bold text-sm truncate">{p.client || 'N/A'}</span>
+                            <span className="text-text font-bold text-sm truncate">{p.client || 'N/A'}</span>
                             <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${STATUS_COLORS[status]}`}>
                               {STATUS_LABELS[status]}
                             </span>
@@ -196,7 +196,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
                     <div key={c.id || i} className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
-                          <span className="text-white font-bold text-sm">{c.name}</span>
+                          <span className="text-text font-bold text-sm">{c.name}</span>
                           <div className="flex items-center gap-3 mt-1 flex-wrap">
                             {c.type && (
                               <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">

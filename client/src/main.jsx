@@ -5,7 +5,9 @@ import './index.css'
 import App from './App.jsx'
 import ErrorBoundary from './ErrorBoundary'
 
-createRoot(document.getElementById('root')).render(
+const root = document.getElementById('root');
+
+createRoot(root).render(
   <StrictMode>
     <ErrorBoundary>
       <HashRouter>
@@ -14,3 +16,11 @@ createRoot(document.getElementById('root')).render(
     </ErrorBoundary>
   </StrictMode>,
 )
+
+// Rivela l'app dopo il primo paint — elimina il flash nero→bianco
+// Due rAF annidati = aspetta che React abbia effettivamente renderizzato nel DOM
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    root.classList.add('app-mounted');
+  });
+})

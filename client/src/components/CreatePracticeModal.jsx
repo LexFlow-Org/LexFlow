@@ -90,16 +90,16 @@ export default function CreatePracticeModal({ onClose, onSave }) {
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="create-practice-title" focusTrap>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] w-full max-w-2xl shadow-3xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="modal-card modal-card-lg flex flex-col max-h-[92vh]">
         
         {/* Header */}
-        <div className="px-8 py-6 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-white/5 to-transparent">
+        <div className="modal-header">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary border border-primary/20">
               <Plus size={28} />
             </div>
             <div>
-              <h2 id="create-practice-title" className="text-2xl font-bold text-white tracking-tight">Nuovo Fascicolo</h2>
+              <h2 id="create-practice-title" className="text-2xl font-bold text-text tracking-tight">Nuovo Fascicolo</h2>
               <p className="text-text-dim text-xs uppercase tracking-widest font-medium opacity-60">Configurazione Pratica Digitale</p>
             </div>
           </div>
@@ -228,7 +228,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                 <FilePlus size={28} className="text-text-dim group-hover:text-primary" />
               </div>
               <div className="text-center">
-                <p className="text-sm font-bold text-white">Carica documenti PDF</p>
+                <p className="text-sm font-bold text-text">Carica documenti PDF</p>
                 <p className="text-[10px] text-text-dim mt-1 opacity-60 italic">I file verranno cifrati nel vault</p>
               </div>
               
@@ -236,7 +236,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
               {formData.attachments.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-2 justify-center">
                   {formData.attachments.map((f) => (
-                    <span key={f.path} className="px-3 py-1 bg-primary text-[9px] font-bold rounded-lg text-white uppercase tracking-tighter inline-flex items-center gap-1.5">
+                    <span key={f.path} className="px-3 py-1 bg-primary text-[9px] font-bold rounded-lg text-black uppercase tracking-tighter inline-flex items-center gap-1.5">
                       {f.name.length > 15 ? `${f.name.substring(0, 15)}…` : f.name}
                       <button
                         type="button"
@@ -267,11 +267,8 @@ export default function CreatePracticeModal({ onClose, onSave }) {
         </div>
 
         {/* Footer */}
-        <div className="px-8 py-6 border-t border-white/5 bg-[#14151d] flex justify-end gap-4">
-          <button 
-            onClick={onClose} 
-            className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest"
-          >
+        <div className="modal-footer gap-4">
+          <button onClick={onClose} className="btn-cancel">
             Annulla
           </button>
           <button 

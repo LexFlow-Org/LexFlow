@@ -54,6 +54,12 @@ scripts/lexflow-keys-export.csv
 src-tauri/icons/android/
 src-tauri/icons/ios/
 
+# Typst sidecar binaries (too large for git, downloaded at build time)
+src-tauri/binaries/
+
+# Bundled fonts (OFL licensed, downloaded at setup)
+src-tauri/fonts/
+
 # Python
 __pycache__/
 *.pyc

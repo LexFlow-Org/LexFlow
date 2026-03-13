@@ -5,6 +5,7 @@ import { Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
 import * as api from './tauri-api';
 import { mapAgendaToScheduleItems } from './utils/helpers';
+import { SEMANTIC } from './theme';
 
 // Componenti
 import LoginScreen from './components/LoginScreen';
@@ -348,7 +349,7 @@ export default function App() {
         {privacyEnabled && blurred && (
           <button 
             type="button"
-            className="fixed inset-0 z-[9999] bg-[var(--bg)]/80 backdrop-blur-3xl flex items-center justify-center transition-opacity duration-300 cursor-pointer animate-fade-in border-none outline-none w-full"
+            className="fixed inset-0 z-[9999] bg-background/80 backdrop-blur-3xl flex items-center justify-center transition-opacity duration-300 cursor-pointer animate-fade-in border-none outline-none w-full"
             onClick={handleManualLock}
           >
             <div className="text-center">
@@ -384,7 +385,7 @@ export default function App() {
               className: 'lexflow-toast',
               style: {
                 background: 'rgba(14,15,22,0.92)',
-                color: '#e2e4ef',
+                color: SEMANTIC.text,
                 border: '1px solid rgba(255,255,255,0.08)',
                 fontSize: '13px',
                 fontWeight: 500,
@@ -402,25 +403,25 @@ export default function App() {
               },
               success: {
                 duration: 3000,
-                iconTheme: { primary: '#22c55e', secondary: 'transparent' },
-                icon: <CheckCircle2 size={18} style={{ color: '#22c55e', flexShrink: 0 }} />,
+                iconTheme: { primary: SEMANTIC.success, secondary: 'transparent' },
+                icon: <CheckCircle2 size={18} style={{ color: SEMANTIC.success, flexShrink: 0 }} />,
                 style: {
-                  borderLeft: '3px solid #22c55e',
+                  borderLeft: `3px solid ${SEMANTIC.success}`,
                 }
               },
               error: {
                 duration: 5000,
-                iconTheme: { primary: '#ef4444', secondary: 'transparent' },
-                icon: <AlertCircle size={18} style={{ color: '#ef4444', flexShrink: 0 }} />,
+                iconTheme: { primary: SEMANTIC.danger, secondary: 'transparent' },
+                icon: <AlertCircle size={18} style={{ color: SEMANTIC.danger, flexShrink: 0 }} />,
                 style: {
-                  borderLeft: '3px solid #ef4444',
+                  borderLeft: `3px solid ${SEMANTIC.danger}`,
                 }
               },
               loading: {
                 duration: 15000,
-                icon: <Loader2 size={18} className="animate-spin" style={{ color: '#d4a940', flexShrink: 0 }} />,
+                icon: <Loader2 size={18} className="animate-spin" style={{ color: SEMANTIC.primary, flexShrink: 0 }} />,
                 style: {
-                  borderLeft: '3px solid #d4a940',
+                  borderLeft: `3px solid ${SEMANTIC.primary}`,
                 }
               }
             }}

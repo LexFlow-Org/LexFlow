@@ -19,12 +19,14 @@ import {
   EyeOff,
   X,
   Fingerprint,
-  ShieldCheck
+  ShieldCheck,
+  Briefcase
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import LicenseSettings from '../components/LicenseSettings';
 import ModalOverlay from '../components/ModalOverlay';
 import * as api from '../tauri-api';
+import { MODAL_GRADIENTS } from '../theme';
 
 const PREAVVISO_OPTIONS = [
   { value: 0, label: 'Al momento' },
@@ -71,15 +73,15 @@ function FactoryResetModal({ onClose }) {
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="factory-reset-title" zIndex={200}>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <div className="px-8 pt-8 pb-5" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)' }}>
+      <div className="modal-card modal-card-sm">
+        <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.danger }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center border border-red-500/20">
                 <LogOut size={22} className="text-red-400" />
               </div>
               <div>
-                <h3 id="factory-reset-title" className="text-xl font-bold text-white">Factory Reset</h3>
+                <h3 id="factory-reset-title" className="text-xl font-bold text-text">Factory Reset</h3>
                 <p className="text-xs text-text-dim mt-0.5">Tutti i dati verranno eliminati</p>
               </div>
             </div>
@@ -90,14 +92,14 @@ function FactoryResetModal({ onClose }) {
         </div>
         <div className="px-8 py-6 space-y-4">
           <p className="text-text-muted text-xs leading-relaxed">
-            Stai per cancellare <span className="text-white font-bold">tutti i dati del Vault</span>.
+            Stai per cancellare <span className="text-text font-bold">tutti i dati del Vault</span>.
             Inserisci la password per confermare. <span className="font-semibold">Azione irreversibile.</span>
           </p>
           <div className="relative">
             <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
             <input
               type={showPwd ? 'text' : 'password'}
-              className="w-full py-3 pl-10 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+              className="w-full py-3 pl-10 pr-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
               placeholder="Password vault…"
               value={pwd}
               onChange={e => { setPwd(e.target.value); setError(''); }}
@@ -105,14 +107,14 @@ function FactoryResetModal({ onClose }) {
               onKeyDown={async (e) => { if (e.key === 'Enter' && pwd) doReset(); }}
             />
             <button type="button" onClick={() => setShowPwd(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors">
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors">
               {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
           {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
         </div>
-        <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
-          <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-cancel">Annulla</button>
           <button onClick={doReset} className="px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest">Conferma Reset</button>
         </div>
       </div>
@@ -156,15 +158,15 @@ function ExportBackupModal({ onClose }) {
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="export-backup-title" zIndex={200}>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <div className="px-8 pt-8 pb-5" style={{ background: 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)' }}>
+      <div className="modal-card modal-card-sm">
+        <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.primary }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
                 <Download size={22} className="text-primary" />
               </div>
               <div>
-                <h3 id="export-backup-title" className="text-xl font-bold text-white">Esporta Backup</h3>
+                <h3 id="export-backup-title" className="text-xl font-bold text-text">Esporta Backup</h3>
                 <p className="text-xs text-text-dim mt-0.5">Crea un file .lex cifrato</p>
               </div>
             </div>
@@ -181,20 +183,20 @@ function ExportBackupModal({ onClose }) {
             <div className="relative">
               <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
               <input type={showPwd ? 'text' : 'password'}
-                className="w-full py-3 pl-10 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+                className="w-full py-3 pl-10 pr-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
                 placeholder="Password backup…"
                 value={pwd}
                 onChange={e => { setPwd(e.target.value); setError(''); }}
                 autoFocus />
               <button type="button" onClick={() => setShowPwd(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors">
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors">
                 {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
             <div className="relative">
               <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
               <input type={showPwd ? 'text' : 'password'}
-                className="w-full py-3 pl-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+                className="w-full py-3 pl-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
                 placeholder="Conferma password…"
                 value={pwdConfirm}
                 onChange={e => { setPwdConfirm(e.target.value); setError(''); }}
@@ -203,8 +205,8 @@ function ExportBackupModal({ onClose }) {
           </div>
           {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
         </div>
-        <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
-          <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-cancel">Annulla</button>
           <button onClick={doExport} disabled={loading}
             className={`btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
             {loading ? 'Esporto…' : 'Esporta'}
@@ -249,15 +251,15 @@ function ImportBackupModal({ onClose }) {
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="import-backup-title" zIndex={200}>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <div className="px-8 pt-8 pb-5" style={{ background: 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)' }}>
+      <div className="modal-card modal-card-sm">
+        <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.primary }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
                 <Upload size={22} className="text-primary" />
               </div>
               <div>
-                <h3 id="import-backup-title" className="text-xl font-bold text-white">Importa Backup</h3>
+                <h3 id="import-backup-title" className="text-xl font-bold text-text">Importa Backup</h3>
                 <p className="text-xs text-text-dim mt-0.5">Sovrascrive i dati attuali</p>
               </div>
             </div>
@@ -269,26 +271,26 @@ function ImportBackupModal({ onClose }) {
         <div className="px-8 py-6 space-y-4">
           <p className="text-text-muted text-xs leading-relaxed">
             Inserisci la password con cui è stato cifrato il file di backup.
-            {' '}<span className="text-white font-semibold">I dati attuali verranno sovrascritti.</span>
+            {' '}<span className="text-text font-semibold">I dati attuali verranno sovrascritti.</span>
           </p>
           <div className="relative">
             <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
             <input type={showPwd ? 'text' : 'password'}
-              className="w-full py-3 pl-10 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+              className="w-full py-3 pl-10 pr-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
               placeholder="Password backup…"
               value={pwd}
               onChange={e => { setPwd(e.target.value); setError(''); }}
               autoFocus
               onKeyDown={e => { if (e.key === 'Enter') doImport(); }} />
             <button type="button" onClick={() => setShowPwd(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors">
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors">
               {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
           {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
         </div>
-        <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
-          <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-cancel">Annulla</button>
           <button onClick={doImport} disabled={loading}
             className={`btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
             {loading ? 'Importo…' : 'Importa'}
@@ -356,10 +358,10 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
   };
 
   const stepGradients = {
-    enroll: 'linear-gradient(135deg, rgba(212,169,64,0.08) 0%, rgba(212,169,64,0.02) 100%)',
+    enroll: MODAL_GRADIENTS.primary,
     'done-deactivated': 'linear-gradient(135deg, rgba(96,165,250,0.08) 0%, rgba(96,165,250,0.02) 100%)',
   };
-  const defaultGradient = 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)';
+  const defaultGradient = MODAL_GRADIENTS.danger;
 
   const stepIconStyles = {
     enroll: 'bg-primary/10 border-primary/20',
@@ -375,8 +377,8 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="bio-modal-title" zIndex={200}>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden">
-        <div className="px-8 pt-8 pb-5" style={{ background: stepGradients[step] || defaultGradient }}>
+      <div className="modal-card modal-card-sm">
+        <div className="modal-header-gradient" style={{ background: stepGradients[step] || defaultGradient }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
@@ -385,7 +387,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
               {stepIcons[step] || defaultIcon}
             </div>
             <div>
-              <h3 id="bio-modal-title" className="text-xl font-bold text-white">
+              <h3 id="bio-modal-title" className="text-xl font-bold text-text">
                 {step === 'confirm-deactivate' && 'Disattiva Biometria'}
                 {step === 'done-deactivated' && 'Biometria Disattivata'}
                 {step === 'enroll' && 'Configura Biometria'}
@@ -411,8 +413,8 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
               Vuoi disattivare l'accesso biometrico? Dovrai usare la Master Password per accedere ai fascicoli protetti. Potrai riattivare la biometria in qualsiasi momento.
             </p>
           </div>
-          <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
-            <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+          <div className="modal-footer">
+            <button onClick={onClose} className="btn-cancel">Annulla</button>
             <button onClick={doDeactivate} disabled={loading}
               className={`px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
               {loading ? 'Disattivazione...' : 'Disattiva'}
@@ -429,7 +431,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
               L'accesso biometrico è stato disattivato. Potrai riattivarlo in qualsiasi momento dalle Impostazioni.
             </p>
           </div>
-          <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
+          <div className="modal-footer">
             <button onClick={handleCloseAfterDeactivate}
               className="btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest">
               Chiudi
@@ -448,21 +450,21 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
             <div className="relative">
               <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
               <input type={showPwd ? 'text' : 'password'}
-                className="w-full py-3 pl-10 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 text-sm focus:border-primary/40 outline-none transition-colors"
+                className="w-full py-3 pl-10 pr-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
                 placeholder="Master Password…"
                 value={pwd}
                 onChange={e => { setPwd(e.target.value); setError(''); }}
                 autoFocus
                 onKeyDown={e => { if (e.key === 'Enter') doEnroll(); }} />
               <button type="button" onClick={() => setShowPwd(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors">
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors">
                 {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
             {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
           </div>
-          <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
-            <button onClick={onClose} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+          <div className="modal-footer">
+            <button onClick={onClose} className="btn-cancel">Annulla</button>
             <button onClick={doEnroll} disabled={loading}
               className={`btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
               {loading ? 'Configurazione...' : 'Configura Biometria'}
@@ -478,17 +480,22 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
 BioResetConfirmModal.propTypes = { onClose: PropTypes.func.isRequired, bioStatus: PropTypes.string, refreshBioStatus: PropTypes.func };
 
 export default function SettingsPage({ onLock }) {
-  const [privacyEnabled, setPrivacyEnabled] = useState(true);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [privacyEnabled, setPrivacyEnabled] = useState(null);
   const [appVersion, setAppVersion] = useState('');
   const [platform, setPlatform] = useState('');
 
+  // Profilo studio (read-only, from license token)
+  const [lawyerName, setLawyerName] = useState('');
+  const [studioName, setStudioName] = useState('');
+
   // Stato per le Notifiche
-  const [notifyEnabled, setNotifyEnabled] = useState(true);
-  const [notificationTime, setNotificationTime] = useState(30);
+  const [notifyEnabled, setNotifyEnabled] = useState(null);
+  const [notificationTime, setNotificationTime] = useState(null);
 
   // Stato per Sicurezza Avanzata
-  const [screenshotProtection, setScreenshotProtection] = useState(true);
-  const [autolockMinutes, setAutolockMinutes] = useState(5);
+  const [screenshotProtection, setScreenshotProtection] = useState(null);
+  const [autolockMinutes, setAutolockMinutes] = useState(null);
   
   // Modal visibility flags
   const [showFactoryReset, setShowFactoryReset] = useState(false);
@@ -537,7 +544,14 @@ export default function SettingsPage({ onLock }) {
   useEffect(() => {
     api.getAppVersion().then(setAppVersion);
     initPlatform();
-    api.getSettings().then(applySettings);
+    api.getSettings().then((s) => { applySettings(s); setSettingsLoaded(true); });
+    // Load lawyer/studio from license token (read-only, not from settings)
+    api.checkLicense().then(res => {
+      if (res?.activated) {
+        if (res.lawyerName) setLawyerName(res.lawyerName);
+        if (res.studioName) setStudioName(res.studioName);
+      }
+    }).catch(() => { /* silent */ });
     refreshBioStatus();
     // Listen for corrupted settings file event from backend
     const unsubscribe = api.onSettingsCorrupted?.((payload) => {
@@ -550,12 +564,12 @@ export default function SettingsPage({ onLock }) {
   }, []);
 
   const buildFullSettings = useCallback(() => ({
-    privacyBlurEnabled: privacyEnabled,
-    notifyEnabled,
-    notificationTime,
-    preavviso: notificationTime, // keep synced with Agenda's key
-    screenshotProtection,
-    autolockMinutes,
+    privacyBlurEnabled: privacyEnabled ?? true,
+    notifyEnabled: notifyEnabled ?? true,
+    notificationTime: notificationTime ?? 30,
+    preavviso: notificationTime ?? 30,
+    screenshotProtection: screenshotProtection ?? true,
+    autolockMinutes: autolockMinutes ?? 5,
   }), [privacyEnabled, notifyEnabled, notificationTime, screenshotProtection, autolockMinutes]);
 
   const handlePrivacyToggle = async () => {
@@ -609,27 +623,56 @@ export default function SettingsPage({ onLock }) {
       
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Impostazioni</h1>
+          <h1 className="text-3xl font-bold text-text tracking-tight mb-2">Impostazioni</h1>
           <p className="text-text-muted text-sm">Gestisci sicurezza e preferenze di LexFlow.</p>
         </div>
-        <div className="px-4 py-2 bg-white/5 rounded-lg border border-white/10 text-xs font-mono text-text-dim">
+        <div className="px-4 py-2 bg-white/5 rounded-lg border border-border text-xs font-mono text-text-dim">
           v{appVersion} • {platform}
         </div>
       </div>
 
-      <div className="grid gap-6">
+      <div className={`grid gap-6 transition-opacity duration-300 ${settingsLoaded ? 'opacity-100' : 'opacity-0'}`}>
         
+        {/* SEZIONE PROFILO STUDIO */}
+        {(lawyerName || studioName) && (
+        <section className="glass-card p-6 space-y-6">
+          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
+            <Briefcase className="text-primary" size={20} />
+            <h2 className="text-lg font-bold text-text">Profilo Studio</h2>
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            {lawyerName && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Nome Avvocato</label>
+              <div className="w-full bg-white/3 border border-border rounded-xl px-4 py-3 text-sm text-text">
+                {lawyerName}
+              </div>
+            </div>
+            )}
+            {studioName && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
+              <div className="w-full bg-white/3 border border-border rounded-xl px-4 py-3 text-sm text-text">
+                {studioName}
+              </div>
+            </div>
+            )}
+          </div>
+          <p className="text-[10px] text-text-dim">Questi dati provengono dalla licenza e vengono utilizzati nell'intestazione dei report PDF.</p>
+        </section>
+        )}
+
         {/* SEZIONE NOTIFICHE (AGGIUNTA) */}
         <section className="glass-card p-6 space-y-6">
-          <div className="flex items-center gap-3 border-b border-white/5 pb-4 mb-4">
+          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
             <Bell className="text-primary" size={20} />
-            <h2 className="text-lg font-bold text-white">Notifiche di Sistema</h2>
+            <h2 className="text-lg font-bold text-text">Notifiche di Sistema</h2>
           </div>
 
           <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <span className="font-medium text-white">Avvisi Agenda e Scadenze</span>
+                <span className="font-medium text-text">Avvisi Agenda e Scadenze</span>
                 <p className="text-xs text-text-muted max-w-md">
                   Ricevi notifiche desktop per udienze, scadenze e impegni in agenda.
                 </p>
@@ -647,7 +690,7 @@ export default function SettingsPage({ onLock }) {
             </div>
 
             {notifyEnabled && (
-              <div className="pt-4 border-t border-white/5">
+              <div className="pt-4 border-t border-border">
                 <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
                 <div className="flex flex-wrap gap-2">
                   {PREAVVISO_OPTIONS.map(opt => (
@@ -661,7 +704,7 @@ export default function SettingsPage({ onLock }) {
                       className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                         notificationTime === opt.value
                           ? 'bg-primary text-black border-primary shadow-[0_0_12px_rgba(212,169,64,0.3)]'
-                          : 'bg-white/[0.04] text-text-muted border-white/5 hover:bg-white/[0.08] hover:text-white'
+                          : 'bg-white/[0.04] text-text-muted border-border hover:bg-white/[0.08] hover:text-text'
                       }`}
                     >
                       {opt.label}
@@ -675,15 +718,15 @@ export default function SettingsPage({ onLock }) {
 
         {/* Sezione Sicurezza */}
         <section className="glass-card p-6 space-y-6">
-          <div className="flex items-center gap-3 border-b border-white/5 pb-4 mb-4">
+          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
             <Shield className="text-primary" size={20} />
-            <h2 className="text-lg font-bold text-white">Sicurezza & Privacy</h2>
+            <h2 className="text-lg font-bold text-text">Sicurezza & Privacy</h2>
           </div>
 
           <div className="flex items-center justify-between group">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-white">Privacy Blur</span>
+                <span className="font-medium text-text">Privacy Blur</span>
                 <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/20">CONSIGLIATO</span>
               </div>
               <p className="text-xs text-text-muted max-w-md">
@@ -699,11 +742,11 @@ export default function SettingsPage({ onLock }) {
           </div>
 
           {/* Anti-Screenshot */}
-          <div className="flex items-center justify-between group pt-4 border-t border-white/5">
+          <div className="flex items-center justify-between group pt-4 border-t border-border">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Camera size={16} className="text-primary" />
-                <span className="font-medium text-white">Blocco Screenshot</span>
+                <span className="font-medium text-text">Blocco Screenshot</span>
                 <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20">SICUREZZA</span>
               </div>
               <p className="text-xs text-text-muted max-w-md">
@@ -719,10 +762,10 @@ export default function SettingsPage({ onLock }) {
           </div>
 
           {/* Auto-Lock Timer */}
-          <div className="pt-4 border-t border-white/5">
+          <div className="pt-4 border-t border-border">
             <div className="flex items-center gap-2 mb-1">
               <Timer size={16} className="text-primary" />
-              <span className="font-medium text-white">Blocco Automatico</span>
+              <span className="font-medium text-text">Blocco Automatico</span>
             </div>
             <p className="text-xs text-text-muted max-w-md mb-4">
               Blocca automaticamente il Vault dopo un periodo di inattività.
@@ -736,7 +779,7 @@ export default function SettingsPage({ onLock }) {
                   className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                     autolockMinutes === opt.value
                       ? 'bg-primary text-black border-primary shadow-[0_0_12px_rgba(212,169,64,0.3)]'
-                      : 'bg-white/[0.04] text-text-muted border-white/5 hover:bg-white/[0.08] hover:text-white'
+                      : 'bg-white/[0.04] text-text-muted border-border hover:bg-white/[0.08] hover:text-text'
                   }`}
                 >
                   {opt.label}
@@ -748,7 +791,7 @@ export default function SettingsPage({ onLock }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <button 
               onClick={onLock}
-              className="flex items-center justify-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all group"
+              className="flex items-center justify-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-text transition-all group"
             >
               <Lock size={18} className="text-primary transition-transform group-hover:-rotate-12" />
               <span className="text-sm font-bold uppercase tracking-wider">Blocca Vault Ora</span>
@@ -774,7 +817,7 @@ export default function SettingsPage({ onLock }) {
                 } />
               </div>
               <div className="flex flex-col items-start">
-                <span className="text-sm font-bold text-white">Biometria</span>
+                <span className="text-sm font-bold text-text">Biometria</span>
                 <span className={`text-[10px] font-bold uppercase tracking-wider ${
                   {
                     active: 'text-emerald-400',
@@ -794,13 +837,13 @@ export default function SettingsPage({ onLock }) {
 
         {/* Sezione Dati */}
         <section className="glass-card p-6 space-y-6">
-          <div className="flex items-center gap-3 border-b border-white/5 pb-4 mb-4">
+          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
             <HardDrive className="text-primary" size={20} />
-            <h2 className="text-lg font-bold text-white">Gestione Dati</h2>
+            <h2 className="text-lg font-bold text-text">Gestione Dati</h2>
           </div>
 
           {/* Banner sistema chiuso */}
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/10">
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-white/[0.03] border border-border">
             <ArrowLeftRight size={16} className="text-primary mt-0.5 shrink-0" />
             <div className="space-y-1">
               <p className="text-xs font-semibold text-primary uppercase tracking-wider">Sistema Chiuso — Vault Indipendenti</p>
@@ -820,7 +863,7 @@ export default function SettingsPage({ onLock }) {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Download size={15} className="text-primary" />
-                <span className="font-medium text-white">Esporta Backup</span>
+                <span className="font-medium text-text">Esporta Backup</span>
               </div>
               <p className="text-xs text-text-muted max-w-lg">
                 Salva fascicoli e agenda in un file <code className="text-primary">.lex</code> cifrato con una password a tua scelta.
@@ -836,14 +879,14 @@ export default function SettingsPage({ onLock }) {
             </button>
           </div>
 
-          <div className="border-t border-white/5" />
+          <div className="border-t border-border" />
 
           {/* Import */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Upload size={15} className="text-primary" />
-                <span className="font-medium text-white">Importa Backup</span>
+                <span className="font-medium text-text">Importa Backup</span>
               </div>
               <p className="text-xs text-text-muted max-w-lg">
                 Ripristina un file <code className="text-primary">.lex</code> esportato in precedenza.
@@ -867,9 +910,9 @@ export default function SettingsPage({ onLock }) {
       <div className="pt-12 text-center">
         <button 
           onClick={() => setShowFactoryReset(true)}
-          className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-6 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group"
+          className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group"
         >
-          <LogOut size={16} className="transition-transform group-hover:-rotate-12" />
+          <Lock size={18} className="transition-transform group-hover:-rotate-12" />
           <span className="font-black text-[11px] uppercase tracking-widest">Factory Reset Vault</span>
         </button>
       </div>

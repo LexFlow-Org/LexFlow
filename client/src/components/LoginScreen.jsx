@@ -7,12 +7,12 @@ import {
   Fingerprint, 
   KeyRound, 
   ShieldAlert, 
-  CheckCircle2,
   Timer,
   X
 } from 'lucide-react';
 import logoSrc from '../assets/logo.png';
 import * as api from '../tauri-api';
+import { MODAL_GRADIENTS } from '../theme';
 import ConfirmDialog from './ConfirmDialog';
 
 export default function LoginScreen({ onUnlock, autoLocked = false }) {
@@ -363,7 +363,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
             <img src={logoSrc} alt="LexFlow" className="w-20 h-20 object-contain relative z-10" draggable={false} />
           </div>
           
-          <h1 className="text-2xl font-black text-white tracking-tight">LexFlow</h1>
+          <h1 className="text-2xl font-black text-text tracking-tight">LexFlow</h1>
           
           {isNew ? (
             <div className="text-center mt-3 space-y-2">
@@ -386,14 +386,14 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               type="button" 
               onClick={() => handleBioLogin(false)} 
               disabled={loading} 
-              className="w-full py-4 bg-primary text-white rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl shadow-primary/20 font-bold"
+              className="w-full py-4 bg-primary text-black rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl shadow-primary/20 font-bold"
             >
               <Fingerprint size={24} />
               Accedi con Biometria
             </button>
             <button 
               onClick={() => setShowPasswordField(true)} 
-              className="w-full text-text-dim hover:text-white text-xs font-semibold transition-colors py-2"
+              className="w-full text-text-dim hover:text-text text-xs font-semibold transition-colors py-2"
             >
               Usa invece la Master Password
             </button>
@@ -510,14 +510,12 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
             </button>
           )}
 
-          <div className="flex items-center gap-4 opacity-40">
-            <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-dim uppercase tracking-widest">
-              <CheckCircle2 size={12} className="text-emerald-500" />
+          <div className="flex items-center gap-4 opacity-60">
+            <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-muted uppercase tracking-widest">
               AES-256 GCM
             </div>
-            <div className="w-1 h-1 bg-text-dim rounded-full" />
-            <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-dim uppercase tracking-widest">
-              <CheckCircle2 size={12} className="text-emerald-500" />
+            <div className="w-1 h-1 bg-text-muted rounded-full" />
+            <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-muted uppercase tracking-widest">
               Zero-Knowledge
             </div>
           </div>
@@ -528,15 +526,15 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
       {showResetModal && (
         <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 animate-fade-in">
           <button type="button" className="absolute inset-0 cursor-default" aria-label="Chiudi" onClick={() => setShowResetModal(false)} tabIndex={-1} />
-          <div className="relative z-10 bg-[#0f1016] border border-white/10 rounded-[32px] max-w-md w-full shadow-2xl overflow-hidden no-drag">
-            <div className="px-8 pt-8 pb-5" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)' }}>
+          <div className="relative z-10 modal-card modal-card-sm no-drag">
+            <div className="modal-header-gradient" style={{ background: MODAL_GRADIENTS.danger }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center border border-red-500/20">
                     <ShieldAlert size={22} className="text-red-400" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Factory Reset</h3>
+                    <h3 className="text-xl font-bold text-text">Factory Reset</h3>
                     <p className="text-xs text-text-dim mt-0.5">Tutti i dati verranno eliminati</p>
                   </div>
                 </div>
@@ -571,8 +569,8 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-3 px-8 py-5 bg-[#14151d] border-t border-white/5">
-              <button onClick={() => setShowResetModal(false)} className="px-6 py-3 rounded-2xl text-text-dim hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest">Annulla</button>
+            <div className="modal-footer">
+              <button onClick={() => setShowResetModal(false)} className="btn-cancel">Annulla</button>
               <button
                 onClick={executeReset}
                 className="px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest"

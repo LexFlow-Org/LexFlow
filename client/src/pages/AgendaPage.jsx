@@ -23,28 +23,11 @@ import * as api from '../tauri-api';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ModalOverlay from '../components/ModalOverlay';
 import { genId, toDateStr } from '../utils/helpers';
+import { CAT_LABELS, CAT_PILL_STYLES, catDotClass, catBarClass, evBgClass } from '../theme';
 
 const DAYS_IT = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 const DAYS_SHORT = ['DOM','LUN','MAR','MER','GIO','VEN','SAB'];
 const MONTHS_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
-
-const CAT_COLORS = {
-  udienza: '#d4a940',
-  studio: '#8B7CF6',
-  scadenza: '#EF6B6B',
-  riunione: '#5B8DEF',
-  personale: '#2DD4BF',
-  altro: '#7c8099',
-};
-
-const CAT_LABELS = {
-  udienza: 'Udienza',
-  studio: 'Studio',
-  scadenza: 'Scadenza',
-  riunione: 'Riunione',
-  personale: 'Personale',
-  altro: 'Altro',
-};
 
 const HOURS = Array.from({length: 24}, (_, i) => i); // 00:00 - 23:00
 
@@ -294,9 +277,9 @@ function EmptyState({ message, sub, onAdd, date }) {
   return (
     <div className="flex flex-col items-center justify-center h-full py-10 opacity-60">
       <div className="w-24 h-24 rounded-3xl bg-white/5 flex items-center justify-center mb-6 shadow-inner border border-white/5">
-        <CalendarDays size={40} className="text-white/40" />
+        <CalendarDays size={40} className="text-text-dim" />
       </div>
-      <p className="text-white font-bold text-lg mb-2">{message}</p>
+      <p className="text-text font-bold text-lg mb-2">{message}</p>
       <p className="text-text-dim text-sm mb-6 text-center max-w-[280px]">{sub}</p>
       {onAdd && (
         <button onClick={() => onAdd(date || toDateStr(new Date()))} className="btn-primary">
@@ -401,16 +384,16 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
 
   return (
     <ModalOverlay onClose={onClose} label={isEdit ? 'Modifica Impegno' : 'Nuovo Impegno'} focusTrap>
-      <div className="bg-[#0f1016] border border-white/10 rounded-[32px] w-full max-w-2xl shadow-3xl overflow-hidden flex flex-col max-h-[95vh]">
+      <div className="modal-card modal-card-lg flex flex-col max-h-[95vh]">
         
         {/* Header — stile unificato con Fascicoli */}
-        <div className="px-8 py-5 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-white/5 to-transparent">
+        <div className="modal-header">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary border border-primary/20">
               {isEdit ? <CalendarDays size={28} /> : <Plus size={28} />}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">{isEdit ? 'Modifica Impegno' : 'Nuovo Impegno'}</h2>
+              <h2 className="text-xl font-bold text-text tracking-tight">{isEdit ? 'Modifica Impegno' : 'Nuovo Impegno'}</h2>
               <p className="text-text-dim text-xs uppercase tracking-widest font-medium opacity-60">Gestione Agenda</p>
             </div>
           </div>
@@ -458,10 +441,9 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
                   onClick={() => setCategory(key)}
                   className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 border uppercase tracking-wider ${
                     category === key
-                      ? 'border-transparent text-white shadow-lg scale-105 ring-2 ring-white/5'
+                      ? `${CAT_PILL_STYLES[key]} scale-105 ring-2 ring-white/5`
                       : 'bg-white/5 border-white/10 text-text-dim hover:bg-white/10 hover:border-white/20'
                   }`}
-                  style={category === key ? { background: CAT_COLORS[key] } : {}}
                 >{label}</button>
               ))}
             </div>
@@ -483,7 +465,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
                   className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
                     remindMinutes === opt.value
                       ? 'bg-primary text-black border-primary shadow-[0_0_10px_rgba(212,169,64,0.25)]'
-                      : 'bg-white/5 text-text-dim border-white/10 hover:bg-white/10 hover:text-white'
+                      : 'bg-white/5 text-text-dim border-white/10 hover:bg-white/10 hover:text-text'
                   }`}>
                   {opt.label}
                 </button>
@@ -497,7 +479,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
                 <button type="button"
                   onClick={() => setRemindMinutes('custom')}
                   className={`px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                    remindMinutes === 'custom' ? 'text-primary' : 'text-text-dim hover:text-white'
+                    remindMinutes === 'custom' ? 'text-primary' : 'text-text-dim hover:text-text'
                   }`}>
                   Alle
                 </button>
@@ -526,7 +508,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
                 <option value="">— Nessun fascicolo —</option>
                 {linkablePractices.map(p => (
                   <option key={p.id} value={p.id}>
-                    {p.client} — {p.object}
+                    {p.client}{p.object ? ` · ${p.object}` : ''}{p.reference ? ` (${p.reference})` : ''}
                   </option>
                 ))}
               </select>
@@ -535,7 +517,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
         </form>
 
         {/* Footer — stile unificato con Fascicoli */}
-        <div className="px-8 py-5 border-t border-white/5 bg-[#14151d] flex justify-end gap-4">
+        <div className="modal-footer gap-4">
           {isEdit && !event?.autoSync && (
             <button type="button" onClick={() => setConfirmDelete(true)} className="px-5 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2">
               <Trash2 size={16}/> Elimina
@@ -595,12 +577,12 @@ function StatsCard({ events }) {
                 style={{ filter: todayPct > 0 ? 'drop-shadow(0 0 6px var(--primary))' : 'none' }}/>
             </svg>
             <div className="absolute inset-0 flex items-center justify-center flex-col">
-                 <span className="text-sm font-bold text-white">{todayPct}%</span>
+                 <span className="text-sm font-bold text-text">{todayPct}%</span>
             </div>
           </div>
           <div>
             <p className="text-[10px] uppercase tracking-wider text-text-muted font-bold mb-1">Produttività Oggi</p>
-            <p className="text-lg font-bold text-white">{todayDone} <span className="text-sm font-normal text-text-dim">/ {todayEvts.length} compiti</span></p>
+            <p className="text-lg font-bold text-text">{todayDone} <span className="text-sm font-normal text-text-dim">/ {todayEvts.length} compiti</span></p>
           </div>
         </div>
       </div>
@@ -615,13 +597,13 @@ function StatsCard({ events }) {
                 <div key={cat}>
                   <div className="flex justify-between text-[10px] mb-1">
                     <span className="text-text-muted flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full" style={{background: CAT_COLORS[cat]}}/>
+                      <span className={`w-1.5 h-1.5 rounded-full ${catDotClass(cat)}`}/>
                       {CAT_LABELS[cat]}
                     </span>
-                    <span className="text-white font-medium">{count}</span>
+                    <span className="text-text font-medium">{count}</span>
                   </div>
                   <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-1000" style={{width: `${pct}%`, background: CAT_COLORS[cat]}}/>
+                    <div className={`h-full rounded-full transition-all duration-1000 ${catBarClass(cat)}`} style={{width: `${pct}%`}}/>
                   </div>
                 </div>
               );
@@ -661,9 +643,9 @@ function UpcomingPanel({ events, onEdit, onToggle }) {
           <div className="space-y-2">
             {overdue.slice(0, 3).map(ev => (
               <button type="button" key={ev.id} onClick={() => onEdit(ev)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-red-500/10 cursor-pointer transition border border-transparent hover:border-red-500/20 text-left w-full">
-                <div className="w-1.5 h-8 rounded-full flex-shrink-0" style={{ background: CAT_COLORS[ev.category] }} />
+                <div className={`w-1.5 h-8 rounded-full flex-shrink-0 ${catBarClass(ev.category)}`} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-white truncate">{ev.title}</p>
+                  <p className="text-xs font-bold text-text truncate">{ev.title}</p>
                   <p className="text-[10px] text-red-300">{formatRelDay(ev.date)}</p>
                 </div>
               </button>
@@ -672,9 +654,9 @@ function UpcomingPanel({ events, onEdit, onToggle }) {
         </div>
       )}
       <div className="glass-card p-4">
-        <div className="flex items-center gap-2 mb-4 border-b border-white/5 pb-2">
+        <div className="flex items-center gap-2 mb-4 border-b border-border pb-2">
           <Calendar size={14} className="text-primary" />
-          <span className="text-xs font-bold text-white uppercase tracking-wide">Prossimi</span>
+          <span className="text-xs font-bold text-text uppercase tracking-wide">Prossimi</span>
         </div>
         <div className="space-y-1">
           {upcoming.map(ev => (
@@ -685,7 +667,7 @@ function UpcomingPanel({ events, onEdit, onToggle }) {
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-text group-hover:text-white transition-colors truncate">{ev.title}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full" style={{background: CAT_COLORS[ev.category]}} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${catDotClass(ev.category)}`} />
                     <p className="text-[10px] text-text-dim">{formatRelDay(ev.date)} · {ev.timeStart}</p>
                 </div>
               </div>
@@ -723,10 +705,22 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
 
   useEffect(() => {
     if (timelineRef.current) {
-      const n = new Date();
-      const nowMin = n.getHours() * 60 + n.getMinutes();
-      const scrollTo = Math.max(0, (nowMin / 60) * 60 - 150);
-      timelineRef.current.scrollTop = scrollTo;
+      // Check if we have a target scroll time from navigation (e.g. from Scadenze page)
+      const targetTime = sessionStorage.getItem('agenda_scroll_time');
+      sessionStorage.removeItem('agenda_scroll_time');
+      let scrollTo;
+      if (targetTime && /^\d{2}:\d{2}$/.test(targetTime)) {
+        const [h, m] = targetTime.split(':').map(Number);
+        scrollTo = Math.max(0, ((h * 60 + m) / 60) * 60 - 80);
+      } else {
+        const n = new Date();
+        const nowMin = n.getHours() * 60 + n.getMinutes();
+        scrollTo = Math.max(0, (nowMin / 60) * 60 - 150);
+      }
+      // Use rAF to ensure DOM is painted before scrolling
+      requestAnimationFrame(() => {
+        if (timelineRef.current) timelineRef.current.scrollTop = scrollTo;
+      });
     }
   }, []);
 
@@ -734,7 +728,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between gap-4 flex-shrink-0 mb-4">
         <div>
-          <h2 className="text-xl font-black text-white tracking-tight">
+          <h2 className="text-xl font-black text-text tracking-tight">
              {DAYS_IT[now.getDay()]} <span className="text-primary">{now.getDate()}</span> {MONTHS_IT[now.getMonth()]}
           </h2>
         </div>
@@ -744,18 +738,10 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
       </div>
 
       <div className="glass-card flex-1 overflow-hidden relative">
-         {todayEvts.length === 0 ? (
-            <EmptyState 
-              message={allToday.length === 0 ? "Giornata Libera" : "Nessun impegno trovato"}
-              sub={allToday.length === 0 ? "Non hai impegni in programma per oggi. Goditi un po' di relax." : "Prova a modificare i filtri per vedere altri impegni."}
-              onAdd={allToday.length === 0 ? onAdd : null}
-              date={todayStr}
-            />
-         ) : (
              <div ref={timelineRef} className="overflow-y-auto h-full no-scrollbar relative p-4">
                 <div className="absolute top-4 left-16 right-4 bottom-4 pointer-events-none">
                      {HOURS.map((h, i) => (
-                        <div key={h} className="absolute w-full border-t border-white/[0.04]" style={{top: i * 60, height: 60}}></div>
+                        <div key={h} className="absolute w-full border-t border-white/[0.06]" style={{top: i * 60, height: 60}}></div>
                      ))}
                 </div>
                 <div className="relative" style={{height: HOURS.length * 60 + 20}}>
@@ -776,7 +762,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                         </div>
                     );
                   })()}
-                  {(() => {
+                  {todayEvts.length > 0 && (() => {
                     // ── Overlap layout: assign columns to overlapping events ──
                     const positioned = todayEvts.map(ev => {
                       const [sh,sm] = ev.timeStart.split(':').map(Number);
@@ -804,15 +790,12 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                     return layout.map(ev => {
                       const top = (ev.startMin / 60) * 60;
                       const height = Math.max(((ev.endMin - ev.startMin) / 60) * 60, 32);
-                      const isSpecial = ev.category === 'udienza' || ev.category === 'scadenza';
                       const colWidth = totalCols > 1 ? `calc((100% - 56px - 8px) / ${totalCols})` : undefined;
                       const colLeft = totalCols > 1 ? `calc(56px + ${ev.col} * ((100% - 56px - 8px) / ${totalCols}))` : undefined;
                       return (
                         <div key={ev.id} data-evid={ev.id}
-                          className={`agenda-event absolute rounded-lg px-3 py-1.5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-black/20 hover:z-20 text-left
-                              ${ev.category === 'udienza' ? 'bg-[#d4a940]/20 border-l-4 border-[#d4a940]' : ''}
-                              ${ev.category === 'scadenza' ? 'bg-[#EF6B6B]/20 border-l-4 border-[#EF6B6B]' : ''}
-                              ${isSpecial ? '' : 'bg-white/[0.08] hover:bg-white/[0.12] border-l-4 border-white/20'}
+                          className={`agenda-event absolute rounded-lg px-3 py-1.5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-black/20 hover:z-20 text-left border-l-4 ev-text
+                              ${evBgClass(ev.category)}
                               ${ev.completed ? 'opacity-40 line-through' : ''}
                           `}
                           style={{
@@ -820,7 +803,6 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                               left: colLeft || 56,
                               right: totalCols > 1 ? 'auto' : 8,
                               width: colWidth || undefined,
-                              borderLeftColor: CAT_COLORS[ev.category],
                               zIndex: ev.col + 1,
                           }}
                         >
@@ -857,16 +839,16 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-1.5">
                                         <span className={`text-xs font-bold truncate ${ev.completed ? 'text-white/50' : 'text-white'}`}>{ev.title}</span>
-                                        {ev.remindMinutes != null && <BellRing size={10} className="text-amber-400 flex-shrink-0" title={ev.remindMinutes === 'custom' ? `Notifica alle ${ev.customRemindTime || '?'}` : `Preavviso: ${ev.remindMinutes} min`} />}
-                                        {ev.autoSync && <ExternalLink size={10} className="text-white/70" />}
-                                        {ev.practiceId && !ev.autoSync && <Briefcase size={10} className="text-primary/70" />}
+                                        {ev.remindMinutes != null && <BellRing size={12} className="text-white/80 flex-shrink-0" title={ev.remindMinutes === 'custom' ? `Notifica alle ${ev.customRemindTime || '?'}` : `Preavviso: ${ev.remindMinutes} min`} />}
+                                        {ev.autoSync && <ExternalLink size={12} className="text-white/80 flex-shrink-0" />}
+                                        {ev.practiceId && !ev.autoSync && <Briefcase size={12} className="text-white/80 flex-shrink-0" />}
                                     </div>
                                     {height >= 45 && (
-                                        <p className="text-[10px] text-white/60 mt-0.5 truncate">{ev.notes || ev.category.toUpperCase()}</p>
+                                        <p className="text-[10px] font-bold uppercase tracking-wide mt-0.5 truncate text-white/85 ev-text">{ev.notes || ev.category.toUpperCase()}</p>
                                     )}
                                   </div>
                                </div>
-                               <span className="text-[10px] font-mono text-white/80 bg-black/20 px-1.5 py-0.5 rounded flex-shrink-0">{ev.timeStart}</span>
+                               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 text-white/85 ev-badge">{ev.timeStart}</span>
                           </div>
                           {/* Drag handle per ridimensionare (bottom edge) */}
                           <button
@@ -882,7 +864,6 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                   })()}
                 </div>
              </div>
-         )}
       </div>
     </div>
   );
@@ -906,6 +887,18 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusDate, initialOffset]);
   const scrollRef = useRef(null);
+
+  // Auto-scroll to target time when navigated from another page
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const targetTime = sessionStorage.getItem('agenda_scroll_time');
+    sessionStorage.removeItem('agenda_scroll_time');
+    if (targetTime && /^\d{2}:\d{2}$/.test(targetTime)) {
+      const [h, m] = targetTime.split(':').map(Number);
+      const scrollTo = Math.max(0, ((h * 60 + m) / 60) * 60 - 80);
+      setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollTo, behavior: 'smooth' }); }, 100);
+    }
+  }, [weekOffset]);
   const now = new Date();
   const todayStr = toDateStr(now);
   const sow = new Date(now);
@@ -921,7 +914,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
       <div className="flex items-center justify-between flex-shrink-0 mb-4">
         <div className="inline-flex items-center bg-white/[0.04] rounded-xl p-1 border border-white/5 gap-1">
           <button onClick={() => setWeekOffset(w => w-1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronLeft size={14}/></button>
-          <span className="text-xs font-bold w-36 text-center text-white">{days[0].date.getDate()} – {days[6].date.getDate()} {MONTHS_IT[days[6].date.getMonth()]}</span>
+          <span className="text-xs font-bold w-36 text-center text-text">{days[0].date.getDate()} – {days[6].date.getDate()} {MONTHS_IT[days[6].date.getMonth()]}</span>
           <button onClick={() => setWeekOffset(w => w+1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronRight size={14}/></button>
         </div>
         <button onClick={() => onAdd(todayStr)} className="btn-primary text-xs px-4 py-2">
@@ -970,7 +963,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
                        const startH = Math.floor(rawMin/60); 
                        onAdd(str, fmtTime(startH, 0), fmtTime(Math.min(startH+1,23), 0));
                     }}>
-                  {HOURS.map(h => (<div key={h} className="absolute w-full border-t border-white/[0.03]" style={{top: h*60, height: 60}}/>))}
+                  {HOURS.map(h => (<div key={h} className="absolute w-full border-t border-white/[0.06]" style={{top: h*60, height: 60}}/>))}
                   {dayEvts.map(ev => {
                     const [sh,sm] = ev.timeStart.split(':').map(Number);
                     const [eh,em] = ev.timeEnd.split(':').map(Number);
@@ -978,12 +971,9 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
                     const height = Math.max(((eh*60+em-sh*60-sm)/60)*60, 20);
                     const isUdienza = ev.category === 'udienza';
                     return (
-                      <div key={ev.id} className="week-ev agenda-event absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 cursor-pointer text-white overflow-hidden text-left"
+                      <div key={ev.id} className={`week-ev agenda-event absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 cursor-pointer overflow-hidden text-left border-l-2 ev-text ${evBgClass(ev.category)} ${isUdienza ? 'shadow-[0_2px_8px_rgba(212,169,64,0.3)]' : ''}`}
                         style={{
                             top, height, fontSize: 10,
-                            background: isUdienza ? CAT_COLORS.udienza : `${CAT_COLORS[ev.category]}CC`,
-                            borderLeft: `2px solid ${isUdienza ? '#fff' : 'rgba(255,255,255,0.3)'}`,
-                            boxShadow: isUdienza ? '0 2px 8px rgba(212,169,64,0.3)' : 'none'
                         }}>
                         {/* Native button overlay for click + keyboard + drag */}
                         <button type="button" aria-label={`Modifica evento: ${ev.title}`}
@@ -1004,8 +994,8 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
                             handleResizeTop(e, { startMin: tsh*60+tsm, endMin: teh*60+tem, minHeight: 20, selector: '.week-ev', ev, onSave });
                           }}
                         />
-                        <div className="font-bold truncate leading-tight flex items-center gap-1 relative z-[1] pointer-events-none">{ev.title}{ev.remindMinutes != null && <BellRing size={8} className="text-amber-400 flex-shrink-0" />}</div>
-                        {height >= 30 && <div className="opacity-80 text-[9px] relative z-[1] pointer-events-none">{ev.timeStart}</div>}
+                        <div className="font-extrabold truncate leading-tight flex items-center gap-1 relative z-[1] pointer-events-none ev-text">{ev.title}{ev.remindMinutes != null && <BellRing size={8} className="text-white/80 flex-shrink-0" />}</div>
+                        {height >= 30 && <div className="text-[9px] font-bold uppercase tracking-wide relative z-[1] pointer-events-none text-white/85 ev-text">{CAT_LABELS[ev.category] || ev.category?.toUpperCase()}</div>}
                         {/* Resize handle bottom */}
                         <button type="button" aria-label="Ridimensiona fine"
                           className="resize-handle absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize z-10"
@@ -1051,7 +1041,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
        <div className="flex items-center justify-between flex-shrink-0 mb-4">
         <div className="inline-flex items-center bg-white/[0.04] rounded-xl p-1 border border-white/5 gap-1">
           <button onClick={() => setMonthOffset(m => m-1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronLeft size={14}/></button>
-          <span className="text-xs font-bold w-36 text-center text-white">{MONTHS_IT[month]} {year}</span>
+          <span className="text-xs font-bold w-36 text-center text-text">{MONTHS_IT[month]} {year}</span>
           <button onClick={() => setMonthOffset(m => m+1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronRight size={14}/></button>
         </div>
         <button onClick={() => onAdd(todayStr)} className="btn-primary text-xs px-4 py-2">
@@ -1079,8 +1069,8 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
                 <div className="space-y-0.5 overflow-y-auto max-h-[80px] no-scrollbar relative z-[1]">
                   {dayEvts.slice(0, 4).map(ev => (
                     <button type="button" key={ev.id} onClick={e => {e.stopPropagation(); onEdit(ev);}}
-                      className="text-[9px] px-1.5 py-1 rounded-sm truncate text-white border-l-[2px] transition hover:brightness-125 hover:shadow-sm block w-full text-left cursor-pointer"
-                      style={{ background: `${CAT_COLORS[ev.category]}40`, borderLeftColor: CAT_COLORS[ev.category] }}>
+                      className={`agenda-event text-[9px] font-bold px-1.5 py-1 rounded-sm truncate border-l-[2px] transition-all hover:brightness-125 hover:shadow-md hover:scale-[1.02] hover:z-10 block w-full text-left cursor-pointer ev-text-strong ${evBgClass(ev.category)}`}
+                      title={`${ev.title} — ${CAT_LABELS[ev.category] || ev.category}`}>
                       {ev.title}
                     </button>
                   ))}
@@ -1244,9 +1234,10 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
   const [focusDate, setFocusDate] = useState(null);
   const events = useMemo(() => agendaEvents || [], [agendaEvents]);
 
-  // Handle ?date= query parameter — switch to appropriate view
+  // Handle ?date= and ?time= query parameters — switch to appropriate view & scroll
   useEffect(() => {
     const dateParam = searchParams.get('date');
+    const timeParam = searchParams.get('time'); // e.g. "14:30"
     if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) return;
     const todayStr = toDateStr(new Date());
     if (dateParam === todayStr) {
@@ -1254,6 +1245,10 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
     } else {
       setView('week');
       setFocusDate(dateParam);
+    }
+    // Store time for auto-scroll (consumed by TodayView/WeekView)
+    if (timeParam) {
+      sessionStorage.setItem('agenda_scroll_time', timeParam);
     }
     // Clear the param so it doesn't persist on manual navigation
     setSearchParams({}, { replace: true });
@@ -1299,17 +1294,13 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5 flex-shrink-0">
         <div className="flex items-center gap-3 flex-wrap">
           {/* Titolo */}
-          <h1 className="text-2xl font-black text-white tracking-tight">Agenda</h1>
+          <h1 className="text-2xl font-black text-text tracking-tight">Agenda</h1>
           
           {/* Vista Switcher */}
-          <div className="inline-flex bg-white/[0.04] rounded-xl p-1 border border-white/5">
+          <div className="tab-switcher">
             {views.map(({ key, label, icon: Icon }) => (
               <button key={key} onClick={() => setView(key)} 
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 ${
-                  view === key 
-                    ? 'bg-primary text-black shadow-[0_0_12px_rgba(212,169,64,0.25)]' 
-                    : 'text-text-dim hover:text-white hover:bg-white/[0.06]'
-                }`}>
+                className="tab-btn" data-active={view === key}>
                 <Icon size={13}/> <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
@@ -1355,10 +1346,9 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
               onClick={() => toggleFilter(key)} 
               className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border flex-shrink-0 ${
                 isActive 
-                  ? 'border-transparent text-white shadow-md' 
+                  ? `${CAT_PILL_STYLES[key]} scale-105` 
                   : 'border-white/5 text-text-dim hover:bg-white/5 hover:text-white bg-white/[0.02]'
-              }`} 
-              style={isActive ? { background: CAT_COLORS[key] } : {}}
+              }`}
             >
               {label}
             </button>
