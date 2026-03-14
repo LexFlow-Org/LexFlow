@@ -254,6 +254,8 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   const [newNote, setNewNote] = useState('');
   const [newDeadlineLabel, setNewDeadlineLabel] = useState('');
   const [newDeadlineDate, setNewDeadlineDate] = useState('');
+  const [newDeadlineTime, setNewDeadlineTime] = useState('09:00');
+  const [newDeadlineRemind, setNewDeadlineRemind] = useState(null); // null = usa preavviso globale
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   // --- Helpers ---
@@ -285,15 +287,23 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
     if (folder) {
       const newFolder = { path: folder, name: folder.split('/').pop(), addedAt: new Date().toISOString() };
       const updatedFolders = [...folders, newFolder];
-      update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
-      toast.success('Cartella collegata');
+      try {
+        await update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
+        toast.success('Cartella collegata');
+      } catch {
+        toast.error('Errore collegamento cartella');
+      }
     }
   };
 
-  const removeFolder = (idx) => {
+  const removeFolder = async (idx) => {
     const updatedFolders = folders.filter((_, i) => i !== idx);
-    update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
-    toast.success('Cartella scollegata');
+    try {
+      await update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
+      toast.success('Cartella scollegata');
+    } catch {
+      toast.error('Errore rimozione cartella');
+    }
   };
 
   const confirmRemoveFolder = (idx) => {
@@ -396,7 +406,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       const result = await api.selectFile();
       if (result?.name && result?.path) {
         const attachments = [...(practice.attachments || []), { name: result.name, path: result.path, addedAt: new Date().toISOString() }];
-        update({ attachments });
+        await update({ attachments });
         toast.success('Documento aggiunto al vault');
       }
     } catch (err) {
@@ -405,10 +415,14 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
     }
   };
 
-  const removeAttachment = (idx) => {
+  const removeAttachment = async (idx) => {
     const attachments = (practice.attachments || []).filter((_, i) => i !== idx);
-    update({ attachments });
-    toast.success('Documento rimosso');
+    try {
+      await update({ attachments });
+      toast.success('Documento rimosso');
+    } catch {
+      toast.error('Errore rimozione documento');
+    }
   };
 
   const confirmRemoveAttachment = (idx) => {
@@ -419,19 +433,27 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   };
 
   // --- Handlers: Diary ---
-  const addNote = (e) => {
+  const addNote = async (e) => {
     e.preventDefault();
     if (!newNote.trim()) return;
     const note = { text: newNote, date: new Date().toISOString() };
-    update({ diary: [note, ...(practice.diary || [])] });
-    setNewNote('');
-    toast.success('Nota aggiunta');
+    try {
+      await update({ diary: [note, ...(practice.diary || [])] });
+      setNewNote('');
+      toast.success('Nota aggiunta');
+    } catch {
+      toast.error('Errore salvataggio nota');
+    }
   };
 
-  const deleteNote = (idx) => {
+  const deleteNote = async (idx) => {
     const updatedDiary = (practice.diary || []).filter((_, i) => i !== idx);
-    update({ diary: updatedDiary });
-    toast.success('Nota eliminata');
+    try {
+      await update({ diary: updatedDiary });
+      toast.success('Nota eliminata');
+    } catch {
+      toast.error('Errore eliminazione nota');
+    }
   };
 
   const confirmDeleteNote = (idx) => {
@@ -442,26 +464,43 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   };
 
   // --- Handlers: Deadlines ---
-  const addDeadline = (e) => {
+  const addDeadline = async (e) => {
     e.preventDefault();
     if (!newDeadlineLabel.trim() || !newDeadlineDate) return;
     
-    const deadlines = [...(practice.deadlines || []), { 
+    const newD = { 
       date: newDeadlineDate, 
-      label: newDeadlineLabel.trim() 
-    }];
+      label: newDeadlineLabel.trim(),
+      time: newDeadlineTime || '09:00',
+    };
+    // Salva preavviso solo se specifico (non null/globale)
+    if (newDeadlineRemind !== null) {
+      newD.remindMinutes = newDeadlineRemind;
+    }
+
+    const deadlines = [...(practice.deadlines || []), newD];
     deadlines.sort((a, b) => new Date(a.date) - new Date(b.date));
     
-    update({ deadlines });
-    setNewDeadlineLabel('');
-    setNewDeadlineDate('');
-    toast.success('Scadenza aggiunta');
+    try {
+      await update({ deadlines });
+      setNewDeadlineLabel('');
+      setNewDeadlineDate('');
+      setNewDeadlineTime('09:00');
+      setNewDeadlineRemind(null);
+      toast.success('Scadenza aggiunta');
+    } catch {
+      toast.error('Errore salvataggio scadenza');
+    }
   };
 
-  const deleteDeadline = (idx) => {
+  const deleteDeadline = async (idx) => {
     const deadlines = (practice.deadlines || []).filter((_, i) => i !== idx);
-    update({ deadlines });
-    toast.success('Scadenza eliminata');
+    try {
+      await update({ deadlines });
+      toast.success('Scadenza eliminata');
+    } catch {
+      toast.error('Errore eliminazione scadenza');
+    }
   };
 
   const confirmDeleteDeadline = (idx) => {
@@ -503,9 +542,13 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
         <div className="flex items-center gap-2">
           <StatusDropdown
             status={practice.status}
-            onChangeStatus={(newStatus) => {
-              update({ status: newStatus });
-              toast.success(newStatus === 'active' ? 'Fascicolo riaperto' : 'Fascicolo archiviato');
+            onChangeStatus={async (newStatus) => {
+              try {
+                await update({ status: newStatus });
+                toast.success(newStatus === 'active' ? 'Fascicolo riaperto' : 'Fascicolo archiviato');
+              } catch {
+                toast.error('Errore cambio stato fascicolo');
+              }
             }}
           />
         </div>
@@ -727,26 +770,58 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
         {/* ═══ TAB: SCADENZE ═══ */}
         {activeTab === 'deadlines' && (
           <div className="max-w-3xl mx-auto">
-            <form onSubmit={addDeadline} className="mb-6 flex gap-2">
-              <input
-                className="input-field flex-1"
-                placeholder="Descrizione scadenza..."
-                value={newDeadlineLabel}
-                onChange={e => setNewDeadlineLabel(e.target.value)}
-              />
-              <input
-                type="date"
-                className="input-field w-40"
-                value={newDeadlineDate}
-                onChange={e => setNewDeadlineDate(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="btn-primary px-3"
-                disabled={!newDeadlineLabel.trim() || !newDeadlineDate}
-              >
-                <Plus size={16} />
-              </button>
+            <form onSubmit={addDeadline} className="mb-6 space-y-2">
+              <div className="flex gap-2">
+                <input
+                  className="input-field flex-1"
+                  placeholder="Descrizione scadenza..."
+                  value={newDeadlineLabel}
+                  onChange={e => setNewDeadlineLabel(e.target.value)}
+                />
+                <input
+                  type="date"
+                  className="input-field w-40"
+                  value={newDeadlineDate}
+                  onChange={e => setNewDeadlineDate(e.target.value)}
+                />
+                <input
+                  type="time"
+                  className="input-field w-28"
+                  value={newDeadlineTime}
+                  onChange={e => setNewDeadlineTime(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="btn-primary px-3"
+                  disabled={!newDeadlineLabel.trim() || !newDeadlineDate}
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+              {/* Preavviso specifico */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-text-dim">Preavviso:</span>
+                {[
+                  { label: 'Generale', value: null },
+                  { label: '15min', value: 15 },
+                  { label: '30min', value: 30 },
+                  { label: '1h', value: 60 },
+                  { label: '2h', value: 120 },
+                ].map(opt => (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setNewDeadlineRemind(opt.value)}
+                    className={`px-2 py-0.5 rounded transition-colors ${
+                      newDeadlineRemind === opt.value
+                        ? 'bg-primary/20 text-primary font-medium'
+                        : 'text-text-dim hover:text-text hover:bg-white/5'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </form>
 
             <div className="space-y-2">
@@ -786,8 +861,16 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       
                       <div className="flex-1">
                          <p className="text-sm text-text font-medium">{d.label}</p>
-                         <div className="flex items-center gap-2">
+                         <div className="flex items-center gap-2 flex-wrap">
                            <p className="text-xs text-text-dim">{formatDateIT(d.date, '')}</p>
+                           {d.time && (
+                             <span className="text-xs text-text-muted font-mono">ore {d.time}</span>
+                           )}
+                           {d.remindMinutes != null && (
+                             <span className="text-[9px] font-bold text-amber-400/80 uppercase tracking-wider bg-amber-400/10 px-1.5 py-0.5 rounded">
+                               🔔 {d.remindMinutes >= 60 ? `${d.remindMinutes / 60}h` : `${d.remindMinutes}min`}
+                             </span>
+                           )}
                            {d.source === 'agenda' && (
                              <span className="text-[9px] font-bold text-primary/60 uppercase tracking-wider bg-primary/5 px-1.5 py-0.5 rounded">Agenda</span>
                            )}

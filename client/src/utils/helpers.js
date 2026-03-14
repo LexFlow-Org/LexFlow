@@ -47,6 +47,7 @@ export function mapAgendaToScheduleItems(events, defaultPreavviso = 30) {
       date: e.date,
       time: e.timeStart,
       title: e.title,
+      category: e.category || '',
       remindMinutes: (() => {
         if (typeof e.remindMinutes === 'number') return e.remindMinutes;
         if (e.remindMinutes === 'custom') return 0;

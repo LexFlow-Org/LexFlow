@@ -4064,9 +4064,9 @@ fn schedule_all_briefings(
     count
 }
 
-/// Schedule all per-item reminder notifications.
-/// Items are sorted by date+time (nearest first) so the most urgent events
-/// always get a slot even when total items exceed MAX_SCHEDULED.
+/// Schedule all per-item reminder notifications (GROUPED by fire minute).
+/// Items that fire at the same minute are merged into a single notification
+/// to avoid spamming the user with N identical alerts.
 /// Returns number of notifications scheduled.
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn schedule_all_reminders(
@@ -4077,29 +4077,136 @@ fn schedule_all_reminders(
     already: i32,
     max: i32,
 ) -> i32 {
-    // Sort items by date+time ascending so nearest events get priority
-    let mut sorted: Vec<&Value> = items.iter().collect();
-    sorted.sort_by(|a, b| {
-        let key = |v: &Value| {
-            let d = v
-                .get("date")
-                .and_then(|x| x.as_str())
-                .unwrap_or("9999-99-99");
-            let t = v.get("time").and_then(|x| x.as_str()).unwrap_or("99:99");
-            format!("{} {}", d, t)
+    use std::collections::BTreeMap;
+
+    // Group items by their fire-minute string
+    let mut groups: BTreeMap<String, Vec<&Value>> = BTreeMap::new();
+    for item in items {
+        let completed = item.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
+        if completed { continue; }
+        let item_local = match parse_item_datetime(item) {
+            Some(t) => t,
+            None => continue,
         };
-        key(a).cmp(&key(b))
-    });
+        if item_local > horizon { continue; }
+        let remind_time = compute_remind_time(item, item_local);
+        if remind_time <= now { continue; }
+        let fire_key = remind_time.format("%Y-%m-%d %H:%M").to_string();
+        groups.entry(fire_key).or_default().push(item);
+    }
+
     let mut count = already;
-    for item in &sorted {
-        if count >= max {
-            break;
-        }
-        if let Some(sc) = schedule_reminder_aot(app, item, now, horizon) {
+    for (_fire_key, group) in &groups {
+        if count >= max { break; }
+        if let Some(sc) = schedule_grouped_reminder_aot(app, group, now, horizon) {
             count += sc;
         }
     }
     count - already
+}
+
+/// Schedule a GROUPED reminder notification for mobile AOT.
+/// If the group has 1 item → classic individual reminder.
+/// If 2+ items → smart grouped notification with list.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn schedule_grouped_reminder_aot(
+    app: &AppHandle,
+    group: &[&Value],
+    _now: chrono::DateTime<chrono::Local>,
+    _horizon: chrono::DateTime<chrono::Local>,
+) -> Option<i32> {
+    use tauri_plugin_notification::NotificationExt;
+
+    if group.is_empty() { return None; }
+
+    // Use the first item to compute the fire time (all items in group share it)
+    let first = group[0];
+    let first_local = parse_item_datetime(first)?;
+    let remind_time = compute_remind_time(first, first_local);
+    let offset_dt = chrono_to_offset(remind_time)?;
+
+    // Check if any item in the group is critical
+    let mut any_critical = false;
+    let mut sorted_group: Vec<&Value> = group.to_vec();
+    sorted_group.sort_by(|a, b| {
+        let ta = a.get("time").and_then(|v| v.as_str()).unwrap_or("");
+        let tb = b.get("time").and_then(|v| v.as_str()).unwrap_or("");
+        ta.cmp(tb)
+    });
+    for item in &sorted_group {
+        let category = item.get("category").and_then(|c| c.as_str()).unwrap_or("");
+        let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("");
+        let title_lower = title.to_lowercase();
+        if category == "udienza" || category == "scadenza"
+            || title_lower.contains("udienza") || title_lower.contains("scadenza")
+            || title_lower.contains("ricorso") || title_lower.contains("termine")
+        {
+            any_critical = true;
+            break;
+        }
+    }
+
+    let total = sorted_group.len();
+    let (notif_title, body) = if total == 1 {
+        let item = sorted_group[0];
+        let item_local = parse_item_datetime(item).unwrap_or(first_local);
+        let item_title = item.get("title").and_then(|t| t.as_str()).unwrap_or("Impegno");
+        let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
+        let body = build_reminder_body(item_title, item_time, item_local, remind_time);
+        let title = if any_critical {
+            "LexFlow — ⚠️ Promemoria Urgente".to_string()
+        } else {
+            "LexFlow — Promemoria".to_string()
+        };
+        (title, body)
+    } else {
+        let title = if any_critical {
+            format!("LexFlow — ⚠️ {} impegni in arrivo", total)
+        } else {
+            format!("LexFlow — {} impegni in arrivo", total)
+        };
+        let mut lines: Vec<String> = Vec::new();
+        let show_count = if total <= 3 { total } else { 2 };
+        for item in sorted_group.iter().take(show_count) {
+            let t = item.get("time").and_then(|v| v.as_str()).unwrap_or("");
+            let name = item.get("title").and_then(|v| v.as_str()).unwrap_or("Impegno");
+            if !t.is_empty() {
+                lines.push(format!("• {} — {}", t, name));
+            } else {
+                lines.push(format!("• {}", name));
+            }
+        }
+        if total > 3 {
+            let remaining = total - 2;
+            lines.push(format!(
+                "…e altr{} {} — controlla l'agenda",
+                if remaining == 1 { "o" } else { "i" },
+                remaining
+            ));
+        }
+        (title, lines.join("\n"))
+    };
+
+    let channel_id = if any_critical { "lexflow_urgent" } else { "lexflow_default" };
+    let seed = format!("remind-grouped-{}", remind_time.format("%Y-%m-%d-%H-%M"));
+    let notif_id = hash_notification_id(&seed);
+
+    let sched = tauri_plugin_notification::Schedule::At {
+        date: offset_dt,
+        repeating: false,
+        allow_while_idle: true,
+    };
+
+    app.notification()
+        .builder()
+        .id(notif_id)
+        .channel_id(channel_id)
+        .title(&notif_title)
+        .body(&body)
+        .schedule(sched)
+        .show()
+        .ok()
+        .map(|_| 1)
 }
 
 // ── MOBILE: Native AOT scheduling ─────────────────────────────────────────
@@ -4223,80 +4330,6 @@ fn schedule_briefing_aot(
         .map(|_| 1)
 }
 
-/// Schedule a single reminder notification (mobile AOT). Returns Some(1) on success.
-/// Critical events (udienze, scadenze) use the high-importance channel to bypass Doze.
-#[cfg(any(target_os = "android", target_os = "ios"))]
-fn schedule_reminder_aot(
-    app: &AppHandle,
-    item: &Value,
-    now: chrono::DateTime<chrono::Local>,
-    horizon: chrono::DateTime<chrono::Local>,
-) -> Option<i32> {
-    use tauri_plugin_notification::NotificationExt;
-    let completed = item
-        .get("completed")
-        .and_then(|c| c.as_bool())
-        .unwrap_or(false);
-    if completed {
-        return None;
-    }
-    let item_local = parse_item_datetime(item)?;
-    if item_local > horizon {
-        return None;
-    }
-    let remind_time = compute_remind_time(item, item_local);
-    if remind_time <= now {
-        return None;
-    }
-    let offset_dt = chrono_to_offset(remind_time)?;
-    let item_title = item
-        .get("title")
-        .and_then(|t| t.as_str())
-        .unwrap_or("Impegno");
-    let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
-    let item_date = item.get("date").and_then(|d| d.as_str()).unwrap_or("");
-    let item_id = item.get("id").and_then(|i| i.as_str()).unwrap_or("");
-    let body = build_reminder_body(item_title, item_time, item_local, remind_time);
-    let notif_id = hash_notification_id(&format!("remind-{}-{}-{}", item_date, item_id, item_time));
-    let sched = tauri_plugin_notification::Schedule::At {
-        date: offset_dt,
-        repeating: false,
-        allow_while_idle: true, // GOD TIER: busts Android Doze mode
-    };
-
-    // Determine if critical → use urgent channel (IMPORTANCE_HIGH)
-    let category = item.get("category").and_then(|c| c.as_str()).unwrap_or("");
-    let title_lower = item_title.to_lowercase();
-    let is_critical = category == "udienza"
-        || category == "scadenza"
-        || title_lower.contains("udienza")
-        || title_lower.contains("scadenza")
-        || title_lower.contains("ricorso")
-        || title_lower.contains("termine");
-
-    let channel_id = if is_critical {
-        "lexflow_urgent"
-    } else {
-        "lexflow_default"
-    };
-    let notif_title = if is_critical {
-        "LexFlow — ⚠️ Promemoria Urgente"
-    } else {
-        "LexFlow — Promemoria"
-    };
-
-    app.notification()
-        .builder()
-        .id(notif_id)
-        .channel_id(channel_id)
-        .title(notif_title)
-        .body(&body)
-        .schedule(sched)
-        .show()
-        .ok()
-        .map(|_| 1)
-}
-
 // ── DESKTOP: stub — scheduling is handled by the async cron job ────────────
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn sync_notifications(_app: &AppHandle, _data_dir: &std::path::Path) {
@@ -4365,10 +4398,8 @@ async fn desktop_cron_job(app: AppHandle) {
             eprintln!("[LexFlow Cron] ✓ Briefing fired: {}", briefing_key);
         }
 
-        // Check per-item reminders
-        for item in &items {
-            fire_desktop_reminder(&app, item, &current_minute);
-        }
+        // Check per-item reminders — GROUP by fire minute to avoid notification spam
+        fire_grouped_desktop_reminders(&app, &items, &current_minute);
     }
 }
 
@@ -4401,63 +4432,123 @@ fn fire_desktop_briefing(
     fire_urgent_desktop_notification(app, &title, &body_str);
 }
 
-/// Fire a single desktop reminder notification if it matches the current minute.
-/// Critical events (udienze, scadenze) are sent as time-sensitive (bypass DND).
+/// Fire GROUPED desktop reminder notifications for a given minute.
+/// Instead of spamming N separate notifications for N events with the same
+/// remind time, we group them into a single smart notification:
+///   - 1 event  → individual reminder (as before)
+///   - 2 events → both listed in one notification
+///   - 3+ events → first 2 listed + "…e altri N — controlla l'agenda"
+/// Critical events (udienza/scadenza) are always elevated to time-sensitive.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn fire_desktop_reminder(app: &AppHandle, item: &Value, current_minute: &str) {
-    let completed = item
-        .get("completed")
-        .and_then(|c| c.as_bool())
-        .unwrap_or(false);
-    if completed {
-        return;
-    }
-    let item_local = match parse_item_datetime(item) {
-        Some(t) => t,
-        None => return,
-    };
-    let remind_time = compute_remind_time(item, item_local);
-    let fire_minute = remind_time.format("%Y-%m-%d %H:%M").to_string();
-    if fire_minute != current_minute {
-        return;
-    }
-    let item_title = item
-        .get("title")
-        .and_then(|t| t.as_str())
-        .unwrap_or("Impegno");
-    let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
-    let body = build_reminder_body(item_title, item_time, item_local, remind_time);
+fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minute: &str) {
+    // Collect all items whose remind time matches this minute
+    let mut matching: Vec<&Value> = Vec::new();
+    let mut any_critical = false;
 
-    // Determine if this is a critical event (udienza/scadenza → time-sensitive)
-    let category = item.get("category").and_then(|c| c.as_str()).unwrap_or("");
-    let title_lower = item_title.to_lowercase();
-    let is_critical = category == "udienza"
-        || category == "scadenza"
-        || title_lower.contains("udienza")
-        || title_lower.contains("scadenza")
-        || title_lower.contains("ricorso")
-        || title_lower.contains("termine");
+    for item in items {
+        let completed = item.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
+        if completed { continue; }
+        let item_local = match parse_item_datetime(item) {
+            Some(t) => t,
+            None => continue,
+        };
+        let remind_time = compute_remind_time(item, item_local);
+        let fire_minute = remind_time.format("%Y-%m-%d %H:%M").to_string();
+        if fire_minute != current_minute { continue; }
 
-    if is_critical {
-        fire_urgent_desktop_notification(app, "LexFlow — ⚠️ Promemoria Urgente", &body);
+        // Check criticality
+        let category = item.get("category").and_then(|c| c.as_str()).unwrap_or("");
+        let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("");
+        let title_lower = title.to_lowercase();
+        if category == "udienza" || category == "scadenza"
+            || title_lower.contains("udienza") || title_lower.contains("scadenza")
+            || title_lower.contains("ricorso") || title_lower.contains("termine")
+        {
+            any_critical = true;
+        }
+        matching.push(item);
+    }
+
+    if matching.is_empty() { return; }
+
+    // Sort by event time ascending
+    matching.sort_by(|a, b| {
+        let ta = a.get("time").and_then(|v| v.as_str()).unwrap_or("");
+        let tb = b.get("time").and_then(|v| v.as_str()).unwrap_or("");
+        ta.cmp(tb)
+    });
+
+    let total = matching.len();
+
+    if total == 1 {
+        // Single event → classic individual reminder
+        let item = matching[0];
+        let item_local = match parse_item_datetime(item) {
+            Some(t) => t,
+            None => return, // Shouldn't happen (already filtered), but be safe
+        };
+        let remind_time = compute_remind_time(item, item_local);
+        let item_title = item.get("title").and_then(|t| t.as_str()).unwrap_or("Impegno");
+        let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
+        let body = build_reminder_body(item_title, item_time, item_local, remind_time);
+        let notif_title = if any_critical {
+            "LexFlow — ⚠️ Promemoria Urgente"
+        } else {
+            "LexFlow — Promemoria"
+        };
+        if any_critical {
+            fire_urgent_desktop_notification(app, notif_title, &body);
+        } else {
+            let app_clone = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                use tauri_plugin_notification::NotificationExt;
+                let _ = app_clone.notification().builder().title(notif_title).body(&body).show();
+            });
+        }
+        eprintln!("[LexFlow Cron] ✓ Reminder fired (1 event): {}", item_title);
     } else {
-        let app_clone = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            use tauri_plugin_notification::NotificationExt;
-            let _ = app_clone
-                .notification()
-                .builder()
-                .title("LexFlow — Promemoria")
-                .body(&body)
-                .show();
-        });
+        // Multiple events → grouped notification
+        let notif_title = if any_critical {
+            format!("LexFlow — ⚠️ {} impegni in arrivo", total)
+        } else {
+            format!("LexFlow — {} impegni in arrivo", total)
+        };
+
+        let mut lines: Vec<String> = Vec::new();
+        let show_count = if total <= 3 { total } else { 2 };
+        for item in matching.iter().take(show_count) {
+            let t = item.get("time").and_then(|v| v.as_str()).unwrap_or("");
+            let name = item.get("title").and_then(|v| v.as_str()).unwrap_or("Impegno");
+            if !t.is_empty() {
+                lines.push(format!("• {} — {}", t, name));
+            } else {
+                lines.push(format!("• {}", name));
+            }
+        }
+        if total > 3 {
+            let remaining = total - 2;
+            lines.push(format!(
+                "…e altr{} {} — controlla l'agenda",
+                if remaining == 1 { "o" } else { "i" },
+                remaining
+            ));
+        }
+        let body = lines.join("\n");
+
+        if any_critical {
+            fire_urgent_desktop_notification(app, &notif_title, &body);
+        } else {
+            let app_clone = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                use tauri_plugin_notification::NotificationExt;
+                let _ = app_clone.notification().builder().title(&notif_title).body(&body).show();
+            });
+        }
+        eprintln!(
+            "[LexFlow Cron] ✓ Grouped reminder fired: {} events in one notification",
+            total
+        );
     }
-    eprintln!(
-        "[LexFlow Cron] ✓ Reminder fired{}: {} → {}",
-        if is_critical { " (TIME-SENSITIVE)" } else { "" },
-        item_title,
-        fire_minute
-    );
 }
 
 // ═══════════════════════════════════════════════════════════

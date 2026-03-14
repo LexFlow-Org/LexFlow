@@ -60,15 +60,18 @@ export default function ContactsPage({ practices, onSelectPractice }) {
       toast.error('Errore salvataggio');
       setContacts(backup);
       prevContactsRef.current = backup;
+      throw e; // Re-throw so callers know it failed
     }
   }, []);
 
   const confirmDeleteContact = async () => {
     if (!pendingDeleteId) return;
-    await saveContacts(contacts.filter(c => c.id !== pendingDeleteId));
-    if (expandedId === pendingDeleteId) setExpandedId(null);
+    try {
+      await saveContacts(contacts.filter(c => c.id !== pendingDeleteId));
+      if (expandedId === pendingDeleteId) setExpandedId(null);
+      toast.success('Contatto eliminato');
+    } catch { /* saveContacts already showed toast.error */ }
     setPendingDeleteId(null);
-    toast.success('Contatto eliminato');
   };
 
   // Filter + search
@@ -316,15 +319,17 @@ export default function ContactsPage({ practices, onSelectPractice }) {
         <ContactModal
           initial={editingContact}
           onSave={async (contact) => {
-            if (editingContact) {
-              await saveContacts(contacts.map(c => c.id === contact.id ? contact : c));
-              setEditingContact(null);
-              toast.success('Contatto aggiornato');
-            } else {
-              await saveContacts([contact, ...contacts]);
-              setShowCreate(false);
-              toast.success('Contatto aggiunto');
-            }
+            try {
+              if (editingContact) {
+                await saveContacts(contacts.map(c => c.id === contact.id ? contact : c));
+                setEditingContact(null);
+                toast.success('Contatto aggiornato');
+              } else {
+                await saveContacts([contact, ...contacts]);
+                setShowCreate(false);
+                toast.success('Contatto aggiunto');
+              }
+            } catch { /* saveContacts already showed toast.error */ }
           }}
           onClose={() => { setShowCreate(false); setEditingContact(null); }}
         />

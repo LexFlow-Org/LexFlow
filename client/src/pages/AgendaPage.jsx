@@ -1228,7 +1228,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
 }
 
 // --- Componente Principale Agenda ---
-export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSelectPractice, settings }) {
+export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSelectPractice, settings, onSettingsChange }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState('today');
   const [modalEvent, setModalEvent] = useState(null);
@@ -1399,7 +1399,11 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
           key={`notif-${effectiveSettings?.briefingMattina}-${effectiveSettings?.briefingPomeriggio}-${effectiveSettings?.briefingSera}`}
           settings={effectiveSettings}
           agendaEvents={events}
-          onSave={(s) => setLocalSettings(s)} 
+          onSave={(s) => {
+            setLocalSettings(s);
+            // Propagate to parent App.jsx so all pages see updated values
+            if (onSettingsChange) onSettingsChange(s);
+          }} 
           onClose={() => setShowNotifPopup(false)} 
         />
       )}
@@ -1472,4 +1476,5 @@ AgendaPage.propTypes = {
   practices: PropTypes.array,
   onSelectPractice: PropTypes.func,
   settings: PropTypes.object,
+  onSettingsChange: PropTypes.func,
 };

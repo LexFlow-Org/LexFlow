@@ -483,7 +483,7 @@ BioResetConfirmModal.propTypes = { onClose: PropTypes.func.isRequired, bioStatus
 
 export default function SettingsPage({ onLock }) {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [privacyEnabled, setPrivacyEnabled] = useState(null);
+  const [privacyEnabled, setPrivacyEnabled] = useState(true);
   const [appVersion, setAppVersion] = useState('');
   const [platform, setPlatform] = useState('');
 
@@ -498,7 +498,7 @@ export default function SettingsPage({ onLock }) {
 
   // Stato per Sicurezza Avanzata
   const [screenshotProtection, setScreenshotProtection] = useState(true);
-  const [autolockMinutes, setAutolockMinutes] = useState(null);
+  const [autolockMinutes, setAutolockMinutes] = useState(5);
   
   // Modal visibility flags
   const [showFactoryReset, setShowFactoryReset] = useState(false);
@@ -526,12 +526,13 @@ export default function SettingsPage({ onLock }) {
       ['calendarSyncEnabled', setCalendarSyncEnabled],
     ];
     for (const [key, setter] of boolFields) {
-      if (typeof settings[key] === 'boolean') setter(settings[key]);
+      // Default to true (secure posture) when the key is missing from the backend
+      setter(typeof settings[key] === 'boolean' ? settings[key] : true);
     }
     // Unify: prefer `preavviso` (Agenda key), fallback to `notificationTime` (legacy Settings key)
     const time = settings.preavviso ?? settings.notificationTime;
     if (time !== undefined) setNotificationTime(time);
-    if (settings.autolockMinutes !== undefined) setAutolockMinutes(settings.autolockMinutes);
+    setAutolockMinutes(settings.autolockMinutes ?? 5);
   };
 
   useEffect(() => {
@@ -757,6 +758,13 @@ export default function SettingsPage({ onLock }) {
                   const val = !calendarSyncEnabled;
                   setCalendarSyncEnabled(val);
                   saveNotifySettings({ calendarSyncEnabled: val });
+                  if (val) {
+                    // User re-enabled calendar sync → clear the persistent
+                    // "denied" flag so the next sync attempt will try again.
+                    // This is the ONLY way the TCC popup can re-appear: the
+                    // user explicitly goes to Settings and turns the toggle on.
+                    localStorage.removeItem('lexflow_calendar_denied');
+                  }
                 }}
                 className={`w-12 h-6 rounded-full transition-colors relative ${calendarSyncEnabled ? 'bg-primary' : 'bg-white/10'}`}
               >

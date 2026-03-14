@@ -116,24 +116,34 @@ export default function TimeTrackingPage({ practices }) {
     };
     const updated = [newLog, ...logs];
     setLogs(updated);
-    api.saveTimeLogs(updated).catch(() => {});
+    api.saveTimeLogs(updated)
+      .then(() => toast.success(`Registrate ${fmtDuration(minutes)}`))
+      .catch(() => toast.error('Errore salvataggio ore'));
     setActiveTimer(null);
-    toast.success(`Registrate ${fmtDuration(minutes)}`);
   }, [activeTimer, logs]);
 
-  const saveLog = (log) => {
+  const saveLog = async (log) => {
     const isNew = !logs.some(l => l.id === log.id);
     const updated = isNew ? [log, ...logs] : logs.map(l => l.id === log.id ? log : l);
     setLogs(updated);
-    api.saveTimeLogs(updated).catch(() => {});
+    try {
+      await api.saveTimeLogs(updated);
+      toast.success(isNew ? 'Registrazione aggiunta' : 'Registrazione aggiornata');
+    } catch {
+      toast.error('Errore salvataggio registrazione');
+    }
     setShowAddModal(false); setEditingLog(null);
-    toast.success(isNew ? 'Registrazione aggiunta' : 'Registrazione aggiornata');
   };
 
-  const deleteLog = (id) => {
+  const deleteLog = async (id) => {
     const updated = logs.filter(l => l.id !== id);
-    setLogs(updated); api.saveTimeLogs(updated).catch(() => {});
-    toast.success('Registrazione eliminata');
+    setLogs(updated);
+    try {
+      await api.saveTimeLogs(updated);
+      toast.success('Registrazione eliminata');
+    } catch {
+      toast.error('Errore eliminazione');
+    }
   };
 
   const confirmDeleteLog = (id) => {
@@ -143,18 +153,28 @@ export default function TimeTrackingPage({ practices }) {
     });
   };
 
-  const saveInvoice = (inv) => {
+  const saveInvoice = async (inv) => {
     const isNew = !invoices.some(i => i.id === inv.id);
     const updated = isNew ? [inv, ...invoices] : invoices.map(i => i.id === inv.id ? inv : i);
-    setInvoices(updated); api.saveInvoices(updated).catch(() => {});
+    setInvoices(updated);
+    try {
+      await api.saveInvoices(updated);
+      toast.success(isNew ? 'Parcella creata' : 'Parcella aggiornata');
+    } catch {
+      toast.error('Errore salvataggio parcella');
+    }
     setShowCreateInvoice(false); setEditingInvoice(null);
-    toast.success(isNew ? 'Parcella creata' : 'Parcella aggiornata');
   };
 
-  const deleteInvoice = (id) => {
+  const deleteInvoice = async (id) => {
     const updated = invoices.filter(i => i.id !== id);
-    setInvoices(updated); api.saveInvoices(updated).catch(() => {});
-    toast.success('Parcella eliminata');
+    setInvoices(updated);
+    try {
+      await api.saveInvoices(updated);
+      toast.success('Parcella eliminata');
+    } catch {
+      toast.error('Errore eliminazione parcella');
+    }
   };
 
   const confirmDeleteInvoice = (id) => {

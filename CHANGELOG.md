@@ -4,6 +4,26 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.6.2] -- 2026-03-14
+
+### Added
+- **Mini-Agenda Scadenze Fascicolo** -- Il form "Aggiungi scadenza" nel fascicolo ora include selettore orario (`<input type="time">`) e preavviso specifico (Generale / 15min / 30min / 1h / 2h); il dato si propaga via `syncDeadlinesToAgenda` → Agenda → Notifiche
+- **Notifiche Raggruppate (Desktop)** -- `fire_grouped_desktop_reminders` sostituisce `fire_desktop_reminder`: eventi con lo stesso minuto di fuoco vengono raggruppati in un'unica notifica smart (1 evento = individuale, 2-3 = elencati, 4+ = primi 2 + "…e altri N")
+- **Notifiche Raggruppate (Mobile AOT)** -- `schedule_grouped_reminder_aot` sostituisce `schedule_reminder_aot`: stessa logica di raggruppamento su Android/iOS con BTreeMap per fire-minute
+
+### Changed
+- **Calendario Persistente** -- Il flag anti-popup TCC del calendario macOS ora è persistente in `localStorage` (`lexflow_calendar_denied`), non più session-only (`useRef`); il popup appare una sola volta in assoluto. L'utente può riabilitare da Impostazioni → toggle "Sincronizzazione Calendario" (cancella il flag)
+- **Orario scadenze dinamico** -- `syncDeadlinesToAgenda` legge `d.time` dalla scadenza del fascicolo (fallback `09:00`) e calcola `timeEnd` automaticamente; propaga `remindMinutes` per preavviso personalizzato
+- **Save Integrity Audit** -- Tutte le operazioni di salvataggio in TimeTrackingPage (5 funzioni), ContactsPage e PracticeDetail convertite da fire-and-forget a `await` con `try/catch` + feedback errore
+
+### Fixed
+- **Popup calendario ad ogni unlock** -- Risolto: il popup TCC macOS non riappare più dopo kill/restart dell'app (era causato dal ref di sessione che si azzerava)
+- **Impostazioni default a false** -- Privacy blur, protezione screenshot, notifiche ora defaultano a `true` alla prima apertura (coalescenza `?? true` / `!== false`)
+- **Scadenze duplicate** -- Rimosso il blocco `deadlineItems` in `syncScheduleToBackend` che duplicava le scadenze già presenti come eventi agenda via `syncDeadlinesToAgenda`
+- **Campo `category` mancante** -- Aggiunto `category: e.category || ''` in `mapAgendaToScheduleItems` per la corretta rilevazione time-sensitive nel backend Rust
+- **Crash Rust `.unwrap()`** -- Sostituito `.unwrap()` con `match` guard in `fire_grouped_desktop_reminders` per evitare panic su dati malformati
+
+---
 ## [1.5.7] -- 2026-03-13
 
 ### Added

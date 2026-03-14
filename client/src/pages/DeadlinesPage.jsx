@@ -115,7 +115,7 @@ DeadlineSection.propTypes = {
   onNavigate: PropTypes.func,
 };
 
-export default function DeadlinesPage({ practices, onSelectPractice, settings, agendaEvents, onNavigate }) {
+export default function DeadlinesPage({ practices, onSelectPractice, settings, agendaEvents, onNavigate, onSettingsChange }) {
   const [briefingMattina, setBriefingMattina] = useState(settings?.briefingMattina || '08:30');
   const [briefingPomeriggio, setBriefingPomeriggio] = useState(settings?.briefingPomeriggio || '14:30');
   const [briefingSera, setBriefingSera] = useState(settings?.briefingSera || '19:30');
@@ -140,6 +140,8 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
       const items = mapAgendaToScheduleItems(agendaEvents, settings?.preavviso || 30);
       await api.syncNotificationSchedule({ briefingTimes, items });
       setBriefingDirty(false);
+      // Propagate to parent so all pages see the updated briefing times
+      if (onSettingsChange) onSettingsChange({ briefingMattina, briefingPomeriggio, briefingSera });
       toast.success('Orari briefing aggiornati');
     } catch {
       toast.error('Errore nel salvataggio');
@@ -206,7 +208,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
   }, [practices, agendaEvents, practicesMap]);
 
   return (
-    <div className="main-content animate-slide-up">
+    <div className="animate-slide-up space-y-0">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -303,4 +305,5 @@ DeadlinesPage.propTypes = {
   settings: PropTypes.object,
   agendaEvents: PropTypes.array,
   onNavigate: PropTypes.func,
+  onSettingsChange: PropTypes.func,
 };

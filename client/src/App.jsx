@@ -61,6 +61,13 @@ export default function App() {
 
   const [showCreate, setShowCreate] = useState(false);
 
+  // Persistent flag: once we've attempted OS Calendar sync (user accepted OR
+  // declined), we NEVER re-prompt the TCC popup. The flag lives in localStorage
+  // so it survives app kills, crashes, and reboots. The user can re-enable
+  // sync manually from Settings → "Sincronizza Calendario".
+  // Additionally we track within the current session to avoid redundant calls.
+  const calendarSyncedThisSession = useRef(false);
+
   // --- TEMA CHIARO/SCURO ---
   const saveSettingsForTheme = useCallback(async (updated) => {
     setSettings(updated);
@@ -85,7 +92,8 @@ export default function App() {
   api.getSettings?.().then(s => {
       if (s) {
         setSettings(s);
-        if (typeof s.privacyBlurEnabled === 'boolean') setPrivacyEnabled(s.privacyBlurEnabled);
+        // Default to true (secure posture) when the key is missing
+        setPrivacyEnabled(typeof s.privacyBlurEnabled === 'boolean' ? s.privacyBlurEnabled : true);
         // Apply screenshot protection — default to true on first launch
         const screenshotProt = typeof s.screenshotProtection === 'boolean' ? s.screenshotProtection : true;
         api.setContentProtection?.(screenshotProt);
@@ -142,6 +150,9 @@ export default function App() {
     setSelectedId(null);
     setAutoLocked(isAuto); // memorizza se è autolock
     setIsLocked(true);
+    // Calendar sync: calendarSyncedThisSession prevents redundant calls within
+    // a single session. The PERSISTENT denied flag lives in localStorage, so
+    // even a full app restart won't re-prompt the TCC popup.
     navigate('/');
   }, [navigate]);
 
@@ -179,24 +190,33 @@ export default function App() {
       (p.deadlines || []).forEach(d => {
         const syncId = `deadline_${p.id}_${d.date}_${d.label.replaceAll(/\s/g, '_')}`;
         const existing = existingSyncedMap.get(syncId);
+        const deadlineTime = d.time || '09:00';
+        // Calcola timeEnd = timeStart + 1h
+        const [hh, mm] = deadlineTime.split(':').map(Number);
+        const endH = String(Math.min(hh + 1, 23)).padStart(2, '0');
+        const timeEnd = `${endH}:${String(mm).padStart(2, '0')}`;
         syncedEvents.push({
           // Valori default per nuovi eventi
           id: syncId,
           title: d.label,
           date: d.date,
-          timeStart: '09:00',
-          timeEnd: '10:00',
+          timeStart: deadlineTime,
+          timeEnd,
           category: 'scadenza',
           notes: `Fascicolo: ${p.client} — ${p.object}`,
           completed: false,
           autoSync: true,
           practiceId: p.id,
+          // Preavviso specifico dalla scadenza del fascicolo
+          ...(d.remindMinutes != null ? { remindMinutes: d.remindMinutes } : {}),
           // Sovrascrivi con eventuali modifiche utente (orario, note, completamento)
           ...(existing ? {
             timeStart: existing.timeStart,
             timeEnd: existing.timeEnd,
             notes: existing.notes,
             completed: existing.completed,
+            // Preserva remindMinutes se l'utente l'ha cambiato dall'agenda
+            ...(existing.remindMinutes != null ? { remindMinutes: existing.remindMinutes } : {}),
           } : {}),
         });
       });
@@ -205,25 +225,14 @@ export default function App() {
   }, []);
 
   // Centralizza il sync dello schedule verso il backend Rust scheduler
-  const syncScheduleToBackend = useCallback(async (events, pList, settingsOverride) => {
+  const syncScheduleToBackend = useCallback(async (events, settingsOverride) => {
     if (!api.syncNotificationSchedule) return;
-    // A. Eventi agenda
     const s = settingsOverride || settings;
-    const agendaItems = mapAgendaToScheduleItems(events, s?.preavviso || 30);
-    // B. Scadenze fascicoli attivi (notifica alle 09:00 del giorno della scadenza)
-    const deadlineItems = [];
-    (pList || []).filter(p => p.status === 'active').forEach(p => {
-      (p.deadlines || []).forEach(d => {
-        deadlineItems.push({
-          id: `deadline-${p.id}-${d.date}`,
-          date: d.date,
-          time: '09:00',
-          title: `Scadenza: ${d.label} — ${p.client}`,
-          remindMinutes: 0, // notify at 09:00 sharp
-        });
-      });
-    });
-    const items = [...agendaItems, ...deadlineItems];
+    // Tutti gli impegni agenda (incluse scadenze auto-sincronizzate dai fascicoli)
+    // diventano schedule items con orario reale + preavviso globale/individuale.
+    // Non serve un blocco separato per le scadenze: syncDeadlinesToAgenda le ha già
+    // inserite negli events con timeStart/category/remindMinutes corretti.
+    const items = mapAgendaToScheduleItems(events, s?.preavviso || 30);
     const briefingTimes = [
       s?.briefingMattina || '08:30',
       s?.briefingPomeriggio || '14:30',
@@ -237,10 +246,35 @@ export default function App() {
     // Google Calendar). The OS itself becomes the notification engine:
     // events propagate to Apple Watch, Android Auto, iCloud, and Google
     // servers — without LexFlow ever touching the internet.
-    if (api.syncOsCalendar && s?.calendarSyncEnabled !== false) {
-      const calItems = events.filter(e => !e.completed && e.date && e.title);
-      api.syncOsCalendar(calItems)
-        .catch(e => console.warn('[App] syncOsCalendar failed:', e));
+    //
+    // PERSISTENT LOGIC (not session-only):
+    // 1. If user disabled calendarSync in Settings → skip entirely
+    // 2. If we already synced this session → skip (avoid redundant calls)
+    // 3. If localStorage says we already asked and got DENIED → skip forever
+    //    (user can re-enable from Settings which clears the denied flag)
+    // 4. Otherwise → call sync. If Rust/Swift returns "DENIED", save that
+    //    persistently so we never re-prompt the TCC popup again.
+    if (api.syncOsCalendar && s?.calendarSyncEnabled !== false && !calendarSyncedThisSession.current) {
+      const calendarDenied = localStorage.getItem('lexflow_calendar_denied') === 'true';
+      if (!calendarDenied) {
+        calendarSyncedThisSession.current = true;
+        const calItems = events.filter(e => !e.completed && e.date && e.title);
+        try {
+          const result = await api.syncOsCalendar(calItems);
+          if (result?.error === 'calendar_permission_denied') {
+            // User declined the TCC popup → save persistently, never ask again
+            localStorage.setItem('lexflow_calendar_denied', 'true');
+            console.warn('[App] Calendar permission denied — will not ask again');
+          } else if (result?.success) {
+            // Permission granted & sync OK → remember that it works
+            localStorage.removeItem('lexflow_calendar_denied');
+          }
+        } catch (e) {
+          console.warn('[App] syncOsCalendar failed:', e);
+        }
+      } else {
+        calendarSyncedThisSession.current = true; // don't retry this session
+      }
     }
   }, [settings]);
 
@@ -262,7 +296,7 @@ export default function App() {
       await api.saveAgenda(synced).catch(e => console.warn('[App] saveAgenda sync failed:', e));
 
       // Sync schedule al backend (riusa syncScheduleToBackend con settings override)
-      await syncScheduleToBackend(synced, pracs, currentSettings);
+      await syncScheduleToBackend(synced, currentSettings);
     } catch (e) { 
       console.error("Errore caricamento dati:", e); 
     }
@@ -307,7 +341,7 @@ export default function App() {
         agendaRef.current = synced;
         await api.saveAgenda(synced);
         // Sync schedule col backend (include scadenze fascicoli aggiornate)
-        syncScheduleToBackend(synced, newList);
+        syncScheduleToBackend(synced);
       } catch (e) {
         console.error('[App] savePractices pipeline error:', e);
         toast.error('Errore salvataggio fascicoli');
@@ -321,12 +355,18 @@ export default function App() {
     try {
       if (api.saveAgenda) await api.saveAgenda(newEvents);
       // Sync notification schedule with updated items for backend scheduler
-      syncScheduleToBackend(newEvents, practices);
+      syncScheduleToBackend(newEvents);
     } catch (e) {
       console.error('[App] saveAgenda error:', e);
       toast.error('Errore salvataggio agenda');
     }
   };
+
+  // Callback for child pages (Agenda, Scadenze) to propagate settings changes
+  // back to App.jsx so all pages see the updated values immediately.
+  const handleSettingsChange = useCallback((updatedSettings) => {
+    setSettings(prev => ({ ...prev, ...updatedSettings }));
+  }, []);
 
   const handleSelectPractice = (id) => {
     setSelectedId(id);
@@ -432,9 +472,9 @@ export default function App() {
                   <PracticeDetail
                     practice={selectedPractice}
                     onBack={() => setSelectedId(null)}
-                    onUpdate={(up) => {
+                    onUpdate={async (up) => {
                       const newList = practices.map(p => p.id === up.id ? up : p);
-                      savePractices(newList);
+                      await savePractices(newList);
                     }}
                     agendaEvents={agendaEvents}
                   />
@@ -448,7 +488,7 @@ export default function App() {
               } />
               
               <Route path="/scadenze" element={
-                <DeadlinesPage practices={practices} onSelectPractice={handleSelectPractice} settings={settings} agendaEvents={agendaEvents} onNavigate={navigate} />
+                <DeadlinesPage practices={practices} onSelectPractice={handleSelectPractice} settings={settings} agendaEvents={agendaEvents} onNavigate={navigate} onSettingsChange={handleSettingsChange} />
               } />
               
               <Route path="/agenda" element={
@@ -458,6 +498,7 @@ export default function App() {
                   practices={practices}
                   onSelectPractice={handleSelectPractice}
                   settings={settings}
+                  onSettingsChange={handleSettingsChange}
                 />
               } />
               
