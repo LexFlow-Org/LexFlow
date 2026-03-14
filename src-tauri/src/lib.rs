@@ -5428,6 +5428,7 @@ fn garbage_collect_temp_files() {
 }
 
 /// Scan a directory and remove files/dirs older than `max_age`.
+#[allow(dead_code)]
 fn gc_directory(
     dir: &std::path::Path,
     max_age: Duration,
