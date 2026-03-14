@@ -4082,22 +4082,33 @@ fn schedule_all_reminders(
     // Group items by their fire-minute string
     let mut groups: BTreeMap<String, Vec<&Value>> = BTreeMap::new();
     for item in items {
-        let completed = item.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
-        if completed { continue; }
+        let completed = item
+            .get("completed")
+            .and_then(|c| c.as_bool())
+            .unwrap_or(false);
+        if completed {
+            continue;
+        }
         let item_local = match parse_item_datetime(item) {
             Some(t) => t,
             None => continue,
         };
-        if item_local > horizon { continue; }
+        if item_local > horizon {
+            continue;
+        }
         let remind_time = compute_remind_time(item, item_local);
-        if remind_time <= now { continue; }
+        if remind_time <= now {
+            continue;
+        }
         let fire_key = remind_time.format("%Y-%m-%d %H:%M").to_string();
         groups.entry(fire_key).or_default().push(item);
     }
 
     let mut count = already;
     for (_fire_key, group) in &groups {
-        if count >= max { break; }
+        if count >= max {
+            break;
+        }
         if let Some(sc) = schedule_grouped_reminder_aot(app, group, now, horizon) {
             count += sc;
         }
@@ -4117,7 +4128,9 @@ fn schedule_grouped_reminder_aot(
 ) -> Option<i32> {
     use tauri_plugin_notification::NotificationExt;
 
-    if group.is_empty() { return None; }
+    if group.is_empty() {
+        return None;
+    }
 
     // Use the first item to compute the fire time (all items in group share it)
     let first = group[0];
@@ -4137,9 +4150,12 @@ fn schedule_grouped_reminder_aot(
         let category = item.get("category").and_then(|c| c.as_str()).unwrap_or("");
         let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("");
         let title_lower = title.to_lowercase();
-        if category == "udienza" || category == "scadenza"
-            || title_lower.contains("udienza") || title_lower.contains("scadenza")
-            || title_lower.contains("ricorso") || title_lower.contains("termine")
+        if category == "udienza"
+            || category == "scadenza"
+            || title_lower.contains("udienza")
+            || title_lower.contains("scadenza")
+            || title_lower.contains("ricorso")
+            || title_lower.contains("termine")
         {
             any_critical = true;
             break;
@@ -4150,7 +4166,10 @@ fn schedule_grouped_reminder_aot(
     let (notif_title, body) = if total == 1 {
         let item = sorted_group[0];
         let item_local = parse_item_datetime(item).unwrap_or(first_local);
-        let item_title = item.get("title").and_then(|t| t.as_str()).unwrap_or("Impegno");
+        let item_title = item
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("Impegno");
         let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
         let body = build_reminder_body(item_title, item_time, item_local, remind_time);
         let title = if any_critical {
@@ -4169,7 +4188,10 @@ fn schedule_grouped_reminder_aot(
         let show_count = if total <= 3 { total } else { 2 };
         for item in sorted_group.iter().take(show_count) {
             let t = item.get("time").and_then(|v| v.as_str()).unwrap_or("");
-            let name = item.get("title").and_then(|v| v.as_str()).unwrap_or("Impegno");
+            let name = item
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Impegno");
             if !t.is_empty() {
                 lines.push(format!("• {} — {}", t, name));
             } else {
@@ -4187,7 +4209,11 @@ fn schedule_grouped_reminder_aot(
         (title, lines.join("\n"))
     };
 
-    let channel_id = if any_critical { "lexflow_urgent" } else { "lexflow_default" };
+    let channel_id = if any_critical {
+        "lexflow_urgent"
+    } else {
+        "lexflow_default"
+    };
     let seed = format!("remind-grouped-{}", remind_time.format("%Y-%m-%d-%H-%M"));
     let notif_id = hash_notification_id(&seed);
 
@@ -4447,30 +4473,42 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
     let mut any_critical = false;
 
     for item in items {
-        let completed = item.get("completed").and_then(|c| c.as_bool()).unwrap_or(false);
-        if completed { continue; }
+        let completed = item
+            .get("completed")
+            .and_then(|c| c.as_bool())
+            .unwrap_or(false);
+        if completed {
+            continue;
+        }
         let item_local = match parse_item_datetime(item) {
             Some(t) => t,
             None => continue,
         };
         let remind_time = compute_remind_time(item, item_local);
         let fire_minute = remind_time.format("%Y-%m-%d %H:%M").to_string();
-        if fire_minute != current_minute { continue; }
+        if fire_minute != current_minute {
+            continue;
+        }
 
         // Check criticality
         let category = item.get("category").and_then(|c| c.as_str()).unwrap_or("");
         let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("");
         let title_lower = title.to_lowercase();
-        if category == "udienza" || category == "scadenza"
-            || title_lower.contains("udienza") || title_lower.contains("scadenza")
-            || title_lower.contains("ricorso") || title_lower.contains("termine")
+        if category == "udienza"
+            || category == "scadenza"
+            || title_lower.contains("udienza")
+            || title_lower.contains("scadenza")
+            || title_lower.contains("ricorso")
+            || title_lower.contains("termine")
         {
             any_critical = true;
         }
         matching.push(item);
     }
 
-    if matching.is_empty() { return; }
+    if matching.is_empty() {
+        return;
+    }
 
     // Sort by event time ascending
     matching.sort_by(|a, b| {
@@ -4489,7 +4527,10 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
             None => return, // Shouldn't happen (already filtered), but be safe
         };
         let remind_time = compute_remind_time(item, item_local);
-        let item_title = item.get("title").and_then(|t| t.as_str()).unwrap_or("Impegno");
+        let item_title = item
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("Impegno");
         let item_time = item.get("time").and_then(|t| t.as_str()).unwrap_or("");
         let body = build_reminder_body(item_title, item_time, item_local, remind_time);
         let notif_title = if any_critical {
@@ -4503,7 +4544,12 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
             let app_clone = app.clone();
             let _ = app.run_on_main_thread(move || {
                 use tauri_plugin_notification::NotificationExt;
-                let _ = app_clone.notification().builder().title(notif_title).body(&body).show();
+                let _ = app_clone
+                    .notification()
+                    .builder()
+                    .title(notif_title)
+                    .body(&body)
+                    .show();
             });
         }
         eprintln!("[LexFlow Cron] ✓ Reminder fired (1 event): {}", item_title);
@@ -4519,7 +4565,10 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
         let show_count = if total <= 3 { total } else { 2 };
         for item in matching.iter().take(show_count) {
             let t = item.get("time").and_then(|v| v.as_str()).unwrap_or("");
-            let name = item.get("title").and_then(|v| v.as_str()).unwrap_or("Impegno");
+            let name = item
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Impegno");
             if !t.is_empty() {
                 lines.push(format!("• {} — {}", t, name));
             } else {
@@ -4542,7 +4591,12 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
             let app_clone = app.clone();
             let _ = app.run_on_main_thread(move || {
                 use tauri_plugin_notification::NotificationExt;
-                let _ = app_clone.notification().builder().title(&notif_title).body(&body).show();
+                let _ = app_clone
+                    .notification()
+                    .builder()
+                    .title(&notif_title)
+                    .body(&body)
+                    .show();
             });
         }
         eprintln!(
