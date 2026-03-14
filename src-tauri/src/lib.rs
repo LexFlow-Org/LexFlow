@@ -110,17 +110,23 @@ const MAX_SETTINGS_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 // ═══════════════════════════════════════════════════════════
 
 /// Platform-specific UID — extracted to eliminate 3 duplicate blocks.
-/// Returns a string combining domain/SID (Windows) or real UID+username (Unix).
-/// SECURITY FIX (Audit Chunk 01): on Unix, uses libc::getuid() syscall instead of $UID env var.
-/// Env vars are user-spoofable (`export UID=fake`); getuid() is a kernel syscall and non-falsifiable.
+/// Returns a string combining domain + user-profile path (Windows) or real UID+username (Unix).
+/// 
+/// Windows: uses USERDOMAIN + USERPROFILE env vars.  These are user-spoofable in theory,
+/// but Windows has no unprivileged equivalent of Unix getuid().  The value is only used
+/// as one component of the encryption-key seed (combined with machine_id + salt), so
+/// spoofing it would only lock the attacker out of their own vault.
+/// 
+/// Unix: uses libc::getuid() syscall (kernel-level, non-spoofable) + whoami::username().
+/// SECURITY FIX (Audit Chunk 01): replaced $UID env var with getuid() syscall.
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 fn get_platform_uid() -> String {
     #[cfg(target_os = "windows")]
     {
         let domain = std::env::var("USERDOMAIN").unwrap_or_else(|_| "WORKGROUP".to_string());
-        let sid = std::env::var("USERPROFILE")
+        let profile = std::env::var("USERPROFILE")
             .unwrap_or_else(|_| std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "0".to_string()));
-        format!("{}:{}", domain, sid)
+        format!("{}:{}", domain, profile)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -222,7 +228,10 @@ fn get_local_encryption_key_legacy() -> Zeroizing<Vec<u8>> {
 /// risk is accepted. The failure is logged to stderr. The migration will retry on every
 /// subsequent read until it succeeds.
 fn decrypt_local_with_migration(path: &std::path::Path) -> Option<Vec<u8>> {
-    let enc = fs::read(path).ok()?;
+    // SECURITY FIX (Audit 2026-03-14): use safe_bounded_read to prevent OOM attacks
+    // on locally-written encrypted files (settings, burned-keys, license sentinel).
+    // MAX_SETTINGS_FILE_SIZE (10 MB) is generous for any real encrypted payload.
+    let enc = safe_bounded_read(path, MAX_SETTINGS_FILE_SIZE).ok()?;
     let key = get_local_encryption_key();
     if let Ok(dec) = decrypt_data(&key, &enc) {
         return Some(dec);
@@ -313,8 +322,13 @@ fn get_local_encryption_key() -> Zeroizing<Vec<u8>> {
     {
         let android_id = get_android_device_id();
         let seed = format!("LEXFLOW-ANDROID-KEY:{}:FORTKNOX", android_id);
-        let hash = <Sha256 as Digest>::digest(seed.as_bytes());
-        Zeroizing::new(hash.to_vec())
+        // SECURITY FIX (Audit 2026-03-14): use double_sha256_key to match desktop
+        // derivation pattern.  Previously used a single SHA-256 digest — functionally
+        // not weaker (the input has high entropy), but inconsistent with the desktop
+        // code path and created an unnecessary asymmetry in key derivation.
+        let h1 = <Sha256 as Digest>::digest(seed.as_bytes());
+        let h2 = <Sha256 as Digest>::digest(h1);
+        Zeroizing::new(h2.to_vec())
     }
 }
 
@@ -349,7 +363,12 @@ fn get_android_device_id() -> String {
         "FATAL: Nessun percorso scrivibile trovato su Android per persistere la master key.",
     );
     if let Some(parent) = id_path.parent() {
-        let _ = fs::create_dir_all(parent);
+        // SECURITY FIX (Audit 2026-03-14): propagate create_dir_all failure with a
+        // meaningful message instead of silently ignoring it and letting the subsequent
+        // fs::write panic with a confusing "No such file or directory" error.
+        fs::create_dir_all(parent).expect(
+            "FATAL: Impossibile creare la directory per device_id. Verifica i permessi del filesystem.",
+        );
     }
     fs::write(&id_path, &id_hex).expect("FATAL: Impossibile salvare device_id. Rischio data loss.");
     id_hex
@@ -398,8 +417,12 @@ fn compute_machine_fingerprint() -> String {
 // Each activated token is irreversibly hashed (SHA-256) and appended to an
 // AES-256-GCM encrypted registry file. On activation, the registry is checked
 // BEFORE the Ed25519 signature — a burned token is rejected instantly.
-// The hash is salted with the machine fingerprint so the same hash cannot be
-// compared across machines (defense-in-depth against registry copy attacks).
+//
+// HISTORY: v1 salted the hash with the machine fingerprint, which meant the same
+// token produced *different* hashes on different machines — defeating single-use
+// enforcement on offline installs. v2 (current) uses a GLOBAL hash so the same
+// token is recognised as burned regardless of which machine it's checked on.
+// Legacy v1 hashes are still checked during migration (compute_burn_hash_legacy).
 
 /// Compute the burn-hash of a token: SHA256("BURN-GLOBAL-V2:<raw_token>")
 /// SECURITY FIX: burn-hash is now machine-INDEPENDENT so the same key cannot be
@@ -636,6 +659,13 @@ fn get_vault_key(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>>, String> 
     // so callers automatically zero memory when the key goes out of scope.
     // SECURITY FIX (Gemini Audit v2): mutex poisoning protection — use unwrap_or_else
     // instead of unwrap() so a panicked thread doesn't permanently brick the app.
+    //
+    // TRADE-OFF (Audit 2026-03-14): .to_vec() creates a second copy of the 32-byte key.
+    // The original SecureKey stays inside the Mutex (zeroized on lock_vault / drop).
+    // The returned Zeroizing<Vec<u8>> is zeroized when the caller's scope ends.
+    // This means 2 copies exist simultaneously while a command is executing (~ms).
+    // Unavoidable: Rust's borrow rules prevent returning a reference from a MutexGuard
+    // that outlives the lock.  Both copies are protected by Zeroize/ZeroizeOnDrop.
     state
         .vault_key
         .lock()
@@ -766,9 +796,14 @@ fn check_lockout(state: &State<AppState>, sec_dir: &std::path::Path) -> Result<(
     }
     // Check disk-based lockout
     if let Some(end_time) = disk_locked_until {
-        if SystemTime::now() < end_time {
+        // SECURITY FIX (Audit 2026-03-14): capture now() once to avoid micro-race
+        // between the comparison and the duration_since() call.  Previously called
+        // SystemTime::now() twice, which could produce incorrect remaining time if
+        // the clock advanced between calls.
+        let now = SystemTime::now();
+        if now < end_time {
             let remaining = end_time
-                .duration_since(SystemTime::now())
+                .duration_since(now)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
             return Err(
@@ -833,6 +868,11 @@ fn clear_lockout(state: &State<AppState>, sec_dir: &std::path::Path) {
 /// Centralized atomic write with fsync — replaces 5+ duplicated patterns.
 /// SECURITY FIX (Gemini Audit Chunk 05): random tmp name to prevent TOCTOU symlink attacks.
 /// Also performs directory fsync after rename for crash-safe persistence.
+///
+/// Entropy note (Audit 2026-03-14): rand::random::<u32>() provides 32 bits (~4 billion
+/// possibilities). A TOCTOU attacker would need to guess the exact filename within the
+/// millisecond window between create and rename. This is more than sufficient — the tmp
+/// file also has 0600 permissions (set by secure_write) blocking access by other users.
 fn atomic_write_with_sync(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     let tmp_name = format!(
         ".{}.tmp.{}",
@@ -1144,6 +1184,21 @@ fn transactional_vault_swap(
     let salt_path = dir.join(VAULT_SALT_FILE);
     let verify_path = dir.join(VAULT_VERIFY_FILE);
 
+    // SECURITY FIX (Audit 2026-03-14): remove stale .bak files from a previous crash
+    // before creating new backups. If a crash left .bak files behind, the rename below
+    // would silently overwrite them on most OSes — but on some (Windows) it could fail,
+    // leaving the backup stale and rollback broken.
+    for bak_name in &[".vault.bak", ".salt.bak", ".verify.bak"] {
+        let bak_path = dir.join(bak_name);
+        if bak_path.exists() {
+            eprintln!(
+                "[LexFlow] transactional_vault_swap: removing stale backup {:?}",
+                bak_name
+            );
+            let _ = fs::remove_file(&bak_path);
+        }
+    }
+
     // Backup old files before swap
     let _ = fs::rename(&vault_path, dir.join(".vault.bak"));
     let _ = fs::rename(&salt_path, dir.join(".salt.bak"));
@@ -1293,7 +1348,18 @@ fn change_password(
         if dir.join(BIO_MARKER_FILE).exists() {
             let user = whoami::username();
             if let Ok(entry) = keyring::Entry::new(BIO_SERVICE, &user) {
-                let _ = entry.set_password(&new_password);
+                // SECURITY FIX (Audit 2026-03-14): if the keychain update fails, remove
+                // the biometric marker so the user isn't left with a stale password in
+                // the keychain that would silently fail on next Touch ID / Windows Hello
+                // login.  The user will be prompted to re-enable biometrics.
+                if entry.set_password(&new_password).is_err() {
+                    eprintln!(
+                        "[SECURITY WARNING] Failed to update biometric password in keychain. \
+                         Disabling biometric login to prevent stale-password auth failures."
+                    );
+                    let _ = fs::remove_file(dir.join(BIO_MARKER_FILE));
+                    let _ = entry.delete_credential();
+                }
             }
         }
     }
@@ -1823,12 +1889,33 @@ function Await($WinRtTask, $ResultType) {
 $result = Await ([Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync("LexFlow — Verifica identità")) ([Windows.Security.Credentials.UI.UserConsentVerificationResult])
 if ($result -eq [Windows.Security.Credentials.UI.UserConsentVerificationResult]::Verified) { exit 0 } else { exit 1 }
 "#;
-        let status = Command::new(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+        // SECURITY FIX (Audit 2026-03-14): add 60s timeout to Windows Hello subprocess,
+        // matching the macOS biometric timeout.  Without this, a frozen Windows Hello
+        // dialog would block the app indefinitely.
+        let mut child = Command::new(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .status()
+            .spawn()
             .map_err(|e| e.to_string())?;
+
+        let timeout = Duration::from_secs(60);
+        let start = Instant::now();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(s)) => break s,
+                Ok(None) => {
+                    if start.elapsed() >= timeout {
+                        let _ = child.kill();
+                        return Ok(
+                            json!({"success": false, "error": "Timeout autenticazione Windows Hello (60s)"}),
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                Err(e) => return Err(e.to_string()),
+            }
+        };
         if !status.success() {
             return Ok(
                 json!({"success": false, "error": "Windows Hello fallito o non disponibile"}),
@@ -2140,8 +2227,15 @@ fn monotonic_clock_check(sec_dir: &std::path::Path) -> Result<(), String> {
                 .expect("HMAC can take key of any size");
             mac.update(b"CLOCK-CHECK:");
             mac.update(parts[0].as_bytes());
-            let expected = hex::encode(mac.finalize().into_bytes());
-            if stored_hmac == expected && now_ms < stored_ts.saturating_sub(300_000) {
+            // SECURITY FIX (Audit 2026-03-14): use constant-time HMAC comparison via
+            // hex-decode + verify_slice instead of string ==.  The timing leak on a
+            // local timestamp is negligible, but constant-time comparison is best
+            // practice and costs nothing.
+            let hmac_valid = hex::decode(stored_hmac)
+                .ok()
+                .map(|bytes| mac.verify_slice(&bytes).is_ok())
+                .unwrap_or(false);
+            if hmac_valid && now_ms < stored_ts.saturating_sub(300_000) {
                 // Clock went backwards by more than 5 minutes — suspicious
                 return Err("SECURITY: System clock appears to have been set backwards. License check refused.".into());
             }
@@ -3089,16 +3183,32 @@ async fn import_vault(
             let mut new_salt = vec![0u8; 32];
             rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut new_salt);
             let new_key = derive_secure_key(&pwd, &new_salt)?;
-            // Write salt with mode 0600
-            secure_write(&dir.join(VAULT_SALT_FILE), &new_salt).map_err(|e| e.to_string())?;
-            // Write verify tag
             let verify_tag = make_verify_tag(&new_key);
-            secure_write(&dir.join(VAULT_VERIFY_FILE), &verify_tag).map_err(|e| e.to_string())?;
-            // Set the vault key in state so write_vault_internal can use it
+            // SECURITY FIX (Audit 2026-03-14): use staging + transactional swap for import,
+            // matching the change_password pattern.  Previously wrote salt → verify → vault
+            // sequentially — a crash between writes left the vault in an inconsistent state
+            // (e.g., new salt but old verify tag, causing permanent lockout).
+            let staging_dir = dir.join(".import-staging");
+            let _ = fs::create_dir_all(&staging_dir);
+            // Encrypt the imported data with the new key
+            let vault_plaintext = Zeroizing::new(serde_json::to_vec(&val).map_err(|e| e.to_string())?);
+            let encrypted_vault = encrypt_data(&new_key, &vault_plaintext)?;
+            // Stage all three files atomically
+            if atomic_write_with_sync(&staging_dir.join(VAULT_FILE), &encrypted_vault).is_err()
+                || atomic_write_with_sync(&staging_dir.join(VAULT_SALT_FILE), &new_salt).is_err()
+                || atomic_write_with_sync(&staging_dir.join(VAULT_VERIFY_FILE), &verify_tag).is_err()
+            {
+                let _ = fs::remove_dir_all(&staging_dir);
+                return Err("Errore critico durante la preparazione dell'import. Import annullato.".into());
+            }
+            // Transactional swap with rollback
+            transactional_vault_swap(&dir, &staging_dir)?;
+            cleanup_vault_backups(&dir);
+            let _ = fs::remove_dir_all(&staging_dir);
+            // Set the vault key in state after successful swap
             *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) =
                 Some(SecureKey(Zeroizing::new(new_key)));
         }
-        write_vault_internal(&state, &val)?;
         let _ = append_audit_log(&state, "Vault importato da backup");
         // SECURITY FIX (Gemini Audit): safe password zeroing — no UB
         zeroize_password(pwd);
@@ -3349,7 +3459,16 @@ async fn write_pdf_to_path(path: String, data: Vec<u8>) -> Result<bool, String> 
                 .to_string(),
         );
     }
-    std::fs::write(&path, &data).map_err(|e| format!("Write failed: {}", e))?;
+    // SECURITY FIX (Audit 2026-03-14): use write + fsync for crash-safe persistence.
+    // Previously used bare fs::write which doesn't fsync — on crash/power loss the PDF
+    // could be truncated or empty.  For user-facing export files this is worth the
+    // marginal cost of one fsync.
+    {
+        use std::io::Write;
+        let mut file = fs::File::create(&path).map_err(|e| format!("Create failed: {}", e))?;
+        file.write_all(&data).map_err(|e| format!("Write failed: {}", e))?;
+        file.sync_all().map_err(|e| format!("Sync failed: {}", e))?;
+    }
     Ok(true)
 }
 
@@ -4441,6 +4560,9 @@ fn sync_os_calendar(state: State<AppState>, events: Value) -> Result<Value, Stri
         // SECURITY FIX (Audit 2026-03-14): encode payload as Base64 to prevent
         // Swift heredoc injection (`"""` in event titles would break the string literal
         // and allow arbitrary Swift code execution).
+        // SAFETY NOTE: Base64 charset is [A-Za-z0-9+/=] — these characters cannot
+        // escape out of a Swift string literal, so format!() interpolation is safe.
+        // No further sanitization or escaping is needed.
         let b64_payload = json_to_base64(&payload);
 
         // Swift code that uses EventKit to create/update calendar events locally.
@@ -5518,18 +5640,14 @@ fn run_ls_cleanup(
                             .unwrap_or(false);
 
                         if !is_current {
-                            // Only attempt unregister if the path still exists on disk;
-                            // avoids useless errors for already-deleted bundles.
-                            if stale.exists() {
-                                let _ = std::process::Command::new(ls)
-                                    .args(["-u", &stale.to_string_lossy()])
-                                    .status();
-                            } else {
-                                // Path is gone — unregister anyway to purge the DB entry
-                                let _ = std::process::Command::new(ls)
-                                    .args(["-u", &stale.to_string_lossy()])
-                                    .status();
-                            }
+                            // SECURITY FIX (Audit 2026-03-14): removed redundant if/else —
+                            // both branches executed identical code.  Unregister regardless
+                            // of whether the stale path still exists on disk: lsregister -u
+                            // gracefully handles non-existent paths and we want to purge the
+                            // LaunchServices DB entry either way.
+                            let _ = std::process::Command::new(ls)
+                                .args(["-u", &stale.to_string_lossy()])
+                                .status();
                             unregistered += 1;
                             eprintln!(
                                 "[LexFlow] LaunchServices: unregistered stale «{}»",
@@ -5952,9 +6070,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_shell::init());
 

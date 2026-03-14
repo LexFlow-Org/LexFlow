@@ -1,6 +1,6 @@
 [package]
 name = "lexflow"
-version = "1.5.8"
+version = "1.6.0"
 description = "LexFlow -- Gestionale Studio Legale con Crittografia Zero-Knowledge"
 authors = ["Pietro Longo"]
 edition = "2021"
@@ -25,9 +25,6 @@ tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-os = "2"
-tauri-plugin-clipboard-manager = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-window-state = "2"
 

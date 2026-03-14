@@ -25,31 +25,6 @@
     "notification:allow-batch",
     "notification:allow-check-permissions",
     "notification:allow-permission-state",
-    "clipboard-manager:default",
-    "clipboard-manager:allow-write-text",
-    "clipboard-manager:allow-read-text",
-    {
-      "identifier": "fs:allow-read-file",
-      "allow": [
-        { "path": "$APPDATA/**" },
-        { "path": "$APPDATA" }
-      ]
-    },
-    {
-      "identifier": "fs:allow-write-file",
-      "allow": [
-        { "path": "$APPDATA/**" },
-        { "path": "$APPDATA" }
-      ]
-    },
-    {
-      "identifier": "fs:allow-exists",
-      "allow": [
-        { "path": "$APPDATA/**" },
-        { "path": "$APPDATA" }
-      ]
-    },
-    "os:default",
     {
       "identifier": "shell:allow-execute",
       "allow": [

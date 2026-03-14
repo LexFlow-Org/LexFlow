@@ -2,15 +2,22 @@
 <html lang="it">
   <head>
     <meta charset="UTF-8" />
+    <!-- SECURITY FIX (Audit 2026-03-14): CSP aligned with tauri.conf.json.
+         Removed 'unsafe-inline' from script-src — Tauri v2 auto-generates nonces for
+         inline scripts present at build time.  Added object-src/frame-ancestors from
+         tauri.conf.json that were missing here.  This meta tag is a fallback if Tauri's
+         injected CSP fails to load; it should be equally strict. -->
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'self'; 
-                   script-src 'self' 'unsafe-inline'; 
+                   script-src 'self'; 
                    style-src 'self' 'unsafe-inline'; 
                    img-src 'self' data: blob:; 
                    font-src 'self' data:; 
                    connect-src ipc: http://ipc.localhost; 
+                   object-src 'none';
                    base-uri 'self';
-                   form-action 'self';" />
+                   form-action 'self';
+                   frame-ancestors 'none';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LexFlow</title>
     <!-- ★ Tema istantaneo: applica PRIMA di qualsiasi rendering per evitare flash nero→bianco -->

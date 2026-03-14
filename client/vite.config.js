@@ -27,6 +27,9 @@ export default defineConfig({
     emptyOutDir: true,
     minify: 'terser',
     terserOptions: {
+      // SECURITY (Audit 2026-03-14): drop_console removes ALL console.* calls in production.
+      // This prevents leaking sensitive data (vault contents, keys, user info) to the
+      // WebView dev console. Backend diagnostics use the Rust panic logger + crash.log.
       compress: { drop_console: true, drop_debugger: true },
       mangle: { toplevel: true },
     },
