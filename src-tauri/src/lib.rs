@@ -5185,7 +5185,7 @@ fn acquire_single_instance_mutex() -> bool {
         )
     };
 
-    if handle == 0 {
+    if handle.is_null() {
         // CreateMutex failed entirely — let the app run anyway
         eprintln!("[LexFlow] WARNING: CreateMutexA failed, single-instance check skipped");
         return true;
@@ -5203,7 +5203,7 @@ fn acquire_single_instance_mutex() -> bool {
 
     // We got the mutex — store the handle so it lives for the process lifetime
     // (the OS releases it automatically when the process exits)
-    let _ = SINGLE_INSTANCE_MUTEX.set(handle);
+    let _ = SINGLE_INSTANCE_MUTEX.set(handle as isize);
     eprintln!("[LexFlow] Single-instance mutex acquired ✓");
     true
 }
