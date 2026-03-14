@@ -4438,6 +4438,7 @@ fn fire_desktop_briefing(
 ///   - 1 event  → individual reminder (as before)
 ///   - 2 events → both listed in one notification
 ///   - 3+ events → first 2 listed + "…e altri N — controlla l'agenda"
+///
 /// Critical events (udienza/scadenza) are always elevated to time-sensitive.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minute: &str) {
@@ -4791,8 +4792,8 @@ print("OK:\(count)")
             .map_err(|e| format!("Swift process error: {}", e))?;
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-        if stdout.starts_with("OK:") {
-            let synced: usize = stdout[3..].parse().unwrap_or(0);
+        if let Some(count_str) = stdout.strip_prefix("OK:") {
+            let synced: usize = count_str.parse().unwrap_or(0);
             eprintln!(
                 "[LexFlow] Calendar sync: {} events written to macOS Calendar ✓",
                 synced
