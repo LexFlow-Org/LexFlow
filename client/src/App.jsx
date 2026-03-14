@@ -209,6 +209,7 @@ export default function App() {
           practiceId: p.id,
           // Preavviso specifico dalla scadenza del fascicolo
           ...(d.remindMinutes != null ? { remindMinutes: d.remindMinutes } : {}),
+          ...(d.customRemindTime ? { customRemindTime: d.customRemindTime } : {}),
           // Sovrascrivi con eventuali modifiche utente (orario, note, completamento)
           ...(existing ? {
             timeStart: existing.timeStart,
@@ -217,6 +218,7 @@ export default function App() {
             completed: existing.completed,
             // Preserva remindMinutes se l'utente l'ha cambiato dall'agenda
             ...(existing.remindMinutes != null ? { remindMinutes: existing.remindMinutes } : {}),
+            ...(existing.customRemindTime ? { customRemindTime: existing.customRemindTime } : {}),
           } : {}),
         });
       });

@@ -179,7 +179,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
       });
     });
 
-    (agendaEvents || []).filter(e => e.category === 'scadenza' && !e.completed).forEach(e => {
+    (agendaEvents || []).filter(e => e.category === 'scadenza' && !e.completed && !e.autoSync).forEach(e => {
       const diff = daysDiff(e.date);
       if (diff === null) return;
       all.push({

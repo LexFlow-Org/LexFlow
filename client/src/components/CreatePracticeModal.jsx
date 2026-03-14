@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { 
-  X, User, Building, Scale, Hash, Save, FileText, Plus, FilePlus, AlertCircle, Trash2 
+  X, User, Building, Scale, Hash, Save, FileText, Plus, FilePlus, AlertCircle, Trash2, MapPin 
 } from 'lucide-react';
 import * as api from '../tauri-api';
 import ModalOverlay from './ModalOverlay';
@@ -22,6 +22,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
     type: 'civile',
     counterparty: '',
     court: '',
+    courtLocation: '',
     code: '',
     description: '',
     status: 'active',
@@ -184,17 +185,32 @@ export default function CreatePracticeModal({ onClose, onSave }) {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="cpm-court" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Autorità / Tribunale</label>
-              <div className="relative group">
-                <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
-                <input
-                  id="cpm-court"
-                  className="input-field pl-12 w-full bg-white/5 border-white/10"
-                  placeholder="Sede o Giudice..."
-                  value={formData.court}
-                  onChange={e => updateField('court', e.target.value)}
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label htmlFor="cpm-court" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Autorità</label>
+                <div className="relative group">
+                  <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
+                  <input
+                    id="cpm-court"
+                    className="input-field pl-12 w-full bg-white/5 border-white/10"
+                    placeholder="Tribunale, Corte, Giudice..."
+                    value={formData.court}
+                    onChange={e => updateField('court', e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="cpm-courtLocation" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Sede</label>
+                <div className="relative group">
+                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
+                  <input
+                    id="cpm-courtLocation"
+                    className="input-field pl-12 w-full bg-white/5 border-white/10"
+                    placeholder="Città o sezione..."
+                    value={formData.courtLocation}
+                    onChange={e => updateField('courtLocation', e.target.value)}
+                  />
+                </div>
               </div>
             </div>
 

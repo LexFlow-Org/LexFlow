@@ -256,6 +256,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   const [newDeadlineDate, setNewDeadlineDate] = useState('');
   const [newDeadlineTime, setNewDeadlineTime] = useState('09:00');
   const [newDeadlineRemind, setNewDeadlineRemind] = useState(null); // null = usa preavviso globale
+  const [newDeadlineCustomTime, setNewDeadlineCustomTime] = useState('08:00'); // per preavviso "Alle"
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   // --- Helpers ---
@@ -474,7 +475,10 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       time: newDeadlineTime || '09:00',
     };
     // Salva preavviso solo se specifico (non null/globale)
-    if (newDeadlineRemind !== null) {
+    if (newDeadlineRemind === 'custom') {
+      newD.remindMinutes = 'custom';
+      newD.customRemindTime = newDeadlineCustomTime;
+    } else if (newDeadlineRemind !== null) {
       newD.remindMinutes = newDeadlineRemind;
     }
 
@@ -487,6 +491,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       setNewDeadlineDate('');
       setNewDeadlineTime('09:00');
       setNewDeadlineRemind(null);
+      setNewDeadlineCustomTime('08:00');
       toast.success('Scadenza aggiunta');
     } catch {
       toast.error('Errore salvataggio scadenza');
@@ -770,7 +775,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
         {/* ═══ TAB: SCADENZE ═══ */}
         {activeTab === 'deadlines' && (
           <div className="max-w-3xl mx-auto">
-            <form onSubmit={addDeadline} className="mb-6 space-y-2">
+            <form onSubmit={addDeadline} className="mb-6 space-y-3">
               <div className="flex gap-2">
                 <input
                   className="input-field flex-1"
@@ -792,35 +797,62 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 />
                 <button
                   type="submit"
-                  className="btn-primary px-3"
+                  className="btn-primary px-4 flex items-center gap-1.5 text-xs font-bold"
                   disabled={!newDeadlineLabel.trim() || !newDeadlineDate}
                 >
-                  <Plus size={16} />
+                  <Plus size={14} /> Aggiungi
                 </button>
               </div>
-              {/* Preavviso specifico */}
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-text-dim">Preavviso:</span>
-                {[
-                  { label: 'Generale', value: null },
-                  { label: '15min', value: 15 },
-                  { label: '30min', value: 30 },
-                  { label: '1h', value: 60 },
-                  { label: '2h', value: 120 },
-                ].map(opt => (
-                  <button
-                    key={String(opt.value)}
-                    type="button"
-                    onClick={() => setNewDeadlineRemind(opt.value)}
-                    className={`px-2 py-0.5 rounded transition-colors ${
-                      newDeadlineRemind === opt.value
-                        ? 'bg-primary/20 text-primary font-medium'
-                        : 'text-text-dim hover:text-text hover:bg-white/5'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+              {/* Preavviso specifico – allineato con Agenda */}
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1 block">Preavviso Notifica</span>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {[
+                    { value: null, label: 'Standard' },
+                    { value: 5, label: '5 min' },
+                    { value: 10, label: '10 min' },
+                    { value: 15, label: '15 min' },
+                    { value: 30, label: '30 min' },
+                    { value: 60, label: '1 ora' },
+                    { value: 120, label: '2 ore' },
+                    { value: 1440, label: '1 giorno' },
+                  ].map(opt => (
+                    <button
+                      key={String(opt.value)}
+                      type="button"
+                      onClick={() => setNewDeadlineRemind(opt.value)}
+                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                        newDeadlineRemind === opt.value
+                          ? 'bg-primary text-black border-primary shadow-[0_0_10px_rgba(212,169,64,0.25)]'
+                          : 'bg-white/5 text-text-dim border-white/10 hover:bg-white/10 hover:text-text'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                  {/* Pill orario personalizzato "Alle" */}
+                  <div className={`inline-flex items-center rounded-xl border transition-all ${
+                    newDeadlineRemind === 'custom'
+                      ? 'border-primary bg-primary/10 shadow-[0_0_10px_rgba(212,169,64,0.25)]'
+                      : 'border-white/10 bg-white/5 hover:bg-white/10'
+                  }`}>
+                    <button type="button"
+                      onClick={() => setNewDeadlineRemind('custom')}
+                      className={`px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                        newDeadlineRemind === 'custom' ? 'text-primary' : 'text-text-dim hover:text-text'
+                      }`}>
+                      Alle
+                    </button>
+                    <input
+                      type="time"
+                      value={newDeadlineCustomTime}
+                      onFocus={() => setNewDeadlineRemind('custom')}
+                      onChange={e => { setNewDeadlineCustomTime(e.target.value); setNewDeadlineRemind('custom'); }}
+                      className="bg-transparent border-none outline-none text-[10px] font-mono text-white w-[52px] py-1 pr-2 focus:ring-0"
+                    />
+                  </div>
+                </div>
+                <p className="text-[9px] text-text-dim mt-0.5">«Standard» usa il preavviso globale. «Alle» invia la notifica all&apos;orario preciso scelto.</p>
               </div>
             </form>
 
@@ -868,7 +900,13 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                            )}
                            {d.remindMinutes != null && (
                              <span className="text-[9px] font-bold text-amber-400/80 uppercase tracking-wider bg-amber-400/10 px-1.5 py-0.5 rounded">
-                               🔔 {d.remindMinutes >= 60 ? `${d.remindMinutes / 60}h` : `${d.remindMinutes}min`}
+                               🔔 {d.remindMinutes === 'custom'
+                                 ? `alle ${d.customRemindTime || '—'}`
+                                 : d.remindMinutes >= 1440
+                                   ? `${d.remindMinutes / 1440}g`
+                                   : d.remindMinutes >= 60
+                                     ? `${d.remindMinutes / 60}h`
+                                     : `${d.remindMinutes}min`}
                              </span>
                            )}
                            {d.source === 'agenda' && (
@@ -908,8 +946,12 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   }</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Tribunale</span>
+                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Autorità</span>
                   <span className="text-text font-medium">{practice.court || '—'}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Sede</span>
+                  <span className="text-text font-medium">{practice.courtLocation || '—'}</span>
                 </div>
                 <div>
                   <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Riferimento</span>

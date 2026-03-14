@@ -17,7 +17,8 @@ import {
   BellOff,
   BellRing,
   Briefcase,
-  Check
+  Check,
+  FolderOpen
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
@@ -292,7 +293,7 @@ function EmptyState({ message, sub, onAdd, date }) {
 }
 
 // --- Componente Modal ---
-function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
+function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelectPractice }) {
   const isEdit = !!event?.id;
 
   // Dynamic default: next half-hour from now
@@ -518,10 +519,16 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices }) {
         </form>
 
         {/* Footer — stile unificato con Fascicoli */}
-        <div className="modal-footer gap-4">
+        <div className="modal-footer gap-3">
           {isEdit && !event?.autoSync && (
             <button type="button" onClick={() => setConfirmDelete(true)} className="px-5 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2">
               <Trash2 size={16}/> Elimina
+            </button>
+          )}
+          {/* Link al fascicolo collegato */}
+          {isEdit && practiceId && onSelectPractice && (
+            <button type="button" onClick={() => { onClose(); onSelectPractice(practiceId); }} className="px-5 py-3 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+              <FolderOpen size={16}/> Fascicolo
             </button>
           )}
           <button 
@@ -1285,7 +1292,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
     const nowEnd = `${String((hh + 1) % 24).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
     setModalEvent({ event: { date: date || toDateStr(new Date()), timeStart: tS || nowStart, timeEnd: tE || nowEnd }, isNew: true });
   }, []);
-  const openEdit = useCallback((ev) => ev.autoSync && ev.practiceId && onSelectPractice ? onSelectPractice(ev.practiceId) : setModalEvent({ event: ev, isNew: false }), [onSelectPractice]);
+  const openEdit = useCallback((ev) => setModalEvent({ event: ev, isNew: false }), []);
   
   const views = [ 
     { key: 'today', label: 'Oggi', icon: Clock }, 
@@ -1393,7 +1400,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
         )}
       </div>
 
-      {modalEvent && <EventModal event={modalEvent.event} onSave={handleSave} onDelete={handleDelete} onClose={() => setModalEvent(null)} practices={practices} />}
+      {modalEvent && <EventModal event={modalEvent.event} onSave={handleSave} onDelete={handleDelete} onClose={() => setModalEvent(null)} practices={practices} onSelectPractice={onSelectPractice} />}
       {showNotifPopup && (
         <NotificationSettingsPopup 
           key={`notif-${effectiveSettings?.briefingMattina}-${effectiveSettings?.briefingPomeriggio}-${effectiveSettings?.briefingSera}`}
@@ -1425,6 +1432,7 @@ EventModal.propTypes = {
   onDelete: PropTypes.func,
   onClose: PropTypes.func.isRequired,
   practices: PropTypes.array,
+  onSelectPractice: PropTypes.func,
 };
 
 StatsCard.propTypes = {

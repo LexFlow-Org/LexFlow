@@ -4,6 +4,24 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.6.3] -- 2026-03-14
+
+### Added
+- **Preavviso "Alle" nel Fascicolo** -- Il selettore preavviso scadenze nel fascicolo ora include tutte le opzioni dell'Agenda: 5, 10, 15, 30 min, 1 ora, 2 ore, 1 giorno + selettore orario personalizzato "Alle HH:MM"
+- **Pulsante "Fascicolo" in Agenda** -- Il modal evento Agenda mostra un pulsante dedicato con icona `FolderOpen` per navigare al fascicolo collegato, separato dall'apertura card
+- **Campo "Sede" separato** -- I fascicoli ora hanno campi distinti "Autorità" (tribunale/corte/giudice) e "Sede" (città/sezione), sia in creazione che nella scheda info
+
+### Changed
+- **Mini-agenda UI** -- Bottone "Aggiungi" con testo esplicito; preavviso con stile pill allineato all'Agenda (font bold, uppercase, bordi arrotondati, evidenziazione gold)
+- **Sync bidirezionale preavviso** -- `syncDeadlinesToAgenda` propaga e preserva anche `customRemindTime` in entrambe le direzioni (fascicolo ↔ agenda)
+- **Badge preavviso** -- Le schede scadenza nel fascicolo ora mostrano correttamente "alle HH:MM" per preavvisi custom e "1g" per 1440 min
+
+### Fixed
+- **Scadenze duplicate in DeadlinesPage** -- Aggiunto filtro `!e.autoSync` alla raccolta agendaEvents per escludere gli eventi auto-sincronizzati (che duplicavano le scadenze dei fascicoli)
+- **Click evento Agenda** -- Il clic su un evento auto-sincronizzato ora apre sempre la card modale invece di navigare direttamente al fascicolo
+
+---
+
 ## [1.6.2] -- 2026-03-14
 
 ### Added
