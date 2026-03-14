@@ -4403,7 +4403,8 @@ fn json_to_base64(json_str: &str) -> String {
 /// Creates a dedicated "LexFlow" calendar if it doesn't exist, then upserts events.
 /// Returns the number of events synced.
 #[tauri::command]
-fn sync_os_calendar(_state: State<AppState>, events: Value) -> Result<Value, String> {
+#[allow(unused_variables)]
+fn sync_os_calendar(state: State<AppState>, events: Value) -> Result<Value, String> {
     let items = events.as_array().ok_or("events must be an array")?;
 
     #[cfg(target_os = "macos")]
