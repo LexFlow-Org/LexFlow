@@ -144,14 +144,14 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
     const h = new Date().getHours();
     const { background } = getHeroGradient();
 
-    if (h < 13) return {
+    if (h >= 5 && h < 13) return {
       label: 'AGGIORNAMENTO MATTUTINO',
       greeting: 'Buongiorno',
       sub: 'Ecco gli impegni previsti per la giornata di oggi.',
       background,
       icon: <Sunrise size={100} strokeWidth={1} />,
     };
-    if (h < 18) return {
+    if (h >= 13 && h < 18) return {
       label: 'AGGIORNAMENTO POMERIDIANO',
       greeting: 'Buon Pomeriggio',
       sub: 'Focus sulle attività rimanenti prima della chiusura dello studio.',

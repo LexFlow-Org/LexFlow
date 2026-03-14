@@ -77,12 +77,12 @@
     --primary-glow: rgba(218, 181, 80, 0.25);
     --primary-ink: #3d2e0a;
 
-    /* Sfondi (dark: ammorbiditi per ridurre il nero troppo profondo) */
-    --bg: #1a1b24;
-    --bg-card: #22232c;
-    --bg-card-hover: #2c2d38;
-    --bg-input: #262730;
-    --bg-surface: #252632;
+    /* Sfondi (dark: ammorbiditi — non nero profondo, leggero blu-grigio) */
+    --bg: #1c1d26;
+    --bg-card: #24252e;
+    --bg-card-hover: #2e2f3a;
+    --bg-input: #282932;
+    --bg-surface: #272834;
 
     /* Testi */
     --text: #edeef6;
@@ -91,7 +91,7 @@
     --text-subtle: #B0B6D0;
 
     /* Bordi & Ombre */
-    --border: #32374f;
+    --border: #32394f;
     --radius: 12px;
     --radius-sm: 8px;
     --radius-lg: 16px;
@@ -112,8 +112,8 @@
     --cat-altro:     #8891A5;
 
     /* ── Sidebar ── */
-    --sidebar-bg:   #14151c;
-    --sidebar-deep: #08090f;
+    --sidebar-bg:   #16171e;
+    --sidebar-deep: #0a0b11;
     --sidebar-text: #e2e4ef;
     --sidebar-dim:  #9CA0B8;
 
@@ -149,12 +149,12 @@
     --primary-glow: rgba(218, 181, 80, 0.25);
     --primary-ink: #3d2e0a;
 
-    /* Sfondi invertiti — contrasto bg↔card IDENTICO al dark (ratio ≈1.095) */
-    --bg: #e6e7e9;
-    --bg-card: #f0f1f2;
-    --bg-card-hover: #ecedef;
-    --bg-input: #f0f1f2;
-    --bg-surface: #f0f1f2;
+    /* Sfondi invertiti — luminosità ridotta per meno affaticamento, contrasto bg↔card mantenuto */
+    --bg: #dddee0;
+    --bg-card: #e7e8e9;
+    --bg-card-hover: #e3e4e6;
+    --bg-input: #e7e8e9;
+    --bg-surface: #e7e8e9;
 
     /* Testi — scuri e leggibili, non puro nero */
     --text: #1c1d22;
@@ -162,8 +162,8 @@
     --text-dim: #5c6080;
     --text-subtle: #6e7290;
 
-    /* Bordi — ratio bg↔border IDENTICO al dark (≈1.46) */
-    --border: #bfc1c3;
+    /* Bordi — ratio bg↔border IDENTICO al dark */
+    --border: #b7bbbf;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 
     /* Semantici — IDENTICI */
@@ -180,8 +180,8 @@
     --cat-altro:     #8891A5;
 
     /* ── Sidebar — ratio bg↔sidebar IDENTICO al dark ── */
-    --sidebar-bg:   #e0e1e3;
-    --sidebar-deep: #d6d7d9;
+    --sidebar-bg:   #d7d8d9;
+    --sidebar-deep: #cdcfcd;
     --sidebar-text: #1e1f28;
     --sidebar-dim:  #6b7094;
 

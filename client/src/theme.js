@@ -80,66 +80,33 @@ export const SEMANTIC = {
   border:       '#32374f',
 };
 
-// ── Colori Hero Dashboard — Stagionali & Dinamici ────────
+// ── Colori Hero Dashboard — 3 fasce orarie ──────────────
 // Colore unico per tema chiaro e scuro — IDENTICO in entrambi i temi.
-// Ogni stagione ha una TINTA DOMINANTE unica e riconoscibile.
-// Mattina (più chiara) → Pomeriggio (media) → Sera (profonda).
-// Tutti i 12 colori sono WCAG AAA ≥ 4.5:1 su bianco.
-// 12 combinazioni: 4 stagioni × 3 momenti del giorno
+// Solo 3 colori: mattina / pomeriggio / sera. Niente stagioni (troppi = poco professionale).
+// Tutti WCAG AAA ≥ 4.5:1 su bianco. Nessuno si confonde con --primary (#dab550).
 export const HERO_COLORS = {
-  // 🌿 PRIMAVERA — Verde oliva caldo — sole caldo tra le foglie nuove
-  spring: {
-    morning:   '#697332',   // Oliva dorato             (5.12:1 AAA ✅)
-    afternoon: '#55642a',   // Oliva bosco              (6.48:1 AAA ✅)
-    evening:   '#445026',   // Verde muschio — sera     (8.67:1 AAA ✅)
-  },
-  // ☀️ ESTATE — Senape/ambra dorata — il sole al suo apice
-  summer: {
-    morning:   '#826914',   // Senape viva              (5.28:1 AAA ✅)
-    afternoon: '#735812',   // Ambra calda              (6.70:1 AAA ✅)
-    evening:   '#5f480f',   // Bronzo sera              (8.68:1 AAA ✅)
-  },
-  // 🍂 AUTUNNO — Rame/terracotta — foglie che cadono, caminetto
-  autumn: {
-    morning:   '#aa5528',   // Rame luminoso            (5.20:1 AAA ✅)
-    afternoon: '#944420',   // Terracotta calda         (6.76:1 AAA ✅)
-    evening:   '#73341c',   // Mattone — sera al camino (9.39:1 AAA ✅)
-  },
-  // ❄️ INVERNO — Blu petrolio/ardesia — freddo elegante
-  winter: {
-    morning:   '#525f76',   // Petrolio chiaro          (6.45:1 AAA ✅)
-    afternoon: '#3e4b64',   // Ardesia                  (8.77:1 AAA ✅)
-    evening:   '#303a4e',   // Blu notte                (11.41:1 AAA ✅)
-  },
+  morning:   '#b06028',   // Ambra alba — caldo/luminoso (4.62:1 AAA ✅)
+  afternoon: '#842e28',   // Mattone granata — profondo (8.74:1 AAA ✅)
+  evening:   '#283450',   // Blu acciaio notte — scuro (12.37:1 AAA ✅, ratio 1.35 vs dark bg)
 };
 
-/** Determina la stagione dall'emisfero nord (Italia) */
-export function getSeason(month = new Date().getMonth()) {
-  if (month >= 2 && month <= 4) return 'spring';   // Mar-Mag
-  if (month >= 5 && month <= 7) return 'summer';    // Giu-Ago
-  if (month >= 8 && month <= 10) return 'autumn';   // Set-Nov
-  return 'winter';                                   // Dic-Feb
-}
-
-/** Determina la fascia oraria */
+/** Determina la fascia oraria (mattina dalle 5, notte 0-4 = sera) */
 export function getTimeOfDay(hour = new Date().getHours()) {
-  if (hour < 13) return 'morning';
-  if (hour < 18) return 'afternoon';
+  if (hour >= 5 && hour < 13) return 'morning';
+  if (hour >= 13 && hour < 18) return 'afternoon';
   return 'evening';
 }
 
 /**
- * Ottiene il colore hero per stagione + ora.
+ * Ottiene il colore hero per fascia oraria.
  * Colore unico indipendente dal tema — niente gradienti, niente banding.
  */
 export function getHeroGradient() {
-  const season = getSeason();
   const timeOfDay = getTimeOfDay();
-  const background = HERO_COLORS[season]?.[timeOfDay] || HERO_COLORS.winter.morning;
+  const background = HERO_COLORS[timeOfDay] || HERO_COLORS.morning;
 
   return {
     background,
-    season,
     timeOfDay,
   };
 }

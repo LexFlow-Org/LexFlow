@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "LexFlow",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "identifier": "com.pietrolongo.lexflow",
   "build": {
     "frontendDist": "../client/dist",
@@ -30,7 +30,7 @@
         "fullscreen": false,
         "transparent": false,
         "visible": true,
-        "backgroundColor": "#08090f",
+        "backgroundColor": "#0a0b11",
         "backgroundThrottling": "disabled"
       }
     ]

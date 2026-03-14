@@ -20,7 +20,8 @@ import {
   X,
   Fingerprint,
   ShieldCheck,
-  Briefcase
+  Briefcase,
+  CalendarSync
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import LicenseSettings from '../components/LicenseSettings';
@@ -488,9 +489,10 @@ export default function SettingsPage({ onLock }) {
   const [lawyerName, setLawyerName] = useState('');
   const [studioName, setStudioName] = useState('');
 
-  // Stato per le Notifiche
-  const [notifyEnabled, setNotifyEnabled] = useState(null);
+  // Stato per le Notifiche — attive di default
+  const [notifyEnabled, setNotifyEnabled] = useState(true);
   const [notificationTime, setNotificationTime] = useState(null);
+  const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(true);
 
   // Stato per Sicurezza Avanzata
   const [screenshotProtection, setScreenshotProtection] = useState(null);
@@ -519,6 +521,7 @@ export default function SettingsPage({ onLock }) {
       ['privacyBlurEnabled', setPrivacyEnabled],
       ['notifyEnabled', setNotifyEnabled],
       ['screenshotProtection', setScreenshotProtection],
+      ['calendarSyncEnabled', setCalendarSyncEnabled],
     ];
     for (const [key, setter] of boolFields) {
       if (typeof settings[key] === 'boolean') setter(settings[key]);
@@ -568,7 +571,8 @@ export default function SettingsPage({ onLock }) {
     preavviso: notificationTime ?? 30,
     screenshotProtection: screenshotProtection ?? true,
     autolockMinutes: autolockMinutes ?? 5,
-  }), [privacyEnabled, notifyEnabled, notificationTime, screenshotProtection, autolockMinutes]);
+    calendarSyncEnabled: calendarSyncEnabled ?? true,
+  }), [privacyEnabled, notifyEnabled, notificationTime, screenshotProtection, autolockMinutes, calendarSyncEnabled]);
 
   const handlePrivacyToggle = async () => {
     const newValue = !privacyEnabled;
@@ -711,6 +715,29 @@ export default function SettingsPage({ onLock }) {
                 </div>
               </div>
             )}
+
+            {/* Calendar Sync Toggle */}
+            <div className="flex items-center justify-between pt-4 border-t border-border">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <CalendarSync size={16} className="text-primary" />
+                  <span className="font-medium text-text">Sincronizzazione Calendario</span>
+                </div>
+                <p className="text-xs text-text-muted max-w-md">
+                  Sincronizza udienze e scadenze con il Calendario di sistema (macOS).
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  const val = !calendarSyncEnabled;
+                  setCalendarSyncEnabled(val);
+                  saveNotifySettings({ calendarSyncEnabled: val });
+                }}
+                className={`w-12 h-6 rounded-full transition-colors relative ${calendarSyncEnabled ? 'bg-primary' : 'bg-white/10'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${calendarSyncEnabled ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
           </div>
         </section>
 

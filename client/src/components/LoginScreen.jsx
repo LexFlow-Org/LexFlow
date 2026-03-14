@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import logoSrc from '../assets/logo.png';
 import * as api from '../tauri-api';
-import ConfirmDialog from './ConfirmDialog';
 
 export default function LoginScreen({ onUnlock, autoLocked = false }) {
   const [password, setPassword] = useState('');
@@ -49,10 +48,6 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     }
   }, [resetPassword]);
 
-  // Modal per consenso biometria (sostituisce window.confirm)
-  const [showBioConsent, setShowBioConsent] = useState(false);
-  const bioConsentPasswordRef = useRef('');
-  
   const bioTriggered = useRef(false);
   const bioAutoTriggeredOnReturn = useRef(false);
   // Track if a bio login attempt is currently in-flight to prevent double-triggers
@@ -314,12 +309,14 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         return;
       }
 
-      // If this is a new vault and user wants biometrics, save with the original provided password
-      if (result.isNew && bioAvailable && !bioSaved) {
-        bioConsentPasswordRef.current = providedPwd;
-        setShowBioConsent(true);
-        setLoading(false);
-        return;
+      // If this is a new vault, automatically enable biometrics (user can disable later in Settings)
+      if (result.isNew && bioAvailable) {
+        try {
+          await api.saveBio(providedPwd);
+          console.log('[LoginScreen] Biometrics auto-enrolled at first vault creation ✓');
+        } catch (e) {
+          console.warn('[LoginScreen] Biometrics auto-enroll failed (non-critical):', e);
+        }
       }
 
       setPassword('');
@@ -581,29 +578,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         </div>
       )}
 
-      {/* Consenso Biometria -- sostituisce window.confirm */}
-      <ConfirmDialog
-        open={showBioConsent}
-        title="Accesso Biometrico"
-        message="Vuoi abilitare l'accesso biometrico (Face ID / Touch ID / impronta) per accedere piu velocemente?"
-        confirmLabel="Abilita"
-        cancelLabel="No, grazie"
-        onConfirm={async () => {
-          setShowBioConsent(false);
-          try { await api.saveBio(bioConsentPasswordRef.current); } catch (e) { console.error(e); }
-          bioConsentPasswordRef.current = '';
-          setPassword('');
-          setConfirm('');
-          onUnlock();
-        }}
-        onCancel={() => {
-          setShowBioConsent(false);
-          bioConsentPasswordRef.current = '';
-          setPassword('');
-          setConfirm('');
-          onUnlock();
-        }}
-      />
+      {/* Consenso Biometria — ora auto-attivato alla prima creazione vault */}
     </div>
   );
 }

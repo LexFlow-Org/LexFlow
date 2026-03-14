@@ -133,9 +133,17 @@ export const exportTypstPdf = async (practiceData, defaultName) => {
 // Notifications
 export const sendNotification = ({ title, body }) =>
   safeInvoke('send_notification', { title, body });
+export const sendUrgentNotification = ({ title, body }) =>
+  safeInvoke('send_urgent_notification', { title, body });
+export const sendActionableNotification = ({ title, body, eventId, actions }) =>
+  safeInvoke('send_actionable_notification', { title, body, eventId, actions });
 export const syncNotificationSchedule = (schedule) =>
   safeInvoke('sync_notification_schedule', { schedule });
 export const testNotification = () => safeInvoke('test_notification');
+
+// Calendar Sync (OS native — EventKit / CalendarProvider)
+export const syncOsCalendar = (events) =>
+  safeInvoke('sync_os_calendar', { events });
 
 // Licensing
 export const checkLicense = () => safeInvoke('check_license');
@@ -203,6 +211,14 @@ export const onNotificationPermissionDenied = (cb) => {
 // banner guiding the user to move the app to /Applications.
 export const onTccLocationWarning = (cb) => {
   const p = listen('lf-tcc-location-warning', (e) => cb(e.payload)).catch(() => null);
+  return () => { p.then(fn => fn?.()); };
+};
+
+// GOD TIER: Actionable notification callback.
+// Fired when the backend sends a notification with action buttons (Windows) or
+// when the cron job fires a reminder. The frontend can show in-app action UI.
+export const onNotificationAction = (cb) => {
+  const p = listen('notification-action', (e) => cb(e.payload)).catch(() => null);
   return () => { p.then(fn => fn?.()); };
 };
 

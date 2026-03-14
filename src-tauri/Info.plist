@@ -7,5 +7,13 @@
          The app icon will be hidden from the Dock (expected for tray-only apps). -->
     <key>LSUIElement</key>
     <true/>
+
+    <!-- Calendar access — EventKit permission prompt -->
+    <key>NSCalendarsUsageDescription</key>
+    <string>LexFlow sincronizza udienze e scadenze con il Calendario di sistema per mantenerti sempre aggiornato.</string>
+
+    <!-- Full calendar access (macOS 14+ Sonoma) -->
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>LexFlow necessita dell'accesso completo al Calendario per creare e aggiornare automaticamente gli eventi legali.</string>
 </dict>
 </plist>

@@ -1153,6 +1153,26 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
         </div>
 
         <div className="space-y-5">
+          {/* Toggle Notifiche — sempre accessibile */}
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="text-sm text-white font-medium">Attiva Notifiche Desktop</p>
+              <p className="text-[10px] text-text-dim">Ricevi promemoria prima degli impegni</p>
+            </div>
+            <button
+              onClick={() => setNotifyEnabled(!notifyEnabled)}
+              className={`w-11 h-6 rounded-full transition-all duration-300 relative ${
+                notifyEnabled ? 'bg-primary' : 'bg-white/10'
+              }`}
+            >
+              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-300 ${
+                notifyEnabled ? 'translate-x-5' : 'translate-x-0'
+              }`} />
+            </button>
+          </div>
+
+          {/* Preavviso + Briefing + Salva — disabilitati se notifiche spente */}
+          <div className={`space-y-5 transition-opacity duration-300 ${notifyEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none select-none'}`}>
           {/* Preavviso Standard — Pill selector */}
           <div>
             <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2.5 block">Preavviso Standard</span>
@@ -1174,24 +1194,6 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
             </div>
           </div>
 
-          {/* Toggle Notifiche */}
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <p className="text-sm text-white font-medium">Attiva Notifiche Desktop</p>
-              <p className="text-[10px] text-text-dim">Ricevi promemoria prima degli impegni</p>
-            </div>
-            <button
-              onClick={() => setNotifyEnabled(!notifyEnabled)}
-              className={`w-11 h-6 rounded-full transition-all duration-300 relative ${
-                notifyEnabled ? 'bg-primary' : 'bg-white/10'
-              }`}
-            >
-              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-300 ${
-                notifyEnabled ? 'translate-x-5' : 'translate-x-0'
-              }`} />
-            </button>
-          </div>
-
           {/* Orari Briefing — Design pill coerente con preavviso evento */}
           <div>
             <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-3 block">Orari Briefing</span>
@@ -1211,6 +1213,8 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
               ))}
             </div>
           </div>
+
+          </div>{/* chiude wrapper condizionale notifiche spente */}
 
           <button onClick={handleSave} className="btn-primary w-full py-2.5 text-sm mt-2">
             Salva Impostazioni

@@ -14,14 +14,12 @@ import * as api from '../tauri-api';
  */
 export default function TccLocationBanner() {
   const [warning, setWarning] = useState(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(
+    () => sessionStorage.getItem('tcc-warning-dismissed') === '1'
+  );
 
   useEffect(() => {
-    // Don't show if already dismissed this session
-    if (sessionStorage.getItem('tcc-warning-dismissed')) {
-      setDismissed(true);
-      return;
-    }
+    if (dismissed) return;
 
     const unsub = api.onTccLocationWarning?.((payload) => {
       setWarning(payload);
@@ -30,7 +28,7 @@ export default function TccLocationBanner() {
     return () => {
       if (typeof unsub === 'function') unsub();
     };
-  }, []);
+  }, [dismissed]);
 
   if (!warning || dismissed) return null;
 

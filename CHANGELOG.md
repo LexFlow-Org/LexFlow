@@ -4,6 +4,31 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.5.8] -- 2026-03-14
+
+### Security
+- **CRITICAL: Swift Code Injection Fix** -- 3 vulnerabilita di injection nel subprocess Swift corrette:
+  - `sync_os_calendar()` -- JSON payload ora codificato in Base64 (`json_to_base64()`) invece di essere incorporato raw in heredoc Swift `"""`. Un titolo evento contenente `"""` poteva terminare l'heredoc ed eseguire codice Swift arbitrario.
+  - `send_urgent_notification()` -- Escaping rafforzato con `sanitize_for_swift()` (backslash-first, 6 categorie di escape). Il vecchio `.replace()` non escapava `\` prima di `"`, permettendo `\(expr)` string interpolation injection.
+  - `fire_urgent_desktop_notification()` -- Stessa correzione di `send_urgent_notification()`.
+- **`sanitize_for_swift()` helper** -- Nuova funzione di sanitizzazione: escapa `\` PRIMA di `"`, poi `\n`, `\r`, `\t`, strip `\0`. Gate `#[cfg(target_os = "macos")]`.
+- **`json_to_base64()` helper** -- Base64-encode JSON payloads per embedding sicuro in Swift source. Gate `#[cfg(target_os = "macos")]`.
+
+### Added
+- **GOD TIER: OS Calendar Sync** -- `sync_os_calendar` scrive eventi direttamente nel calendario nativo macOS via EventKit (Swift subprocess). Calendario dedicato "LexFlow", dedup via `lexflow-id:`, prefisso `⚖️`, allarme 15min, cleanup automatico eventi passati.
+- **GOD TIER: Time-Sensitive Notifications** -- `send_urgent_notification` usa `UNUserNotificationCenter` con `.timeSensitive` interruptionLevel per bypassare DND su macOS 12+.
+- **GOD TIER: Actionable Notifications** -- `send_actionable_notification` con emissione evento `notification-action` al frontend per azioni inline.
+- **GOD TIER: Android Doze Busting** -- Canali notifica `lexflow_urgent` (IMPORTANCE_HIGH) + `lexflow_default`; `schedule_reminder_aot` con `allow_while_idle: true` per AlarmManager exact.
+- **GOD TIER: Cron Smart Detection** -- `fire_desktop_reminder` rileva eventi critici (udienza/scadenza/ricorso/termine) e li invia come time-sensitive.
+- **Calendar Sync Toggle** -- Toggle `calendarSyncEnabled` in SettingsPage con icona `CalendarSync`.
+- **Info.plist Calendar Permissions** -- `NSCalendarsUsageDescription` + `NSCalendarsFullAccessUsageDescription` (Sonoma+).
+
+### Changed
+- **Frontend API bindings** -- Nuovi export in `tauri-api.js`: `sendUrgentNotification`, `sendActionableNotification`, `syncOsCalendar`, `onNotificationAction`.
+- **App.jsx Calendar Integration** -- `syncScheduleToBackend()` ora chiama anche `syncOsCalendar()` quando `calendarSyncEnabled !== false`.
+
+---
+
 ## [1.5.7] -- 2026-03-13
 
 ### Added

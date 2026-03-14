@@ -231,6 +231,17 @@ export default function App() {
     ];
     await api.syncNotificationSchedule({ briefingTimes, items })
       .catch(e => console.warn('[App] syncScheduleToBackend failed:', e));
+
+    // ── GOD TIER: OS Calendar Sync ──────────────────────────────
+    // Upsert agenda events into the native OS calendar (Apple Calendar /
+    // Google Calendar). The OS itself becomes the notification engine:
+    // events propagate to Apple Watch, Android Auto, iCloud, and Google
+    // servers — without LexFlow ever touching the internet.
+    if (api.syncOsCalendar && s?.calendarSyncEnabled !== false) {
+      const calItems = events.filter(e => !e.completed && e.date && e.title);
+      api.syncOsCalendar(calItems)
+        .catch(e => console.warn('[App] syncOsCalendar failed:', e));
+    }
   }, [settings]);
 
   const loadAllData = useCallback(async () => {
