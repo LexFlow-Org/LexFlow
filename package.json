@@ -1,6 +1,6 @@
 {
   "name": "lexflow",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "description": "LexFlow -- Gestionale Studio Legale con Crittografia Zero-Knowledge",
   "author": "Pietro Longo",
   "private": true,

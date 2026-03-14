@@ -4,6 +4,17 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.6.5] -- 2026-03-14
+
+### Fixed
+- **Notifiche desktop non arrivavano** -- Le notifiche macOS ora vengono inviate tramite subprocess Swift su un thread dedicato invece che via `run_on_main_thread`. Quando la finestra era nascosta (chiusa con ✕ ma app in background), il main thread non processava le callback e le notifiche venivano silenziosamente ignorate. Ora tutte le notifiche (briefing, promemoria singoli e raggruppati) usano il percorso Swift diretto che funziona indipendentemente dallo stato della finestra
+- **Icona ExternalLink rimossa dagli eventi autoSync** -- Nella vista Agenda (sia nella sidebar "In Arrivo" che nella timeline giornaliera), l'icona ExternalLink è stata rimossa dagli eventi sincronizzati dai fascicoli. Il pulsante "Fascicolo" nel modal evento è sufficiente per navigare al fascicolo collegato; l'icona Briefcase ora appare per tutti gli eventi con fascicolo collegato
+
+### Added
+- **Logging diagnostico cron job** -- Il cron desktop ora logga ad ogni tick: numero di briefing times, numero di schedule items, e i prossimi 5 fire times per facilitare il debug. Se il file schedule non viene trovato o la decifratura fallisce, viene loggato un warning esplicito
+
+---
+
 ## [1.6.4] -- 2026-03-14
 
 ### Changed

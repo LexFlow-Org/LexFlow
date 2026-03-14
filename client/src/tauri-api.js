@@ -141,10 +141,6 @@ export const syncNotificationSchedule = (schedule) =>
   safeInvoke('sync_notification_schedule', { schedule });
 export const testNotification = () => safeInvoke('test_notification');
 
-// Calendar Sync (OS native — EventKit / CalendarProvider)
-export const syncOsCalendar = (events) =>
-  safeInvoke('sync_os_calendar', { events });
-
 // Licensing
 export const checkLicense = () => safeInvoke('check_license');
 // SECURITY FIX (Audit 2026-03-11 I3): verifyLicense now accepts a token string parameter.

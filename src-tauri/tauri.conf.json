@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "LexFlow",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "identifier": "com.pietrolongo.lexflow",
   "build": {
     "frontendDist": "../client/dist",
@@ -56,7 +56,8 @@
     "macOS": {
       "frameworks": [],
       "minimumSystemVersion": "10.15",
-      "infoPlist": "Info.plist"
+      "infoPlist": "Info.plist",
+      "entitlements": "./entitlements.mac.plist"
     },
     "android": {
       "minSdkVersion": 24,

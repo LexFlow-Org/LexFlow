@@ -15,5 +15,9 @@
     <!-- Full calendar access (macOS 14+ Sonoma) -->
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>LexFlow necessita dell'accesso completo al Calendario per creare e aggiornare automaticamente gli eventi legali.</string>
+
+    <!-- Alert-style notifications (not banners) — persist on screen -->
+    <key>NSUserNotificationAlertStyle</key>
+    <string>alert</string>
 </dict>
 </plist>

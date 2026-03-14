@@ -61,13 +61,6 @@ export default function App() {
 
   const [showCreate, setShowCreate] = useState(false);
 
-  // Persistent flag: once we've attempted OS Calendar sync (user accepted OR
-  // declined), we NEVER re-prompt the TCC popup. The flag lives in localStorage
-  // so it survives app kills, crashes, and reboots. The user can re-enable
-  // sync manually from Settings → "Sincronizza Calendario".
-  // Additionally we track within the current session to avoid redundant calls.
-  const calendarSyncedThisSession = useRef(false);
-
   // --- TEMA CHIARO/SCURO ---
   const saveSettingsForTheme = useCallback(async (updated) => {
     setSettings(updated);
@@ -150,9 +143,6 @@ export default function App() {
     setSelectedId(null);
     setAutoLocked(isAuto); // memorizza se è autolock
     setIsLocked(true);
-    // Calendar sync: calendarSyncedThisSession prevents redundant calls within
-    // a single session. The PERSISTENT denied flag lives in localStorage, so
-    // even a full app restart won't re-prompt the TCC popup.
     navigate('/');
   }, [navigate]);
 
@@ -240,44 +230,9 @@ export default function App() {
       s?.briefingPomeriggio || '14:30',
       s?.briefingSera || '19:30',
     ];
+    console.log('[App] syncScheduleToBackend:', items.length, 'items,', briefingTimes.length, 'briefings, preavviso:', s?.preavviso || 30);
     await api.syncNotificationSchedule({ briefingTimes, items })
       .catch(e => console.warn('[App] syncScheduleToBackend failed:', e));
-
-    // ── GOD TIER: OS Calendar Sync ──────────────────────────────
-    // Upsert agenda events into the native OS calendar (Apple Calendar /
-    // Google Calendar). The OS itself becomes the notification engine:
-    // events propagate to Apple Watch, Android Auto, iCloud, and Google
-    // servers — without LexFlow ever touching the internet.
-    //
-    // PERSISTENT LOGIC (not session-only):
-    // 1. If user disabled calendarSync in Settings → skip entirely
-    // 2. If we already synced this session → skip (avoid redundant calls)
-    // 3. If localStorage says we already asked and got DENIED → skip forever
-    //    (user can re-enable from Settings which clears the denied flag)
-    // 4. Otherwise → call sync. If Rust/Swift returns "DENIED", save that
-    //    persistently so we never re-prompt the TCC popup again.
-    if (api.syncOsCalendar && s?.calendarSyncEnabled !== false && !calendarSyncedThisSession.current) {
-      const calendarDenied = localStorage.getItem('lexflow_calendar_denied') === 'true';
-      if (!calendarDenied) {
-        calendarSyncedThisSession.current = true;
-        const calItems = events.filter(e => !e.completed && e.date && e.title);
-        try {
-          const result = await api.syncOsCalendar(calItems);
-          if (result?.error === 'calendar_permission_denied') {
-            // User declined the TCC popup → save persistently, never ask again
-            localStorage.setItem('lexflow_calendar_denied', 'true');
-            console.warn('[App] Calendar permission denied — will not ask again');
-          } else if (result?.success) {
-            // Permission granted & sync OK → remember that it works
-            localStorage.removeItem('lexflow_calendar_denied');
-          }
-        } catch (e) {
-          console.warn('[App] syncOsCalendar failed:', e);
-        }
-      } else {
-        calendarSyncedThisSession.current = true; // don't retry this session
-      }
-    }
   }, [settings]);
 
   const loadAllData = useCallback(async () => {

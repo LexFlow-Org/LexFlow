@@ -9,7 +9,6 @@ import {
   Clock, 
   X, 
   Trash2, 
-  ExternalLink, 
   Calendar, 
   AlertCircle, 
   BarChart3,
@@ -679,7 +678,6 @@ function UpcomingPanel({ events, onEdit, onToggle }) {
                     <p className="text-[10px] text-text-dim">{formatRelDay(ev.date)} · {ev.timeStart}</p>
                 </div>
               </div>
-              {ev.autoSync && <ExternalLink size={10} className="text-text-dim flex-shrink-0 opacity-50" />}
             </button>
           ))}
         </div>
@@ -848,8 +846,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                                     <div className="flex items-center gap-1.5">
                                         <span className={`text-xs font-bold truncate ${ev.completed ? 'text-white/50' : 'text-white'}`}>{ev.title}</span>
                                         {ev.remindMinutes != null && <BellRing size={12} className="text-white/80 flex-shrink-0" title={ev.remindMinutes === 'custom' ? `Notifica alle ${ev.customRemindTime || '?'}` : `Preavviso: ${ev.remindMinutes} min`} />}
-                                        {ev.autoSync && <ExternalLink size={12} className="text-white/80 flex-shrink-0" />}
-                                        {ev.practiceId && !ev.autoSync && <Briefcase size={12} className="text-white/80 flex-shrink-0" />}
+                                        {ev.practiceId && <Briefcase size={12} className="text-white/80 flex-shrink-0" />}
                                     </div>
                                     {height >= 45 && (
                                         <p className="text-[10px] font-bold uppercase tracking-wide mt-0.5 truncate text-white/85 ev-text">{ev.notes || ev.category.toUpperCase()}</p>

@@ -7,6 +7,10 @@ src-tauri/target/
 src-tauri/gen/
 client/dist/
 
+# Swift Package Manager build artifacts (prevent accidental commits)
+.build/
+Package.resolved
+
 # Build artifacts
 *.dmg
 *.exe

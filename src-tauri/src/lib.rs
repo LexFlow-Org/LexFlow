@@ -3741,9 +3741,6 @@ async fn generate_typst_pdf(app: AppHandle, data: TypstPracticeData) -> Result<V
 
 #[tauri::command]
 fn send_notification(app: AppHandle, title: String, body: String) {
-    // Even though Tauri IPC commands run on the main thread context, we
-    // explicitly use run_on_main_thread to guarantee the NSRunLoop is active
-    // for the XPC call to usernoted (macOS Notification Center daemon).
     let t = title.clone();
     let b = body.clone();
     let ah = app.clone();
@@ -3763,7 +3760,6 @@ fn send_notification(app: AppHandle, title: String, body: String) {
 }
 
 /// Test notification — dev-only command to verify the notification pipeline.
-/// Always dispatches via run_on_main_thread for NSRunLoop guarantee.
 #[tauri::command]
 fn test_notification(app: AppHandle) -> bool {
     let ah = app.clone();
@@ -4376,18 +4372,18 @@ fn schedule_briefing_aot(
 // ── DESKTOP: stub — scheduling is handled by the async cron job ────────────
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn sync_notifications(_app: &AppHandle, _data_dir: &std::path::Path) {
-    // No-op on desktop.  The desktop_cron_job() runs every 60s and fires
+    // No-op on desktop.  The desktop_cron_job() runs every 30s and fires
     // notifications in real-time by checking the JSON state.
 }
 
-// ── DESKTOP: Async Cron Job — wakes every 60s, fires matching notifications ──
+// ── DESKTOP: Async Cron Job — wakes every 30s, fires matching notifications ──
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn desktop_cron_job(app: AppHandle) {
-    let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut last_processed_minute = String::new();
 
-    eprintln!("[LexFlow Cron] Desktop cron job started — checking every 60s");
+    eprintln!("[LexFlow Cron] Desktop cron job started — checking every 30s");
 
     loop {
         interval.tick().await;
@@ -4408,7 +4404,13 @@ async fn desktop_cron_job(app: AppHandle) {
 
         let schedule_data = match read_notification_schedule(&data_dir) {
             Some(v) => v,
-            None => continue,
+            None => {
+                eprintln!(
+                    "[LexFlow Cron] ⚠️ No schedule file found or decryption failed at {}",
+                    current_minute
+                );
+                continue;
+            }
         };
 
         let briefing_times = schedule_data
@@ -4426,6 +4428,36 @@ async fn desktop_cron_job(app: AppHandle) {
         let tomorrow = (now + chrono::Duration::days(1))
             .format("%Y-%m-%d")
             .to_string();
+
+        // Diagnostic logging (every minute tick)
+        eprintln!(
+            "[LexFlow Cron] tick {} — {} briefing times, {} schedule items",
+            current_minute,
+            briefing_times.len(),
+            items.len()
+        );
+        // Log next fire times for items so we can diagnose mismatches
+        if !items.is_empty() {
+            for (idx, item) in items.iter().enumerate().take(5) {
+                if let Some(item_local) = parse_item_datetime(item) {
+                    let remind_time = compute_remind_time(item, item_local);
+                    let fire_min = remind_time.format("%Y-%m-%d %H:%M").to_string();
+                    let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("?");
+                    eprintln!(
+                        "[LexFlow Cron]   item[{}] \"{}\" event={} fire={}{}",
+                        idx,
+                        title,
+                        item_local.format("%Y-%m-%d %H:%M"),
+                        fire_min,
+                        if fire_min == current_minute {
+                            " ← MATCH!"
+                        } else {
+                            ""
+                        }
+                    );
+                }
+            }
+        }
 
         // Check briefings
         for bt in &briefing_times {
@@ -4555,20 +4587,7 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
         } else {
             "LexFlow — Promemoria"
         };
-        if any_critical {
-            fire_urgent_desktop_notification(app, notif_title, &body);
-        } else {
-            let app_clone = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                use tauri_plugin_notification::NotificationExt;
-                let _ = app_clone
-                    .notification()
-                    .builder()
-                    .title(notif_title)
-                    .body(&body)
-                    .show();
-            });
-        }
+        fire_urgent_desktop_notification(app, notif_title, &body);
         eprintln!("[LexFlow Cron] ✓ Reminder fired (1 event): {}", item_title);
     } else {
         // Multiple events → grouped notification
@@ -4602,20 +4621,7 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
         }
         let body = lines.join("\n");
 
-        if any_critical {
-            fire_urgent_desktop_notification(app, &notif_title, &body);
-        } else {
-            let app_clone = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                use tauri_plugin_notification::NotificationExt;
-                let _ = app_clone
-                    .notification()
-                    .builder()
-                    .title(&notif_title)
-                    .body(&body)
-                    .show();
-            });
-        }
+        fire_urgent_desktop_notification(app, &notif_title, &body);
         eprintln!(
             "[LexFlow Cron] ✓ Grouped reminder fired: {} events in one notification",
             total
@@ -4624,380 +4630,32 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
 }
 
 // ═══════════════════════════════════════════════════════════
-//  GOD TIER: SWIFT SUBPROCESS SECURITY HELPERS
-// ═══════════════════════════════════════════════════════════
-
-/// SECURITY FIX (Audit 2026-03-14): sanitize user-controlled strings before embedding
-/// in Swift source code. Without this, an event title like `\(Process.arguments)` or
-/// `"; import Foundation; /* malicious code */` would be interpreted as Swift code
-/// (string interpolation injection / heredoc escape).
-///
-/// This function escapes ALL characters that have special meaning in Swift strings:
-///   - Backslash `\` → `\\` (prevents `\(expr)` interpolation injection)
-///   - Double-quote `"` → `\"` (prevents breaking out of quoted strings)
-///   - Newline `\n` → `\\n` (prevents breaking line structure)
-///   - Carriage return `\r` → `\\r`
-///   - Tab `\t` → `\\t`
-///   - Null byte `\0` → (stripped, prevents string truncation)
-///
-/// IMPORTANT: Backslash MUST be escaped FIRST, before other replacements,
-/// otherwise `"` → `\"` → `\\"` (double-escape).
-#[cfg(target_os = "macos")]
-fn sanitize_for_swift(input: &str) -> String {
-    input
-        .replace('\\', "\\\\") // MUST be first
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-        .replace('\0', "")
-}
-
-/// SECURITY FIX (Audit 2026-03-14): sanitize JSON payload for embedding in Swift
-/// triple-quoted strings (heredocs). The `"""` sequence terminates a Swift heredoc,
-/// allowing arbitrary code injection. We use Base64 encoding to completely bypass
-/// any string parsing issues — the Swift code decodes the Base64 at runtime.
-///
-/// This is the ONLY safe way to pass arbitrary JSON to a Swift subprocess:
-///   1. Rust: base64-encode the JSON bytes
-///   2. Swift: `Data(base64Encoded: "...")` → `JSONSerialization.jsonObject()`
-///
-/// Any approach that embeds raw JSON in Swift source (even triple-quoted) is vulnerable
-/// to injection if the JSON contains `"""`, `\(`, or other Swift-meaningful sequences.
-#[cfg(target_os = "macos")]
-fn json_to_base64(json_str: &str) -> String {
-    use base64::engine::general_purpose::STANDARD;
-    STANDARD.encode(json_str.as_bytes())
-}
-
-// ═══════════════════════════════════════════════════════════
-//  GOD TIER: OS CALENDAR SYNC (EventKit / CalendarProvider)
-// ═══════════════════════════════════════════════════════════
-//
-// LexFlow writes events directly into the user's native calendar database
-// (Apple Calendar / Google Calendar). The OS then becomes the notification
-// delivery engine: events sync to Apple Watch, Android Auto, iCloud, and
-// Google servers — WITHOUT LexFlow ever touching the internet.  This is the
-// "Sacro Graal" of local-first: zero cloud cost, 1000% delivery guarantee.
-
-/// Sync agenda events to the native OS calendar (macOS EventKit via Swift subprocess).
-/// Creates a dedicated "LexFlow" calendar if it doesn't exist, then upserts events.
-/// Returns the number of events synced.
-#[tauri::command]
-#[allow(unused_variables)]
-fn sync_os_calendar(state: State<AppState>, events: Value) -> Result<Value, String> {
-    let items = events.as_array().ok_or("events must be an array")?;
-
-    #[cfg(target_os = "macos")]
-    {
-        // Build a compact JSON payload for the Swift subprocess
-        let mut cal_events: Vec<Value> = Vec::new();
-        for item in items {
-            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
-            let date = item.get("date").and_then(|v| v.as_str()).unwrap_or("");
-            let time_start = item
-                .get("timeStart")
-                .and_then(|v| v.as_str())
-                .unwrap_or("09:00");
-            let time_end = item
-                .get("timeEnd")
-                .and_then(|v| v.as_str())
-                .unwrap_or("10:00");
-            let notes = item.get("notes").and_then(|v| v.as_str()).unwrap_or("");
-            let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let completed = item
-                .get("completed")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-
-            if date.is_empty() || title.is_empty() || completed {
-                continue;
-            }
-
-            cal_events.push(json!({
-                "id": id,
-                "title": format!("⚖️ {}", title),
-                "date": date,
-                "timeStart": time_start,
-                "timeEnd": time_end,
-                "notes": notes,
-            }));
-        }
-
-        let payload = serde_json::to_string(&cal_events).map_err(|e| e.to_string())?;
-        // SECURITY FIX (Audit 2026-03-14): encode payload as Base64 to prevent
-        // Swift heredoc injection (`"""` in event titles would break the string literal
-        // and allow arbitrary Swift code execution).
-        // SAFETY NOTE: Base64 charset is [A-Za-z0-9+/=] — these characters cannot
-        // escape out of a Swift string literal, so format!() interpolation is safe.
-        // No further sanitization or escaping is needed.
-        let b64_payload = json_to_base64(&payload);
-
-        // Swift code that uses EventKit to create/update calendar events locally.
-        // EventKit talks to the local Calendar.sqlitedb — zero network access.
-        let swift_code = format!(
-            r#"
-import Foundation
-import EventKit
-
-let store = EKEventStore()
-var granted = false
-
-// Check if permission was already granted (persistent via macOS TCC).
-// Only request if not yet determined — avoids re-prompting on every sync.
-if #available(macOS 14.0, *) {{
-    let status = EKEventStore.authorizationStatus(for: .event)
-    if status == .fullAccess {{
-        granted = true
-    }} else if status == .notDetermined {{
-        let sema = DispatchSemaphore(value: 0)
-        store.requestFullAccessToEvents {{ ok, _ in granted = ok; sema.signal() }}
-        sema.wait()
-    }}
-    // .denied or .restricted → granted stays false
-}} else {{
-    let status = EKEventStore.authorizationStatus(for: .event)
-    if status == .authorized {{
-        granted = true
-    }} else if status == .notDetermined {{
-        let sema = DispatchSemaphore(value: 0)
-        store.requestAccess(to: .event) {{ ok, _ in granted = ok; sema.signal() }}
-        sema.wait()
-    }}
-}}
-
-guard granted else {{
-    print("DENIED")
-    exit(1)
-}}
-
-// Find or create "LexFlow" calendar
-var lexCal: EKCalendar? = store.calendars(for: .event).first(where: {{ $0.title == "LexFlow" }})
-if lexCal == nil {{
-    let cal = EKCalendar(for: .event, eventStore: store)
-    cal.title = "LexFlow"
-    cal.cgColor = CGColor(red: 0.855, green: 0.710, blue: 0.314, alpha: 1.0) // #dab550
-    if let src = store.defaultCalendarForNewEvents?.source ?? store.sources.first(where: {{ $0.sourceType == .local }}) {{
-        cal.source = src
-    }}
-    try? store.saveCalendar(cal, commit: true)
-    lexCal = cal
-}}
-
-guard let cal = lexCal else {{
-    print("NO_CAL")
-    exit(1)
-}}
-
-let df = DateFormatter()
-df.dateFormat = "yyyy-MM-dd HH:mm"
-df.locale = Locale(identifier: "en_US_POSIX")
-
-// SECURITY: JSON payload is Base64-encoded to prevent heredoc injection
-guard let data = Data(base64Encoded: "{b64_payload}"),
-      let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {{
-    print("JSON_ERR")
-    exit(1)
-}}
-
-var count = 0
-for item in items {{
-    guard let title = item["title"] as? String,
-          let date = item["date"] as? String,
-          let ts = item["timeStart"] as? String,
-          let te = item["timeEnd"] as? String else {{ continue }}
-
-    let notes = item["notes"] as? String ?? ""
-    let lexId = item["id"] as? String ?? ""
-
-    guard let startDate = df.date(from: "\(date) \(ts)"),
-          let endDate = df.date(from: "\(date) \(te)") else {{ continue }}
-
-    // Check for existing event with same LexFlow ID (avoid duplicates)
-    let pred = store.predicateForEvents(withStart: startDate, end: endDate, calendars: [cal])
-    let existing = store.events(matching: pred).first(where: {{ $0.notes?.contains("lexflow-id:\(lexId)") == true }})
-
-    let ev = existing ?? EKEvent(eventStore: store)
-    ev.calendar = cal
-    ev.title = title
-    ev.startDate = startDate
-    ev.endDate = endDate
-    ev.notes = "\(notes)\n\n[lexflow-id:\(lexId)]"
-
-    // Add a 15-min alarm so the OS triggers the notification
-    if ev.alarms == nil || ev.alarms?.isEmpty == true {{
-        ev.addAlarm(EKAlarm(relativeOffset: -900)) // -15 min
-    }}
-
-    try? store.save(ev, span: .thisEvent, commit: false)
-    count += 1
-}}
-
-try? store.commit()
-print("OK:\(count)")
-"#
-        );
-
-        let mut cmd = std::process::Command::new("/usr/bin/swift");
-        cmd.arg("-")
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
-        // SECURITY: sanitize environment (same as bio_login)
-        for (k, _) in std::env::vars() {
-            if k.starts_with("DYLD_") || k.starts_with("LD_") {
-                cmd.env_remove(&k);
-            }
-        }
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("Failed to spawn swift: {}", e))?;
-        if let Some(ref mut stdin) = child.stdin {
-            use std::io::Write;
-            let _ = stdin.write_all(swift_code.as_bytes());
-        }
-        drop(child.stdin.take());
-
-        let output = child
-            .wait_with_output()
-            .map_err(|e| format!("Swift process error: {}", e))?;
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-        if let Some(count_str) = stdout.strip_prefix("OK:") {
-            let synced: usize = count_str.parse().unwrap_or(0);
-            eprintln!(
-                "[LexFlow] Calendar sync: {} events written to macOS Calendar ✓",
-                synced
-            );
-            Ok(json!({"success": true, "synced": synced}))
-        } else if stdout == "DENIED" {
-            eprintln!("[LexFlow] Calendar sync: permission DENIED by user");
-            Ok(json!({"success": false, "error": "calendar_permission_denied"}))
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            eprintln!(
-                "[LexFlow] Calendar sync failed: stdout={}, stderr={}",
-                stdout, stderr
-            );
-            Ok(json!({"success": false, "error": "calendar_sync_failed"}))
-        }
-    }
-
-    #[cfg(target_os = "android")]
-    {
-        // Android: emit event to frontend which calls CalendarProvider via Android Intent
-        let _ = state;
-        Ok(json!({"success": false, "error": "android_calendar_not_yet_implemented"}))
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "android")))]
-    {
-        let _ = state;
-        Ok(json!({"success": false, "error": "calendar_sync_not_available_on_this_platform"}))
-    }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  GOD TIER: TIME-SENSITIVE NOTIFICATIONS (macOS)
+//  TIME-SENSITIVE NOTIFICATIONS (tauri_plugin_notification)
 // ═══════════════════════════════════════════════════════════
 //
 // On macOS, when the user has Focus Mode (Do Not Disturb) enabled, regular
 // notifications are silenced. For a legal app, missing a court deadline
 // because of DND is unacceptable.
 //
-// Time-Sensitive notifications bypass Focus Mode:
-//   - They appear on screen even during DND
-//   - They play sound even when DND is active
-//   - Apple designed this for medical, legal, and alarm apps
-//
-// On macOS we use NSUserNotification via a Swift subprocess with
-// interruptionLevel = .timeSensitive (requires macOS 12+).
-// On older macOS, we fall back to the standard notification.
+// tauri_plugin_notification delivers native OS notifications on all platforms.
+// On macOS, to make these time-sensitive, the user should add LexFlow
+// to their Focus Mode allowed apps in System Settings → Focus → LexFlow.
 
-/// Send a time-sensitive notification that bypasses Focus Mode (Do Not Disturb).
-/// Falls back to regular notification on non-macOS platforms or older macOS versions.
+/// Send an urgent notification via tauri_plugin_notification.
+/// Works on all platforms (macOS, Windows, Linux).
 #[tauri::command]
 fn send_urgent_notification(app: AppHandle, title: String, body: String) {
-    #[cfg(target_os = "macos")]
-    {
-        let t = title.clone();
-        let b = body.clone();
-        let ah = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            // SECURITY FIX (Audit 2026-03-14): use sanitize_for_swift() to prevent
-            // Swift string interpolation injection. Previously only " and \n were escaped,
-            // allowing \(expr) payloads to execute arbitrary Swift expressions.
-            let safe_t = sanitize_for_swift(&t);
-            let safe_b = sanitize_for_swift(&b);
-            let swift_code = format!(
-                r#"
-import Foundation
-import UserNotifications
-
-let center = UNUserNotificationCenter.current()
-let content = UNMutableNotificationContent()
-content.title = "{}"
-content.body = "{}"
-content.sound = .default
-if #available(macOS 12.0, *) {{
-    content.interruptionLevel = .timeSensitive
-}}
-let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-let sema = DispatchSemaphore(value: 0)
-center.add(req) {{ _ in sema.signal() }}
-sema.wait()
-"#,
-                safe_t, safe_b,
-            );
-
-            let mut cmd = std::process::Command::new("/usr/bin/swift");
-            cmd.arg("-")
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::piped());
-            for (k, _) in std::env::vars() {
-                if k.starts_with("DYLD_") || k.starts_with("LD_") {
-                    cmd.env_remove(&k);
-                }
-            }
-            match cmd.spawn() {
-                Ok(mut child) => {
-                    if let Some(ref mut stdin) = child.stdin {
-                        use std::io::Write;
-                        let _ = stdin.write_all(swift_code.as_bytes());
-                    }
-                    drop(child.stdin.take());
-                    let _ = child.wait();
-                    eprintln!("[LexFlow] Time-sensitive notification sent ✓");
-                }
-                Err(e) => {
-                    eprintln!(
-                        "[LexFlow] Time-sensitive Swift failed ({:?}), falling back to standard",
-                        e
-                    );
-                    // Fallback to standard notification
-                    use tauri_plugin_notification::NotificationExt;
-                    let _ = ah.notification().builder().title(&t).body(&b).show();
-                }
-            }
-        });
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        // Non-macOS: use standard notification (still better than nothing)
-        let t = title;
-        let b = body;
-        let ah = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            use tauri_plugin_notification::NotificationExt;
-            let _ = ah.notification().builder().title(&t).body(&b).show();
-        });
-    }
+    let t = title;
+    let b = body;
+    let ah = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        use tauri_plugin_notification::NotificationExt;
+        let _ = ah.notification().builder().title(&t).body(&b).show();
+    });
 }
 
 // ═══════════════════════════════════════════════════════════
-//  GOD TIER: ACTIONABLE TOASTS (Windows 11)
+//  ACTIONABLE TOASTS
 // ═══════════════════════════════════════════════════════════
 //
 // On Windows 11, we can add interactive buttons directly inside the
@@ -5011,8 +4669,7 @@ sema.wait()
 // This is pure IPC: Windows → LexFlow binary → vault update. Zero internet.
 
 /// Send a notification with action buttons (Windows) or standard notification (other OS).
-/// On Windows, uses the XML toast schema for interactive buttons.
-/// The `event_id` is emitted back when the user clicks an action button.
+/// Emits a frontend event so the UI can show in-app action buttons.
 #[tauri::command]
 fn send_actionable_notification(
     app: AppHandle,
@@ -5023,14 +4680,6 @@ fn send_actionable_notification(
 ) {
     let _ = &actions; // Used for documentation; actual button labels are hardcoded
 
-    // On all platforms, send a standard notification.
-    // Windows actionable toasts require win32 COM interop which is beyond
-    // tauri-plugin-notification's current API surface. When the plugin adds
-    // toast action support (tracked: tauri-apps/plugins-workspace#1274),
-    // this function will be upgraded to use it.
-    //
-    // For now, we send a regular notification and emit a frontend event
-    // with the event_id so the UI can show an in-app action banner.
     let t = title.clone();
     let b = body.clone();
     let eid = event_id.clone();
@@ -5053,77 +4702,24 @@ fn send_actionable_notification(
 }
 
 // ═══════════════════════════════════════════════════════════
-//  GOD TIER: UPGRADE DESKTOP CRON TO USE TIME-SENSITIVE
+//  DESKTOP CRON NOTIFICATION DELIVERY (tauri_plugin_notification)
 // ═══════════════════════════════════════════════════════════
 
-/// Wrapper: fire a deadline/court-date notification as time-sensitive (bypasses DND).
-/// Used by the desktop cron job for critical events (udienze, scadenze processuali).
+/// Fire a desktop notification on macOS / Windows / Linux.
+/// Used by the desktop cron job for ALL events (briefings, reminders).
+/// Uses tauri_plugin_notification via run_on_main_thread.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn fire_urgent_desktop_notification(app: &AppHandle, title: &str, body: &str) {
     let t = title.to_string();
     let b = body.to_string();
-
-    #[cfg(target_os = "macos")]
-    {
-        let swift_code = format!(
-            r#"
-import Foundation
-import UserNotifications
-
-let center = UNUserNotificationCenter.current()
-let content = UNMutableNotificationContent()
-content.title = "{}"
-content.body = "{}"
-content.sound = .defaultCritical
-if #available(macOS 12.0, *) {{
-    content.interruptionLevel = .timeSensitive
-}}
-let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-let sema = DispatchSemaphore(value: 0)
-center.add(req) {{ _ in sema.signal() }}
-sema.wait()
-"#,
-            sanitize_for_swift(&t),
-            sanitize_for_swift(&b),
-        );
-
-        let app_clone = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            let mut cmd = std::process::Command::new("/usr/bin/swift");
-            cmd.arg("-")
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null());
-            for (k, _) in std::env::vars() {
-                if k.starts_with("DYLD_") || k.starts_with("LD_") {
-                    cmd.env_remove(&k);
-                }
-            }
-            match cmd.spawn() {
-                Ok(mut child) => {
-                    if let Some(ref mut stdin) = child.stdin {
-                        use std::io::Write;
-                        let _ = stdin.write_all(swift_code.as_bytes());
-                    }
-                    drop(child.stdin.take());
-                    let _ = child.wait();
-                }
-                Err(_) => {
-                    use tauri_plugin_notification::NotificationExt;
-                    let _ = app_clone.notification().builder().title(&t).body(&b).show();
-                }
-            }
-        });
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let app_clone = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            use tauri_plugin_notification::NotificationExt;
-            let _ = app_clone.notification().builder().title(&t).body(&b).show();
-        });
-    }
+    let app_clone = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        use tauri_plugin_notification::NotificationExt;
+        if let Err(e) = app_clone.notification().builder().title(&t).body(&b).show() {
+            eprintln!("[LexFlow] Cron notification failed: {:?}", e);
+        }
+    });
+    eprintln!("[LexFlow] ✓ Notification sent: {}", title);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -6340,8 +5936,6 @@ pub fn run() {
             send_actionable_notification,
             sync_notification_schedule,
             test_notification,
-            // Calendar Sync
-            sync_os_calendar,
             // License
             check_license,
             verify_license,

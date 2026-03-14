@@ -1,6 +1,6 @@
 [package]
 name = "lexflow"
-version = "1.6.4"
+version = "1.6.5"
 description = "LexFlow -- Gestionale Studio Legale con Crittografia Zero-Knowledge"
 authors = ["Pietro Longo"]
 edition = "2021"
@@ -61,8 +61,6 @@ libc = "0.2"
 # Windows-only: windows-sys for Single Instance Mutex (prevents "file in use" MSI errors)
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security"] }
-
-# macOS-only: (no extra deps needed -- App Nap disabled via defaults write)
 
 # time crate: needed by tauri-plugin-notification Schedule::At (OffsetDateTime)
 [dependencies.time]
