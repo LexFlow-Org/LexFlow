@@ -310,10 +310,17 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
       }
 
       // If this is a new vault, automatically enable biometrics (user can disable later in Settings)
-      if (result.isNew && bioAvailable) {
+      // IMPORTANT: Do NOT rely on the `bioAvailable` state — it may be stale at this point
+      // because checkBio() was called before the vault existed. Call it fresh now.
+      if (result.isNew) {
         try {
-          await api.saveBio(providedPwd);
-          console.log('[LoginScreen] Biometrics auto-enrolled at first vault creation ✓');
+          const bioNowAvailable = await api.checkBio();
+          if (bioNowAvailable) {
+            await api.saveBio(providedPwd);
+            setBioAvailable(true);
+            setBioSaved(true);
+            console.log('[LoginScreen] Biometrics auto-enrolled at first vault creation ✓');
+          }
         } catch (e) {
           console.warn('[LoginScreen] Biometrics auto-enroll failed (non-critical):', e);
         }

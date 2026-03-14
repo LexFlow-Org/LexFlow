@@ -4578,15 +4578,30 @@ import Foundation
 import EventKit
 
 let store = EKEventStore()
-let sema = DispatchSemaphore(value: 0)
 var granted = false
 
+// Check if permission was already granted (persistent via macOS TCC).
+// Only request if not yet determined — avoids re-prompting on every sync.
 if #available(macOS 14.0, *) {{
-    store.requestFullAccessToEvents {{ ok, _ in granted = ok; sema.signal() }}
+    let status = EKEventStore.authorizationStatus(for: .event)
+    if status == .fullAccess {{
+        granted = true
+    }} else if status == .notDetermined {{
+        let sema = DispatchSemaphore(value: 0)
+        store.requestFullAccessToEvents {{ ok, _ in granted = ok; sema.signal() }}
+        sema.wait()
+    }}
+    // .denied or .restricted → granted stays false
 }} else {{
-    store.requestAccess(to: .event) {{ ok, _ in granted = ok; sema.signal() }}
+    let status = EKEventStore.authorizationStatus(for: .event)
+    if status == .authorized {{
+        granted = true
+    }} else if status == .notDetermined {{
+        let sema = DispatchSemaphore(value: 0)
+        store.requestAccess(to: .event) {{ ok, _ in granted = ok; sema.signal() }}
+        sema.wait()
+    }}
 }}
-sema.wait()
 
 guard granted else {{
     print("DENIED")

@@ -147,8 +147,8 @@ export default function ContactsPage({ practices, onSelectPractice }) {
           </div>
         </div>
         {activeTab === 'contacts' && (
-          <button onClick={() => setShowCreate(true)} className="btn-primary px-5 py-2.5 flex items-center gap-2 text-sm font-bold">
-            <Plus size={16} /> Nuovo Contatto
+          <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest">
+            <Plus size={18} strokeWidth={3} /> Nuovo Contatto
           </button>
         )}
       </div>

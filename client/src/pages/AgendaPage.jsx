@@ -14,6 +14,7 @@ import {
   AlertCircle, 
   BarChart3,
   Bell,
+  BellOff,
   BellRing,
   Briefcase,
   Check
@@ -732,8 +733,8 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
              {DAYS_IT[now.getDay()]} <span className="text-primary">{now.getDate()}</span> {MONTHS_IT[now.getMonth()]}
           </h2>
         </div>
-        <button onClick={() => onAdd(todayStr)} className="btn-primary text-xs px-4 py-2">
-          <Plus size={14} strokeWidth={3}/> Nuovo
+        <button onClick={() => onAdd(todayStr)} className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest">
+          <Plus size={18} strokeWidth={3}/> Nuovo Impegno
         </button>
       </div>
 
@@ -917,8 +918,8 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
           <span className="text-xs font-bold w-36 text-center text-text">{days[0].date.getDate()} – {days[6].date.getDate()} {MONTHS_IT[days[6].date.getMonth()]}</span>
           <button onClick={() => setWeekOffset(w => w+1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronRight size={14}/></button>
         </div>
-        <button onClick={() => onAdd(todayStr)} className="btn-primary text-xs px-4 py-2">
-          <Plus size={14} strokeWidth={3}/> Nuovo
+        <button onClick={() => onAdd(todayStr)} className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest">
+          <Plus size={18} strokeWidth={3}/> Nuovo Impegno
         </button>
       </div>
 
@@ -1044,8 +1045,8 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
           <span className="text-xs font-bold w-36 text-center text-text">{MONTHS_IT[month]} {year}</span>
           <button onClick={() => setMonthOffset(m => m+1)} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronRight size={14}/></button>
         </div>
-        <button onClick={() => onAdd(todayStr)} className="btn-primary text-xs px-4 py-2">
-          <Plus size={14} strokeWidth={3}/> Nuovo
+        <button onClick={() => onAdd(todayStr)} className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest">
+          <Plus size={18} strokeWidth={3}/> Nuovo Impegno
         </button>
       </div>
       <div className="glass-card flex-1 flex flex-col overflow-hidden p-0">
@@ -1133,6 +1134,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
         }));
       await api.syncNotificationSchedule({ briefingTimes, items });
       onSave(updated);
+      toast.success('Preferenze notifiche aggiornate');
       onClose();
     } catch {
       toast.error('Errore nel salvataggio');
@@ -1328,11 +1330,16 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
           
           {/* Bell */}
           <button 
-            onClick={() => setShowNotifPopup(true)} 
-            className="p-2 rounded-xl bg-white/[0.04] border border-white/5 hover:bg-white/[0.08] transition-all text-text-dim hover:text-white relative"
-            title="Impostazioni Avvisi"
+            onClick={() => effectiveSettings?.notifyEnabled !== false && setShowNotifPopup(true)} 
+            className={`p-2 rounded-xl border transition-all relative ${
+              effectiveSettings?.notifyEnabled !== false
+                ? 'bg-white/[0.04] border-white/5 hover:bg-white/[0.08] text-text-dim hover:text-white cursor-pointer'
+                : 'bg-white/[0.02] border-white/5 text-text-dim opacity-40 cursor-not-allowed'
+            }`}
+            title={effectiveSettings?.notifyEnabled !== false ? 'Impostazioni Avvisi' : 'Attiva le notifiche per gestire gli avvisi'}
+            disabled={effectiveSettings?.notifyEnabled === false}
           >
-            <Bell size={16} />
+            {effectiveSettings?.notifyEnabled !== false ? <Bell size={16} /> : <BellOff size={16} />}
             {effectiveSettings?.notifyEnabled && (
               <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
             )}

@@ -445,7 +445,7 @@ def cmd_generate():
         _error("Nome Studio obbligatorio.")
         return
 
-    lawyer_name = _prompt("Nome e Cognome Avvocato (es. Avv. Mario Rossi)")
+    lawyer_name = _prompt("Nome e Cognome Avvocato (es. Mario Rossi)")
     if not lawyer_name:
         _error("Nome Avvocato obbligatorio.")
         return

@@ -68,9 +68,9 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         </div>
         <button 
           onClick={() => typeof onNewPractice === 'function' && onNewPractice()} 
-          className="btn-primary flex items-center gap-3 px-8 py-4 shadow-2xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+          className="btn-primary flex items-center gap-2 px-7 py-3.5 shadow-2xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
         >
-          <Plus size={22} strokeWidth={3} />
+          <Plus size={18} strokeWidth={3} />
           <span className="font-bold uppercase tracking-widest text-xs">Nuovo Fascicolo</span>
         </button>
       </div>

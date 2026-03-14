@@ -324,9 +324,9 @@ export default function TimeTrackingPage({ practices }) {
                 <button
                   onClick={() => { startTimer(timerPracticeId, timerDescription); setTimerPracticeId(''); setTimerDescription(''); }}
                   disabled={!timerPracticeId}
-                  className="btn-primary text-xs px-5 py-2.5 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
+                  className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
                 >
-                  <Play size={14} /> Avvia
+                  <Play size={18} /> Avvia
                 </button>
               </div>
             </div>
@@ -345,8 +345,8 @@ export default function TimeTrackingPage({ practices }) {
                 <span className="text-lg font-bold text-primary tabular-nums">{fmtDuration(totalWeekMin)}</span>
                 <span className="text-[10px] text-text-dim block">Totale Settimana</span>
               </div>
-              <button onClick={() => setShowAddModal(true)} className="btn-primary text-xs px-4 py-2">
-                <Plus size={14} /> Manuale
+              <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest">
+                <Plus size={18} /> Manuale
               </button>
             </div>
           </div>

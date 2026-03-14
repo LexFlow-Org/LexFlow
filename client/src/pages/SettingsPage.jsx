@@ -7,7 +7,9 @@ import {
   LogOut,
   RefreshCw,
   Bell,
+  BellOff,
   Camera,
+  CameraOff,
   Timer,
   Upload,
   Download,
@@ -491,11 +493,11 @@ export default function SettingsPage({ onLock }) {
 
   // Stato per le Notifiche — attive di default
   const [notifyEnabled, setNotifyEnabled] = useState(true);
-  const [notificationTime, setNotificationTime] = useState(null);
+  const [notificationTime, setNotificationTime] = useState(30);
   const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(true);
 
   // Stato per Sicurezza Avanzata
-  const [screenshotProtection, setScreenshotProtection] = useState(null);
+  const [screenshotProtection, setScreenshotProtection] = useState(true);
   const [autolockMinutes, setAutolockMinutes] = useState(null);
   
   // Modal visibility flags
@@ -674,7 +676,10 @@ export default function SettingsPage({ onLock }) {
           <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <span className="font-medium text-text">Avvisi Agenda e Scadenze</span>
+                <div className="flex items-center gap-2">
+                  {notifyEnabled ? <Bell size={16} className="text-primary" /> : <BellOff size={16} className="text-text-dim" />}
+                  <span className="font-medium text-text">Avvisi Agenda e Scadenze</span>
+                </div>
                 <p className="text-xs text-text-muted max-w-md">
                   Ricevi notifiche desktop per udienze, scadenze e impegni in agenda.
                 </p>
@@ -716,6 +721,26 @@ export default function SettingsPage({ onLock }) {
               </div>
             )}
 
+            {!notifyEnabled && (
+              <div className="pt-4 border-t border-border">
+                <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
+                <div className="flex flex-wrap gap-2 opacity-40 pointer-events-none">
+                  {PREAVVISO_OPTIONS.map(opt => (
+                    <div
+                      key={opt.value}
+                      className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-not-allowed ${
+                        notificationTime === opt.value
+                          ? 'bg-white/10 text-text-dim border-white/20'
+                          : 'bg-white/[0.04] text-text-muted border-border'
+                      }`}
+                    >
+                      {opt.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Calendar Sync Toggle */}
             <div className="flex items-center justify-between pt-4 border-t border-border">
               <div className="space-y-1">
@@ -751,6 +776,7 @@ export default function SettingsPage({ onLock }) {
           <div className="flex items-center justify-between group">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
+                {privacyEnabled ? <Eye size={16} className="text-primary" /> : <EyeOff size={16} className="text-text-dim" />}
                 <span className="font-medium text-text">Privacy Blur</span>
                 <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/20">CONSIGLIATO</span>
               </div>
@@ -770,7 +796,7 @@ export default function SettingsPage({ onLock }) {
           <div className="flex items-center justify-between group pt-4 border-t border-border">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <Camera size={16} className="text-primary" />
+                {screenshotProtection ? <Camera size={16} className="text-primary" /> : <CameraOff size={16} className="text-text-dim" />}
                 <span className="font-medium text-text">Blocco Screenshot</span>
                 <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20">SICUREZZA</span>
               </div>

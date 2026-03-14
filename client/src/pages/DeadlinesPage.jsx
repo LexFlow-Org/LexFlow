@@ -256,16 +256,16 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         </div>
 
         {/* Orari Briefing — EDITABILE */}
-        <div className="glass-card p-4">
+        <div className={`glass-card p-4 transition-opacity duration-300 ${settings?.notifyEnabled === false ? 'opacity-40' : ''}`}>
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Orari Briefing</p>
-            {briefingDirty && (
+            {briefingDirty && settings?.notifyEnabled !== false && (
               <button onClick={handleBriefingSave} className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary-hover transition-colors">
                 <Check size={12} /> Salva
               </button>
             )}
           </div>
-          <div className="space-y-2">
+          <div className={`space-y-2 ${settings?.notifyEnabled === false ? 'pointer-events-none' : ''}`}>
             {[
               { label: 'Mattina', value: briefingMattina, onChange: onBriefingChange(setBriefingMattina) },
               { label: 'Pomeriggio', value: briefingPomeriggio, onChange: onBriefingChange(setBriefingPomeriggio) },
@@ -273,7 +273,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
             ].map(({ label, value, onChange }) => (
               <div key={label} className="flex items-center justify-between bg-white/[0.03] rounded-lg px-3 py-2 border border-white/5">
                 <span className="text-xs text-text font-medium">{label}</span>
-                <input type="time" className="bg-black/30 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white font-mono text-center focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all w-20" value={value} onChange={onChange} />
+                <input type="time" disabled={settings?.notifyEnabled === false} className={`bg-black/30 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white font-mono text-center focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all w-20 ${settings?.notifyEnabled === false ? 'cursor-not-allowed' : ''}`} value={value} onChange={onChange} />
               </div>
             ))}
           </div>
