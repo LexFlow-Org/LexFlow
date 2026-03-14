@@ -111,12 +111,12 @@ const MAX_SETTINGS_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 
 /// Platform-specific UID — extracted to eliminate 3 duplicate blocks.
 /// Returns a string combining domain + user-profile path (Windows) or real UID+username (Unix).
-/// 
+///
 /// Windows: uses USERDOMAIN + USERPROFILE env vars.  These are user-spoofable in theory,
 /// but Windows has no unprivileged equivalent of Unix getuid().  The value is only used
 /// as one component of the encryption-key seed (combined with machine_id + salt), so
 /// spoofing it would only lock the attacker out of their own vault.
-/// 
+///
 /// Unix: uses libc::getuid() syscall (kernel-level, non-spoofable) + whoami::username().
 /// SECURITY FIX (Audit Chunk 01): replaced $UID env var with getuid() syscall.
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
@@ -3191,15 +3191,19 @@ async fn import_vault(
             let staging_dir = dir.join(".import-staging");
             let _ = fs::create_dir_all(&staging_dir);
             // Encrypt the imported data with the new key
-            let vault_plaintext = Zeroizing::new(serde_json::to_vec(&val).map_err(|e| e.to_string())?);
+            let vault_plaintext =
+                Zeroizing::new(serde_json::to_vec(&val).map_err(|e| e.to_string())?);
             let encrypted_vault = encrypt_data(&new_key, &vault_plaintext)?;
             // Stage all three files atomically
             if atomic_write_with_sync(&staging_dir.join(VAULT_FILE), &encrypted_vault).is_err()
                 || atomic_write_with_sync(&staging_dir.join(VAULT_SALT_FILE), &new_salt).is_err()
-                || atomic_write_with_sync(&staging_dir.join(VAULT_VERIFY_FILE), &verify_tag).is_err()
+                || atomic_write_with_sync(&staging_dir.join(VAULT_VERIFY_FILE), &verify_tag)
+                    .is_err()
             {
                 let _ = fs::remove_dir_all(&staging_dir);
-                return Err("Errore critico durante la preparazione dell'import. Import annullato.".into());
+                return Err(
+                    "Errore critico durante la preparazione dell'import. Import annullato.".into(),
+                );
             }
             // Transactional swap with rollback
             transactional_vault_swap(&dir, &staging_dir)?;
@@ -3466,7 +3470,8 @@ async fn write_pdf_to_path(path: String, data: Vec<u8>) -> Result<bool, String> 
     {
         use std::io::Write;
         let mut file = fs::File::create(&path).map_err(|e| format!("Create failed: {}", e))?;
-        file.write_all(&data).map_err(|e| format!("Write failed: {}", e))?;
+        file.write_all(&data)
+            .map_err(|e| format!("Write failed: {}", e))?;
         file.sync_all().map_err(|e| format!("Sync failed: {}", e))?;
     }
     Ok(true)
