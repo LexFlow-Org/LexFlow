@@ -2960,7 +2960,7 @@ fn perform_license_activation(
         );
     }
 
-    json!({"success": true, "client": client})
+    json!({"success": true, "client": client, "lawyerName": lawyer_name})
 }
 
 /// Expose machine fingerprint to the frontend.

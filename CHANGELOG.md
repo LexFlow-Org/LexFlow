@@ -4,6 +4,13 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.6.4] -- 2026-03-14
+
+### Changed
+- **Toast attivazione licenza** -- Mostra sia il nome dello studio che il nome dell'avvocato: "Registrata a: Studio Legale Rossi — Avv. Mario Rossi". Il backend ora restituisce `lawyerName` nella risposta di attivazione
+
+---
+
 ## [1.6.3] -- 2026-03-14
 
 ### Added
