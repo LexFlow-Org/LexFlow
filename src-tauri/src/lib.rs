@@ -2397,6 +2397,11 @@ fn check_license_burned(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    let lawyer_title = data
+        .get("lawyerTitle")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Avv.")
+        .to_string();
 
     if token_hmac.is_empty() {
         return json!({"activated": false, "reason": "Dati licenza corrotti."});
@@ -2416,6 +2421,7 @@ fn check_license_burned(
                 "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
                 "client": client,
                 "lawyerName": lawyer_name,
+                "lawyerTitle": lawyer_title,
                 "studioName": studio_name,
                 "inGracePeriod": true,
                 "graceDays": grace_days,
@@ -2431,6 +2437,7 @@ fn check_license_burned(
         "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
         "client": client,
         "lawyerName": lawyer_name,
+        "lawyerTitle": lawyer_title,
         "studioName": studio_name,
     })
 }
@@ -2592,6 +2599,8 @@ struct LicensePayload {
     a: Option<String>,
     #[serde(default)] // v2.5+: studio (law firm) name
     s: Option<String>,
+    #[serde(default)] // v2.6+: lawyer title (Avv. / Praticante)
+    t: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -2928,12 +2937,17 @@ fn perform_license_activation(
         .as_ref()
         .and_then(|p| p.s.clone())
         .unwrap_or_default();
+    let lawyer_title = parsed_payload
+        .as_ref()
+        .and_then(|p| p.t.clone())
+        .unwrap_or_else(|| "Avv.".to_string());
 
     let record = json!({
         "tokenHmac": token_hmac,
         "activatedAt": now,
         "client": client,
         "lawyerName": lawyer_name,
+        "lawyerTitle": lawyer_title,
         "studioName": studio_name,
         "keyVersion": "ed25519-burned",
         "machineFingerprint": fingerprint,
@@ -2960,7 +2974,7 @@ fn perform_license_activation(
         );
     }
 
-    json!({"success": true, "client": client, "lawyerName": lawyer_name})
+    json!({"success": true, "client": client, "lawyerName": lawyer_name, "lawyerTitle": lawyer_title})
 }
 
 /// Expose machine fingerprint to the frontend.
@@ -3531,6 +3545,7 @@ struct TypstPracticeData {
     code_label: String,
     // Studio info
     lawyer_name: Option<String>,
+    lawyer_title: Option<String>,
     studio_name: Option<String>,
     // Dynamic sections
     deadlines: Option<Vec<TypstDeadline>>,
@@ -3631,12 +3646,14 @@ async fn generate_typst_pdf(app: AppHandle, data: TypstPracticeData) -> Result<V
     let code_label_safe = escape_typst(&data.code_label);
     let studio_safe = escape_typst(data.studio_name.as_deref().unwrap_or(""));
     let lawyer_safe = escape_typst(data.lawyer_name.as_deref().unwrap_or(""));
+    let lawyer_title_safe = escape_typst(data.lawyer_title.as_deref().unwrap_or("Avv."));
 
     // ── Replace placeholders ──
     let now = chrono::Local::now().format("%d/%m/%Y").to_string();
     let document = template
         .replace("__STUDIO_NAME__", &studio_safe)
         .replace("__LAWYER_NAME__", &lawyer_safe)
+        .replace("__LAWYER_TITLE__", &lawyer_title_safe)
         .replace("__TYPE_LABEL__", &type_label_safe)
         .replace("__STATUS_LABEL__", &status_label_safe)
         .replace("__CLIENT__", &client_safe)

@@ -40,7 +40,7 @@ export default function LicenseSettings() {
         {licenseInfo.lawyerName && (
         <div className="flex justify-between items-center border-b border-border pb-2">
           <span className="text-text-dim">Avvocato:</span>
-          <span className="text-text font-mono">Avv. {licenseInfo.lawyerName}</span>
+          <span className="text-text font-mono">{licenseInfo.lawyerTitle || 'Avv.'} {licenseInfo.lawyerName}</span>
         </div>
         )}
         {licenseInfo.studioName && (

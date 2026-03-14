@@ -42,7 +42,7 @@
       #v(2pt)
     ]
     #if "__LAWYER_NAME__" != "" [
-      #text(size: 9.5pt, fill: slate-500)[Avv. __LAWYER_NAME__]
+      #text(size: 9.5pt, fill: slate-500)[__LAWYER_TITLE__ __LAWYER_NAME__]
     ]
   ],
   align(right)[

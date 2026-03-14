@@ -41,14 +41,21 @@ function safeDateIT(dateStr) {
 export async function exportPracticeTypstPDF(practice) {
   try {
     // 0. Load studio/lawyer info from license
-    let lawyerName = '', studioName = '';
+    let lawyerName = '', studioName = '', lawyerTitle = 'Avv.';
     try {
       const license = await checkLicense() || {};
       if (license.activated) {
         lawyerName = license.lawyerName || '';
         studioName = license.studioName || '';
+        lawyerTitle = license.lawyerTitle || 'Avv.';
       }
     } catch { /* fallback vuoto */ }
+
+    // Override lawyerTitle from settings if user changed it
+    try {
+      const settings = await (await import('../tauri-api')).getSettings() || {};
+      if (settings.lawyerTitle) lawyerTitle = settings.lawyerTitle;
+    } catch { /* fallback */ }
 
     const labels = FIELD_LABELS[practice.type] || FIELD_LABELS.civile;
 
@@ -67,6 +74,7 @@ export async function exportPracticeTypstPDF(practice) {
       courtLabel: labels.court,
       codeLabel: labels.code,
       lawyerName: lawyerName || null,
+      lawyerTitle: lawyerTitle || null,
       studioName: studioName || null,
       deadlines: practice.deadlines?.filter(d => d.date || d.label).map(d => ({
         date: safeDateIT(d.date),

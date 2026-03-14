@@ -109,7 +109,8 @@ export default function LicenseActivation({ children }) {
   // ── Attivazione ───────────────────────────────────────────────────────────
   function handleActivationResponse(response) {
     if (response.success) {
-      const parts = [response.client, response.lawyerName ? `Avv. ${response.lawyerName}` : ''].filter(Boolean);
+      const title = response.lawyerTitle || 'Avv.';
+      const parts = [response.client, response.lawyerName ? `${title} ${response.lawyerName}` : ''].filter(Boolean);
       setToast({
         type: 'success',
         text: 'Licenza attivata con successo',

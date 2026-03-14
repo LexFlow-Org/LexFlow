@@ -489,6 +489,7 @@ export default function SettingsPage({ onLock }) {
 
   // Profilo studio (read-only, from license token)
   const [lawyerName, setLawyerName] = useState('');
+  const [lawyerTitle, setLawyerTitle] = useState('Avv.');
   const [studioName, setStudioName] = useState('');
 
   // Stato per le Notifiche — attive di default
@@ -533,6 +534,8 @@ export default function SettingsPage({ onLock }) {
     const time = settings.preavviso ?? settings.notificationTime;
     if (time !== undefined) setNotificationTime(time);
     setAutolockMinutes(settings.autolockMinutes ?? 5);
+    // Override lawyer title from saved settings (user may have changed it)
+    if (settings.lawyerTitle) setLawyerTitle(settings.lawyerTitle);
   };
 
   useEffect(() => {
@@ -549,6 +552,7 @@ export default function SettingsPage({ onLock }) {
     api.checkLicense().then(res => {
       if (res?.activated) {
         if (res.lawyerName) setLawyerName(res.lawyerName);
+        if (res.lawyerTitle) setLawyerTitle(res.lawyerTitle);
         if (res.studioName) setStudioName(res.studioName);
       }
     }).catch(() => { /* silent */ });
@@ -648,9 +652,28 @@ export default function SettingsPage({ onLock }) {
           <div className="grid gap-5 sm:grid-cols-2">
             {lawyerName && (
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Nome Avvocato</label>
-              <div className="w-full bg-white/3 border border-border rounded-xl px-4 py-3 text-sm text-text">
-                Avv. {lawyerName}
+              <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Titolo e Nome</label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={lawyerTitle}
+                  onChange={async (e) => {
+                    const newTitle = e.target.value;
+                    setLawyerTitle(newTitle);
+                    try {
+                      await api.saveSettings({ ...buildFullSettings(), lawyerTitle: newTitle });
+                      toast.success(`Titolo aggiornato: ${newTitle}`);
+                    } catch {
+                      toast.error('Errore salvataggio');
+                    }
+                  }}
+                  className="bg-white/5 border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
+                >
+                  <option value="Avv.">Avv.</option>
+                  <option value="Praticante">Praticante</option>
+                </select>
+                <div className="flex-1 bg-white/3 border border-border rounded-xl px-4 py-3 text-sm text-text">
+                  {lawyerName}
+                </div>
               </div>
             </div>
             )}
@@ -663,7 +686,7 @@ export default function SettingsPage({ onLock }) {
             </div>
             )}
           </div>
-          <p className="text-[10px] text-text-dim">Questi dati provengono dalla licenza e vengono utilizzati nell'intestazione dei report PDF.</p>
+          <p className="text-[10px] text-text-dim">Il titolo e lo studio vengono utilizzati nell&apos;intestazione dei report PDF e in tutta l&apos;app.</p>
         </section>
         )}
 

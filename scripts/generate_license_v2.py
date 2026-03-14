@@ -450,6 +450,14 @@ def cmd_generate():
         _error("Nome Avvocato obbligatorio.")
         return
 
+    # Titolo professionale
+    print()
+    _info("Seleziona il titolo professionale:")
+    _info("  1) Avv.        (Avvocato)")
+    _info("  2) Praticante  (Praticante Avvocato)")
+    lawyer_title_choice = _prompt("Scelta [1/2]", default="1")
+    lawyer_title = "Praticante" if lawyer_title_choice == "2" else "Avv."
+
     key_id = _prompt("ID Licenza", default="auto")
     if not key_id:
         key_id = str(uuid.uuid4())[:8]
@@ -489,6 +497,8 @@ def cmd_generate():
         license_payload["a"] = lawyer_name   # avvocato
     if studio_name:
         license_payload["s"] = studio_name   # studio
+    if lawyer_title:
+        license_payload["t"] = lawyer_title  # titolo (Avv. / Praticante)
 
     payload_json = json.dumps(license_payload, separators=(',', ':')).encode('utf-8')
     payload_b64 = base64.urlsafe_b64encode(payload_json).decode('utf-8').rstrip('=')
@@ -517,6 +527,7 @@ def cmd_generate():
         "id": key_id,
         "studio": studio_name,
         "lawyer_name": lawyer_name or "",
+        "lawyer_title": lawyer_title or "Avv.",
         "studio_name": studio_name or "",
         "issued_at": datetime.now().isoformat(),
         "expires_at": datetime.fromtimestamp(expiry_timestamp / 1000).isoformat(),
@@ -532,7 +543,7 @@ def cmd_generate():
 
     _success_box("LICENZA GENERATA E REGISTRATA", [
         f"{C.DIM}Studio:{C.RESET}     {C.WHITE}{studio_name}{C.RESET}",
-        f"{C.DIM}Avvocato:{C.RESET}   {C.WHITE}{lawyer_name}{C.RESET}",
+        f"{C.DIM}Avvocato:{C.RESET}   {C.WHITE}{lawyer_title} {lawyer_name}{C.RESET}",
         f"{C.DIM}ID:{C.RESET}         {C.CYAN}{key_id}{C.RESET}",
         f"{C.DIM}Scadenza:{C.RESET}   {C.WHITE}{datetime.fromtimestamp(expiry_timestamp / 1000).strftime('%Y-%m-%d')}{C.RESET}",
         *([ f"{C.DIM}Grace:{C.RESET}     {C.WHITE}{grace_int} giorni{C.RESET}" ] if grace_int > 0 else []),
