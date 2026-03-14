@@ -1178,6 +1178,8 @@ body.agenda-dragging .agenda-event:hover {
   line-height: 1.4;
   min-width: 260px;
   max-width: 420px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(var(--overlay), 0.04) inset;
   border: 1px solid rgba(var(--overlay), 0.08);
   background: var(--toast-bg);

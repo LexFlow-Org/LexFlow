@@ -337,10 +337,9 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       if (result?.success) {
         const fullPath = result.path || '';
         const fileName = fullPath.split(/[/\\]/).pop() || 'PDF';
-        const folder = fullPath.split(/[/\\]/).slice(0, -1).pop() || '';
         toast.success(
-          `PDF salvato con successo!\n${folder}/${fileName}`,
-          { duration: 6000, style: { maxWidth: '420px' } }
+          `PDF salvato con successo!\n📄 ${fileName}`,
+          { duration: 6000 }
         );
       } else if (result?.cancelled) {
         // User closed the save dialog — silent dismiss, no error toast
