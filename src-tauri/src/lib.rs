@@ -4141,10 +4141,7 @@ fn schedule_reminder_aot(
     };
 
     // Determine if critical → use urgent channel (IMPORTANCE_HIGH)
-    let category = item
-        .get("category")
-        .and_then(|c| c.as_str())
-        .unwrap_or("");
+    let category = item.get("category").and_then(|c| c.as_str()).unwrap_or("");
     let title_lower = item_title.to_lowercase();
     let is_critical = category == "udienza"
         || category == "scadenza"
@@ -4308,10 +4305,7 @@ fn fire_desktop_reminder(app: &AppHandle, item: &Value, current_minute: &str) {
     let body = build_reminder_body(item_title, item_time, item_local, remind_time);
 
     // Determine if this is a critical event (udienza/scadenza → time-sensitive)
-    let category = item
-        .get("category")
-        .and_then(|c| c.as_str())
-        .unwrap_or("");
+    let category = item.get("category").and_then(|c| c.as_str()).unwrap_or("");
     let title_lower = item_title.to_lowercase();
     let is_critical = category == "udienza"
         || category == "scadenza"
@@ -4364,7 +4358,7 @@ fn fire_desktop_reminder(app: &AppHandle, item: &Value, current_minute: &str) {
 #[cfg(target_os = "macos")]
 fn sanitize_for_swift(input: &str) -> String {
     input
-        .replace('\\', "\\\\")  // MUST be first
+        .replace('\\', "\\\\") // MUST be first
         .replace('"', "\\\"")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
@@ -4550,7 +4544,9 @@ print("OK:\(count)")
                 cmd.env_remove(&k);
             }
         }
-        let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn swift: {}", e))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to spawn swift: {}", e))?;
         if let Some(ref mut stdin) = child.stdin {
             use std::io::Write;
             let _ = stdin.write_all(swift_code.as_bytes());
@@ -4564,14 +4560,20 @@ print("OK:\(count)")
 
         if stdout.starts_with("OK:") {
             let synced: usize = stdout[3..].parse().unwrap_or(0);
-            eprintln!("[LexFlow] Calendar sync: {} events written to macOS Calendar ✓", synced);
+            eprintln!(
+                "[LexFlow] Calendar sync: {} events written to macOS Calendar ✓",
+                synced
+            );
             Ok(json!({"success": true, "synced": synced}))
         } else if stdout == "DENIED" {
             eprintln!("[LexFlow] Calendar sync: permission DENIED by user");
             Ok(json!({"success": false, "error": "calendar_permission_denied"}))
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            eprintln!("[LexFlow] Calendar sync failed: stdout={}, stderr={}", stdout, stderr);
+            eprintln!(
+                "[LexFlow] Calendar sync failed: stdout={}, stderr={}",
+                stdout, stderr
+            );
             Ok(json!({"success": false, "error": "calendar_sync_failed"}))
         }
     }
@@ -4640,8 +4642,7 @@ let sema = DispatchSemaphore(value: 0)
 center.add(req) {{ _ in sema.signal() }}
 sema.wait()
 "#,
-                safe_t,
-                safe_b,
+                safe_t, safe_b,
             );
 
             let mut cmd = std::process::Command::new("/usr/bin/swift");
@@ -5178,8 +5179,8 @@ fn acquire_single_instance_mutex() -> bool {
 
     let handle = unsafe {
         windows_sys::Win32::System::Threading::CreateMutexA(
-            std::ptr::null(),       // default security attributes
-            1,                      // bInitialOwner = TRUE (we want ownership)
+            std::ptr::null(), // default security attributes
+            1,                // bInitialOwner = TRUE (we want ownership)
             mutex_name.as_ptr() as *const u8,
         )
     };
@@ -5226,7 +5227,9 @@ fn acquire_single_instance_mutex() -> bool {
 
 #[cfg(target_os = "macos")]
 fn check_tcc_location(app: &tauri::App) {
-    let Ok(exe) = std::env::current_exe() else { return };
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
     let path_str = exe.to_string_lossy();
 
     // Canonical check: /Applications/ or ~/Applications/
@@ -5243,10 +5246,13 @@ fn check_tcc_location(app: &tauri::App) {
             path_str
         );
         // Emit event to frontend — the UI can show a dismissable banner
-        let _ = app.emit("lf-tcc-location-warning", json!({
-            "path": path_str.to_string(),
-            "inTransient": in_transient,
-        }));
+        let _ = app.emit(
+            "lf-tcc-location-warning",
+            json!({
+                "path": path_str.to_string(),
+                "inTransient": in_transient,
+            }),
+        );
     } else {
         eprintln!("[LexFlow] TCC: running from /Applications ✓");
     }
@@ -5279,30 +5285,25 @@ fn clear_webview_cache_on_upgrade(app_version: &str, app_data_dir: &std::path::P
         }
     }
 
-    eprintln!(
-        "[LexFlow] Version change detected → clearing WebView cache…"
-    );
+    eprintln!("[LexFlow] Version change detected → clearing WebView cache…");
 
     // macOS: WKWebView stores cache in ~/Library/WebKit/<BundleID>/
     #[cfg(target_os = "macos")]
     {
         if let Some(home) = dirs::home_dir() {
-            let webkit_cache = home
-                .join("Library/WebKit/com.pietrolongo.lexflow");
+            let webkit_cache = home.join("Library/WebKit/com.pietrolongo.lexflow");
             if webkit_cache.exists() {
                 let _ = fs::remove_dir_all(&webkit_cache);
                 eprintln!("[LexFlow] Cleared WKWebView cache ✓");
             }
             // Also clear HTTP storage
-            let http_storage = home
-                .join("Library/HTTPStorages/com.pietrolongo.lexflow");
+            let http_storage = home.join("Library/HTTPStorages/com.pietrolongo.lexflow");
             if http_storage.exists() {
                 let _ = fs::remove_dir_all(&http_storage);
                 eprintln!("[LexFlow] Cleared HTTPStorages ✓");
             }
             // Cached Data in Application Support
-            let cached_data = home
-                .join("Library/Caches/com.pietrolongo.lexflow");
+            let cached_data = home.join("Library/Caches/com.pietrolongo.lexflow");
             if cached_data.exists() {
                 let _ = fs::remove_dir_all(&cached_data);
                 eprintln!("[LexFlow] Cleared Caches dir ✓");
@@ -5336,7 +5337,10 @@ fn clear_webview_cache_on_upgrade(app_version: &str, app_data_dir: &std::path::P
 
     // Persist current version so we don't wipe again on next launch
     let _ = std::fs::write(&marker_file, app_version);
-    eprintln!("[LexFlow] WebView cache cleared for upgrade to {} ✓", app_version);
+    eprintln!(
+        "[LexFlow] WebView cache cleared for upgrade to {} ✓",
+        app_version
+    );
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5493,10 +5497,7 @@ fn run_ls_cleanup(
 
         let canonical_current = std::path::PathBuf::from(&canonical_path_str);
 
-        if let Ok(output) = std::process::Command::new(ls)
-            .arg("-dump")
-            .output()
-        {
+        if let Ok(output) = std::process::Command::new(ls).arg("-dump").output() {
             let dump = String::from_utf8_lossy(&output.stdout);
             let mut entry_path: Option<std::path::PathBuf> = None;
             let mut unregistered = 0u32;
@@ -5647,8 +5648,7 @@ fn setup_desktop(
                 eprintln!("[LexFlow] LaunchServices: cannot walk to .app bundle, skipping");
                 return Ok(());
             };
-            let canonical_path = std::fs::canonicalize(&app_path)
-                .unwrap_or(app_path);
+            let canonical_path = std::fs::canonicalize(&app_path).unwrap_or(app_path);
             let path_str = canonical_path.to_string_lossy().to_string();
 
             // 2. Anti-Translocation / Anti-DMG guard
@@ -5816,26 +5816,22 @@ fn setup_android(app: &mut tauri::App) {
     // wakes at the exact scheduled time even at 5% battery.
     {
         use tauri_plugin_notification::NotificationExt;
-        let _ = app
-            .notification()
-            .create_channel(
-                tauri_plugin_notification::Channel::builder("lexflow_urgent", "LexFlow Urgenti")
-                    .description("Scadenze e udienze — non silenziabili")
-                    .importance(tauri_plugin_notification::Importance::High)
-                    .sound("default")
-                    .vibration(true)
-                    .lights(true)
-                    .build(),
-            );
-        let _ = app
-            .notification()
-            .create_channel(
-                tauri_plugin_notification::Channel::builder("lexflow_default", "LexFlow")
-                    .description("Promemoria e briefing")
-                    .importance(tauri_plugin_notification::Importance::Default)
-                    .sound("default")
-                    .build(),
-            );
+        let _ = app.notification().create_channel(
+            tauri_plugin_notification::Channel::builder("lexflow_urgent", "LexFlow Urgenti")
+                .description("Scadenze e udienze — non silenziabili")
+                .importance(tauri_plugin_notification::Importance::High)
+                .sound("default")
+                .vibration(true)
+                .lights(true)
+                .build(),
+        );
+        let _ = app.notification().create_channel(
+            tauri_plugin_notification::Channel::builder("lexflow_default", "LexFlow")
+                .description("Promemoria e briefing")
+                .importance(tauri_plugin_notification::Importance::Default)
+                .sound("default")
+                .build(),
+        );
         eprintln!("[LexFlow] Android notification channels created ✓");
     }
 
