@@ -454,6 +454,7 @@ export default function App() {
                       await savePractices(newList);
                     }}
                     agendaEvents={agendaEvents}
+                    onNavigate={navigate}
                   />
                 ) : (
                   <PracticesList

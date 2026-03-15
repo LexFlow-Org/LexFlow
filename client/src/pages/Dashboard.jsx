@@ -270,7 +270,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       {/* ═══ 3 STAT CARDS — informative ═══ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button type="button" onClick={() => onNavigate('/pratiche')} className="glass-card p-5 flex items-center gap-4 hover:border-border transition-colors cursor-pointer group text-left">
-          <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
+          <div className="w-11 h-11 rounded-xl bg-surface flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
             <FolderOpen size={20} className="text-text-muted group-hover:text-primary transition-colors" />
           </div>
           <div>
@@ -280,7 +280,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
         </button>
 
         <button type="button" onClick={() => onNavigate('/agenda')} className="glass-card p-5 flex items-center gap-4 hover:border-border transition-colors cursor-pointer group text-left">
-          <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
+          <div className="w-11 h-11 rounded-xl bg-surface flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
             <CalendarDays size={20} className="text-text-muted group-hover:text-primary transition-colors" />
           </div>
           <div>
@@ -294,7 +294,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
         </button>
 
         <button type="button" onClick={() => onNavigate('/scadenze')} className="glass-card p-5 flex items-center gap-4 hover:border-border transition-colors cursor-pointer group text-left">
-          <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
+          <div className="w-11 h-11 rounded-xl bg-surface flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
             <CalendarClock size={20} className="text-text-muted group-hover:text-primary transition-colors" />
           </div>
           <div>

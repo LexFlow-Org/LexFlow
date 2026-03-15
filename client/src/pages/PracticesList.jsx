@@ -18,7 +18,7 @@ const SUBJECT_STYLES = {
   lavoro: { color: 'text-materia-lavoro', bg: 'bg-materia-lavoro/10', border: 'border-materia-lavoro/20', label: 'Lavoro', stripe: 'bg-materia-lavoro', dot: 'bg-materia-lavoro' },
   amm: { color: 'text-materia-amm', bg: 'bg-materia-amm/10', border: 'border-materia-amm/20', label: 'Amministrativo', stripe: 'bg-materia-amm', dot: 'bg-materia-amm' },
   stra: { color: 'text-materia-stra', bg: 'bg-materia-stra/10', border: 'border-materia-stra/20', label: 'Stragiudiziale', stripe: 'bg-materia-stra', dot: 'bg-materia-stra' },
-  default: { color: 'text-text-dim', bg: 'bg-white/5', border: 'border-white/10', label: 'Altro', stripe: 'bg-white/40', dot: 'bg-white/40' }
+  default: { color: 'text-text-dim', bg: 'bg-surface', border: 'border-border', label: 'Altro', stripe: 'bg-text-dim', dot: 'bg-text-dim' }
 };
 
 export default function PracticesList({ practices = [], onSelect, onNewPractice }) {
@@ -83,10 +83,10 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
             filterStatus === 'all' 
               ? 'border-primary/40 bg-primary/5 shadow-neon' 
-              : 'border-white/5 hover:bg-white/[0.03] opacity-70 hover:opacity-100'
+              : 'border-border hover:bg-surface opacity-70 hover:opacity-100'
           }`}
         >
-          <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center text-text-muted">
+          <div className="w-11 h-11 rounded-xl bg-surface flex items-center justify-center text-text-muted">
             <Briefcase size={20} />
           </div>
           <div>
@@ -99,12 +99,12 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         <button type="button"
           onClick={() => setFilterStatus('active')}
           className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
-            filterStatus === 'active' 
-              ? 'border-primary/40 bg-primary/5 shadow-neon' 
-              : 'border-white/5 hover:bg-white/[0.03] opacity-70 hover:opacity-100'
+            filterStatus === 'active'
+              ? 'border-primary/40 bg-primary/5 shadow-neon'
+              : 'border-border hover:bg-surface opacity-70 hover:opacity-100'
           }`}
         >
-          <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center text-text-muted">
+          <div className="w-11 h-11 rounded-xl bg-surface flex items-center justify-center text-text-muted">
             <CheckCircle2 size={20} />
           </div>
           <div>
@@ -117,12 +117,12 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         <button type="button"
           onClick={() => setFilterStatus('closed')}
           className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
-            filterStatus === 'closed' 
-              ? 'border-primary/40 bg-primary/5 shadow-neon' 
-              : 'border-white/5 hover:bg-white/[0.03] opacity-70 hover:opacity-100'
+            filterStatus === 'closed'
+              ? 'border-primary/40 bg-primary/5 shadow-neon'
+              : 'border-border hover:bg-surface opacity-70 hover:opacity-100'
           }`}
         >
-          <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center text-text-muted">
+          <div className="w-11 h-11 rounded-xl bg-surface flex items-center justify-center text-text-muted">
             <Archive size={20} />
           </div>
           <div>
@@ -133,7 +133,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
       </div>
 
       {/* Toolbar dei Filtri */}
-      <div className="bg-white/5 p-2 rounded-[24px] border border-white/10 flex flex-col lg:flex-row items-center gap-2">
+      <div className="bg-surface p-2 rounded-[24px] border border-border flex flex-col lg:flex-row items-center gap-2">
         <div className="relative flex-1 group w-full">
           <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={20} />
           <input 
@@ -145,7 +145,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           />
         </div>
         
-        <div className="flex items-center gap-2 w-full lg:w-auto p-2 lg:p-0 border-t lg:border-t-0 lg:border-l border-white/10">
+        <div className="flex items-center gap-2 w-full lg:w-auto p-2 lg:p-0 border-t lg:border-t-0 lg:border-l border-border">
           <div className="flex items-center gap-4 px-4 h-10">
             <Filter size={14} className="text-text-dim opacity-50" />
             
@@ -159,7 +159,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
               <option value="closed" className="bg-card text-text">Solo Chiusi</option>
             </select>
 
-            <div className="w-[1px] h-4 bg-white/10" />
+            <div className="w-[1px] h-4 bg-border" />
 
             <select 
               className="bg-transparent border-none text-xs font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-all p-0"
@@ -183,7 +183,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
               <button type="button"
                 key={p?.id || `practice-${index}`}
                 onClick={() => typeof onSelect === 'function' && onSelect(p.id)}
-                className="glass-card p-6 flex items-center justify-between group hover:bg-white/5 hover:border-white/20 transition-all cursor-pointer border border-white/5 relative overflow-hidden text-left w-full"
+                className="glass-card p-6 flex items-center justify-between group hover:bg-surface hover:border-border transition-all cursor-pointer border border-border relative overflow-hidden text-left w-full"
               >
                 <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${style.stripe}`} />
 
@@ -208,11 +208,11 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
 
                     <div className="space-y-1 overflow-hidden">
                       <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Riferimento</div>
-                      <div className="text-xs font-mono text-text-muted tracking-widest bg-white/[0.03] px-2 py-0.5 rounded-lg">{p?.code || '---'}</div>
+                      <div className="text-xs font-mono text-text-muted tracking-widest bg-surface px-2 py-0.5 rounded-lg">{p?.code || '---'}</div>
                     </div>
 
                     <div className="hidden lg:flex flex-col justify-center items-end pr-4">
-                      <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-white/5 text-text border-border' : 'bg-white/5 text-text-dim border-border'}`}>
+                      <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-surface text-text border-border' : 'bg-surface text-text-dim border-border'}`}>
                         <span className="flex items-center gap-1.5">
                           <span className={`w-1.5 h-1.5 rounded-full ${p?.status === 'active' ? 'bg-success' : 'bg-text-dim'}`} />
                           {p?.status === 'active' ? 'Attivo' : 'Archiviato'}
@@ -230,8 +230,8 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             );
           })
         ) : (
-          <div className="glass-card p-24 flex flex-col items-center justify-center text-center space-y-6 border border-dashed border-white/10">
-            <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center text-text-dim/20">
+          <div className="glass-card p-24 flex flex-col items-center justify-center text-center space-y-6 border border-dashed border-border">
+            <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center text-text-dim/20">
               <Search size={40} />
             </div>
             <div className="space-y-2">

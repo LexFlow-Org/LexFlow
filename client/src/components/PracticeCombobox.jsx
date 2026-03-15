@@ -128,7 +128,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
             <button
               type="button"
               onClick={handleClear}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0 z-10"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-card-hover rounded-lg transition-colors flex-shrink-0 z-10"
               title="Rimuovi selezione"
               aria-label="Rimuovi selezione"
             >
@@ -140,7 +140,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
 
       {/* Dropdown */}
       {open && (
-        <div id="practice-listbox" ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50 glass-card rounded-xl max-h-52 overflow-y-auto no-scrollbar shadow-2xl border border-white/10">
+        <div id="practice-listbox" ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50 glass-card rounded-xl max-h-52 overflow-y-auto no-scrollbar shadow-2xl border border-border">
           {filtered.length === 0 ? (
             <div className="px-4 py-3 text-xs text-text-dim text-center">Nessun fascicolo trovato</div>
           ) : (
@@ -150,7 +150,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
                 key={p.id}
                 data-combo-item
                 onClick={() => handleSelect(p.id)}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/[0.06] transition-colors ${p.id === value ? 'bg-primary/5' : ''} ${idx === highlightIdx ? 'bg-white/[0.08]' : ''}`}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-card transition-colors ${p.id === value ? 'bg-primary/5' : ''} ${idx === highlightIdx ? 'bg-card' : ''}`}
               >
                 <Briefcase size={14} className="text-text-dim flex-shrink-0" />
                 <span className="text-sm text-text truncate flex-1">{p.client} — {p.object}</span>

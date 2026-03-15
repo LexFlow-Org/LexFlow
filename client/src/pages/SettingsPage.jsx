@@ -86,7 +86,7 @@ function FactoryResetModal({ onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Tutti i dati verranno eliminati</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -171,7 +171,7 @@ function ExportBackupModal({ onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Crea un file .lex cifrato</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -264,7 +264,7 @@ function ImportBackupModal({ onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Sovrascrive i dati attuali</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -400,7 +400,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
             <X size={20} className="group-hover:rotate-90 transition-transform" />
           </button>
         </div>
@@ -631,7 +631,7 @@ export default function SettingsPage({ onLock }) {
           <h1 className="text-3xl font-bold text-text tracking-tight mb-2">Impostazioni</h1>
           <p className="text-text-muted text-sm">Gestisci sicurezza e preferenze di LexFlow.</p>
         </div>
-        <div className="px-4 py-2 bg-white/5 rounded-lg border border-border text-xs font-mono text-text-dim">
+        <div className="px-4 py-2 bg-surface rounded-lg border border-border text-xs font-mono text-text-dim">
           v{appVersion} • {platform}
         </div>
       </div>
@@ -642,7 +642,7 @@ export default function SettingsPage({ onLock }) {
         {(lawyerName || studioName) && (
         <section className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-            <Briefcase className="text-primary" size={20} />
+            <Briefcase className="text-text-muted" size={20} />
             <h2 className="text-lg font-bold text-text">Profilo Studio</h2>
           </div>
           <div className="grid gap-5 sm:grid-cols-2">
@@ -662,12 +662,12 @@ export default function SettingsPage({ onLock }) {
                       toast.error('Errore salvataggio');
                     }
                   }}
-                  className="bg-white/5 border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
+                  className="bg-surface border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
                 >
                   <option value="Avv.">Avv.</option>
                   <option value="Praticante">Praticante</option>
                 </select>
-                <div className="flex-1 bg-white/3 border border-border rounded-xl px-4 py-3 text-sm text-text">
+                <div className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
                   {lawyerName}
                 </div>
               </div>
@@ -676,7 +676,7 @@ export default function SettingsPage({ onLock }) {
             {studioName && (
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
-              <div className="w-full bg-white/3 border border-border rounded-xl px-4 py-3 text-sm text-text">
+              <div className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
                 {studioName}
               </div>
             </div>
@@ -689,7 +689,7 @@ export default function SettingsPage({ onLock }) {
         {/* SEZIONE NOTIFICHE (AGGIUNTA) */}
         <section className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-            <Bell className="text-primary" size={20} />
+            <Bell className="text-text-muted" size={20} />
             <h2 className="text-lg font-bold text-text">Notifiche di Sistema</h2>
           </div>
 
@@ -710,7 +710,7 @@ export default function SettingsPage({ onLock }) {
                   setNotifyEnabled(val);
                   saveNotifySettings({ notifyEnabled: val });
                 }}
-                className={`w-12 h-6 rounded-full transition-colors relative ${notifyEnabled ? 'bg-primary' : 'bg-white/10'}`}
+                className={`w-12 h-6 rounded-full transition-colors relative ${notifyEnabled ? 'bg-primary' : 'bg-card'}`}
               >
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${notifyEnabled ? 'left-7' : 'left-1'}`} />
               </button>
@@ -731,7 +731,7 @@ export default function SettingsPage({ onLock }) {
                       className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                         notificationTime === opt.value
                           ? 'bg-primary text-black border-primary shadow-neon'
-                          : 'bg-white/[0.04] text-text-muted border-border hover:bg-white/[0.08] hover:text-text'
+                          : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
                       }`}
                     >
                       {opt.label}
@@ -750,8 +750,8 @@ export default function SettingsPage({ onLock }) {
                       key={opt.value}
                       className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-not-allowed ${
                         notificationTime === opt.value
-                          ? 'bg-white/10 text-text-dim border-white/20'
-                          : 'bg-white/[0.04] text-text-muted border-border'
+                          ? 'bg-card text-text-dim border-border'
+                          : 'bg-surface text-text-muted border-border'
                       }`}
                     >
                       {opt.label}
@@ -766,7 +766,7 @@ export default function SettingsPage({ onLock }) {
         {/* Sezione Sicurezza */}
         <section className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-            <Shield className="text-primary" size={20} />
+            <Shield className="text-text-muted" size={20} />
             <h2 className="text-lg font-bold text-text">Sicurezza & Privacy</h2>
           </div>
 
@@ -783,7 +783,7 @@ export default function SettingsPage({ onLock }) {
             </div>
             <button 
               onClick={handlePrivacyToggle}
-              className={`w-12 h-6 rounded-full transition-colors relative ${privacyEnabled ? 'bg-primary' : 'bg-white/10'}`}
+              className={`w-12 h-6 rounded-full transition-colors relative ${privacyEnabled ? 'bg-primary' : 'bg-card'}`}
             >
               <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${privacyEnabled ? 'left-7' : 'left-1'}`} />
             </button>
@@ -803,7 +803,7 @@ export default function SettingsPage({ onLock }) {
             </div>
             <button 
               onClick={handleScreenshotToggle}
-              className={`w-12 h-6 rounded-full transition-colors relative ${screenshotProtection ? 'bg-primary' : 'bg-white/10'}`}
+              className={`w-12 h-6 rounded-full transition-colors relative ${screenshotProtection ? 'bg-primary' : 'bg-card'}`}
             >
               <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${screenshotProtection ? 'left-7' : 'left-1'}`} />
             </button>
@@ -812,7 +812,7 @@ export default function SettingsPage({ onLock }) {
           {/* Auto-Lock Timer */}
           <div className="pt-4 border-t border-border">
             <div className="flex items-center gap-2 mb-1">
-              <Timer size={16} className="text-primary" />
+              <Timer size={16} className="text-text-muted" />
               <span className="font-medium text-text">Blocco Automatico</span>
             </div>
             <p className="text-xs text-text-muted max-w-md mb-4">
@@ -827,7 +827,7 @@ export default function SettingsPage({ onLock }) {
                   className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                     autolockMinutes === opt.value
                       ? 'bg-primary text-black border-primary shadow-neon'
-                      : 'bg-white/[0.04] text-text-muted border-border hover:bg-white/[0.08] hover:text-text'
+                      : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
                   }`}
                 >
                   {opt.label}
@@ -839,7 +839,7 @@ export default function SettingsPage({ onLock }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <button 
               onClick={onLock}
-              className="flex items-center justify-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-text transition-all group"
+              className="flex items-center justify-center gap-3 p-4 rounded-xl bg-surface hover:bg-card border border-border text-text transition-all group"
             >
               <Lock size={18} className="text-primary transition-transform group-hover:-rotate-12" />
               <span className="text-sm font-bold uppercase tracking-wider">Blocca Vault Ora</span>
@@ -850,11 +850,11 @@ export default function SettingsPage({ onLock }) {
                 {
                   active: 'bg-success-soft hover:bg-success-soft border-success-border',
                   available: 'bg-warning-soft hover:bg-warning-soft border-warning-border',
-                }[bioStatus] || 'bg-white/5 hover:bg-white/10 border-white/10'
+                }[bioStatus] || 'bg-surface hover:bg-card border-border'
               }`}
             >
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                { active: 'bg-success-soft', available: 'bg-warning-soft' }[bioStatus] || 'bg-white/5'
+                { active: 'bg-success-soft', available: 'bg-warning-soft' }[bioStatus] || 'bg-surface'
               }`}>
                 <Fingerprint size={20} className={
                   {
@@ -886,12 +886,12 @@ export default function SettingsPage({ onLock }) {
         {/* Sezione Dati */}
         <section className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-            <HardDrive className="text-primary" size={20} />
+            <HardDrive className="text-text-muted" size={20} />
             <h2 className="text-lg font-bold text-text">Gestione Dati</h2>
           </div>
 
           {/* Banner sistema chiuso */}
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-white/[0.03] border border-border">
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-surface border border-border">
             <ArrowLeftRight size={16} className="text-primary mt-0.5 shrink-0" />
             <div className="space-y-1">
               <p className="text-xs font-semibold text-primary uppercase tracking-wider">Sistema Chiuso — Vault Indipendenti</p>

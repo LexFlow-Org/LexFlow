@@ -33,7 +33,7 @@ const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate 
     <div className="relative" ref={popRef}>
       <button
         type="button"
-        className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] transition cursor-pointer group border border-border hover:border-border text-left w-full"
+        className="flex items-center gap-3 p-3 rounded-xl bg-surface hover:bg-card transition cursor-pointer group border border-border hover:border-border text-left w-full"
         onClick={handleClick}
       >
       <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-cat-scadenza" />
@@ -53,17 +53,17 @@ const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate 
           )}
         </div>
       </div>
-      <div className="text-xs font-mono text-text-muted bg-white/5 px-2.5 py-1 rounded-lg">{formatDateIT(d.date)}</div>
+      <div className="text-xs font-mono text-text-muted bg-surface px-2.5 py-1 rounded-lg">{formatDateIT(d.date)}</div>
       <ChevronRight size={14} className="text-text-dim group-hover:text-primary transition flex-shrink-0" />
     </button>
 
     {/* Popover: Apri in Agenda / Vai al Fascicolo */}
     {showPopover && (
       <div className="absolute right-4 top-full mt-1 z-50 flex flex-col gap-1 p-1.5 rounded-xl bg-card border border-border shadow-2xl min-w-[180px] animate-slide-up">
-        <button onClick={() => { setShowPopover(false); if (onNavigate) { const timeParam = d.timeStart ? `&time=${d.timeStart}` : ''; onNavigate('/agenda?date=' + d.date + timeParam); } }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-white/[0.06] transition">
+        <button onClick={() => { setShowPopover(false); if (onNavigate) { const timeParam = d.timeStart ? `&time=${d.timeStart}` : ''; onNavigate('/agenda?date=' + d.date + timeParam); } }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-card transition">
           <Calendar size={14} className="text-primary" /> Apri in Agenda
         </button>
-        <button onClick={() => { setShowPopover(false); onSelectPractice(d.practiceId); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-white/[0.06] transition">
+        <button onClick={() => { setShowPopover(false); onSelectPractice(d.practiceId); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-card transition">
           <FolderOpen size={14} className="text-primary" /> Vai al Fascicolo
         </button>
       </div>
@@ -207,7 +207,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-black text-text flex items-center gap-3 tracking-tight">
-            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-surface flex items-center justify-center">
               <CalendarClock size={20} className="text-text-muted" />
             </div>
             Scadenze
@@ -219,7 +219,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
       {/* 3 Stat Cards + Briefing Widget */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {/* In Scadenza Oggi */}
-        <div className="glass-card p-5 border border-white/5">
+        <div className="glass-card p-5 border border-border">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">In Scadenza Oggi</p>
           <p className="text-3xl font-black text-text">{todayDeadlines.length}</p>
           <p className="text-[10px] text-text-dim mt-1">
@@ -228,7 +228,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         </div>
 
         {/* In Ritardo */}
-        <div className="glass-card p-5 border border-white/5">
+        <div className="glass-card p-5 border border-border">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">In Ritardo</p>
           <p className="text-3xl font-black text-text">{pastDeadlines.length}</p>
           <p className="text-[10px] text-text-dim mt-1">
@@ -243,7 +243,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         </div>
 
         {/* Prossimi 30 giorni */}
-        <div className="glass-card p-5 border border-white/5">
+        <div className="glass-card p-5 border border-border">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">Prossimi 30 Giorni</p>
           <p className="text-3xl font-black text-text">{next30.length}</p>
           <p className="text-[10px] text-text-dim mt-1">
@@ -267,9 +267,9 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
               { label: 'Pomeriggio', value: briefingPomeriggio, onChange: onBriefingChange(setBriefingPomeriggio) },
               { label: 'Sera', value: briefingSera, onChange: onBriefingChange(setBriefingSera) },
             ].map(({ label, value, onChange }) => (
-              <div key={label} className="flex items-center justify-between bg-white/[0.03] rounded-lg px-3 py-2 border border-white/5">
+              <div key={label} className="flex items-center justify-between bg-surface rounded-lg px-3 py-2 border border-border">
                 <span className="text-xs text-text font-medium">{label}</span>
-                <input type="time" disabled={settings?.notifyEnabled === false} className={`bg-black/30 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white font-mono text-center focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all w-20 ${settings?.notifyEnabled === false ? 'cursor-not-allowed' : ''}`} value={value} onChange={onChange} />
+                <input type="time" disabled={settings?.notifyEnabled === false} className={`bg-black/30 border border-border rounded-lg px-2.5 py-1 text-xs text-white font-mono text-center focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all w-20 ${settings?.notifyEnabled === false ? 'cursor-not-allowed' : ''}`} value={value} onChange={onChange} />
               </div>
             ))}
           </div>

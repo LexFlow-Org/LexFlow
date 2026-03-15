@@ -93,7 +93,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
   return (
     <div className="h-full flex flex-col bg-background animate-fade-in">
       <div className="flex items-center px-6 py-4 border-b border-border">
-        <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-text-dim hover:text-text">
+        <button onClick={onBack} className="p-2 hover:bg-card-hover rounded-full transition-colors text-text-dim hover:text-text">
           <ArrowLeft size={20} />
         </button>
         <div className="ml-4">
@@ -139,7 +139,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
               <input
                 id="pd-bio-pwd"
                 type="password"
-                className="input-field w-full py-3 px-4 rounded-xl bg-white/5 border-border text-text placeholder:text-text-dim text-sm"
+                className="input-field w-full py-3 px-4 rounded-xl bg-surface border-border text-text placeholder:text-text-dim text-sm"
                 placeholder="Inserisci la password..."
                 value={practicePassword}
                 onChange={e => setPracticePassword(e.target.value)}
@@ -213,23 +213,24 @@ function StatusDropdown({ status, onChangeStatus }) {
         onClick={() => setOpen(!open)}
         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
           status === 'active'
-            ? 'bg-white/5 text-text border-border hover:bg-white/10'
-            : 'bg-white/5 text-text-muted border-border hover:bg-white/10'
+            ? 'bg-surface text-text border-border hover:bg-card'
+            : 'bg-surface text-text-muted border-border hover:bg-card'
         }`}
       >
-        <span className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-success' : 'bg-text-dim'}`} />
-        {status === 'active' ? 'Attivo' : 'Archiviato'}
+        <span className={`text-xs font-bold ${status === 'active' ? 'text-success' : 'text-text-dim'}`}>
+          {status === 'active' ? '● Attivo' : '● Archiviato'}
+        </span>
         <ChevronDown size={14} className="text-text-dim" />
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-2 bg-card border border-border rounded-xl shadow-2xl z-50 py-1 min-w-[200px] animate-fade-in">
           <button onClick={() => doSet('active')}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-xs hover:bg-white/5 transition-colors text-left ${status === 'active' ? 'bg-white/[0.03]' : ''}`}>
-            <span className="w-2 h-2 rounded-full bg-success" /><span className="text-text font-medium">Attivo</span>
+            className={`w-full flex items-center gap-3 px-5 py-3.5 text-xs hover:bg-surface transition-colors text-left ${status === 'active' ? 'bg-surface' : ''}`}>
+            <span className="text-success font-bold">● Attivo</span>
           </button>
           <button onClick={() => doSet('closed')}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-xs hover:bg-white/5 transition-colors text-left ${status === 'closed' ? 'bg-white/[0.03]' : ''}`}>
-            <span className="w-2 h-2 rounded-full bg-text-dim" /><span className="text-text font-medium">Archiviato</span>
+            className={`w-full flex items-center gap-3 px-5 py-3.5 text-xs hover:bg-surface transition-colors text-left ${status === 'closed' ? 'bg-surface' : ''}`}>
+            <span className="text-text-dim font-bold">● Archiviato</span>
           </button>
         </div>
       )}
@@ -243,7 +244,7 @@ StatusDropdown.propTypes = {
 };
 
 /* ---------- Main Component ---------- */
-export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvents }) {
+export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvents, onNavigate }) {
   const [activeTab, setActiveTab] = useState('diary'); // diary, docs, deadlines, info
   const [biometricVerified, setBiometricVerified] = useState(false);
   const [showExportWarning, setShowExportWarning] = useState(false);
@@ -527,14 +528,14 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       {/* Top Bar */}
       <div className="flex items-center justify-between px-6 py-4 bg-card sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-text-dim hover:text-text">
+          <button onClick={onBack} className="p-2 hover:bg-card-hover rounded-full transition-colors text-text-dim hover:text-text">
             <ArrowLeft size={20} />
           </button>
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl font-bold text-text">{practice.client}</h1>
               {practice.biometricProtected && (
-                <ShieldCheck size={16} className="text-primary/60" title="Protetto con biometria" />
+                <ShieldCheck size={16} className="text-text-muted" title="Protetto con biometria" />
               )}
             </div>
             <p className="text-xs text-text-dim mt-0.5">
@@ -596,7 +597,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </span>
                 <button
                   onClick={handleExport}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-white/[0.06] text-text-muted border border-border hover:bg-white/[0.10] hover:text-text transition-all"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-card text-text-muted border border-border hover:bg-card-hover hover:text-text transition-all"
                 >
                   <Download size={14} />
                   Esporta PDF
@@ -614,9 +615,9 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 <div key={note.date + idx} className="flex gap-4 group animate-fade-in">
                   <div className="flex flex-col items-center pt-1">
                     <div className="w-2.5 h-2.5 rounded-full bg-primary ring-2 ring-primary/20" />
-                    <div className="w-px h-full bg-white/10 my-1" />
+                    <div className="w-px h-full bg-border my-1" />
                   </div>
-                  <div className="flex-1 rounded-2xl bg-white/[0.04] border border-white/[0.08] p-4 hover:bg-white/[0.06] hover:border-white/[0.12] transition-all">
+                  <div className="flex-1 rounded-2xl bg-surface border border-border p-4 hover:bg-card hover:border-border transition-all">
                     <div className="flex justify-between items-start mb-2.5">
                       <span className="text-[11px] font-semibold text-primary/90 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/15">
                         {new Date(note.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(note.date).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}
@@ -634,7 +635,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             <form onSubmit={addNote} className="sticky bottom-0 bg-background pt-4 border-t border-border">
               <div className="relative">
                 <textarea
-                  className="w-full min-h-[80px] pr-14 pl-4 py-3 resize-none rounded-2xl bg-white/[0.05] border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 focus:bg-white/[0.07] outline-none transition-all"
+                  className="w-full min-h-[80px] pr-14 pl-4 py-3 resize-none rounded-2xl bg-surface border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 focus:bg-card outline-none transition-all"
                   placeholder="Scrivi una nota di udienza, una telefonata o un appunto..."
                   value={newNote}
                   onChange={e => setNewNote(e.target.value)}
@@ -665,7 +666,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               <button 
                 type="button"
                 onClick={handleUploadPDF}
-                className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-white/5 hover:border-white/15 transition-all border border-white/5 group text-left w-full"
+                className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-surface hover:border-border transition-all border border-border group text-left w-full"
               >
                 <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                   <FilePlus size={24} className="text-primary" />
@@ -676,10 +677,10 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </div>
               </button>
 
-              <button 
+              <button
                 type="button"
                 onClick={linkFolder}
-                className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-white/5 hover:border-white/15 transition-all border border-white/5 group text-left w-full"
+                className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-surface hover:border-border transition-all border border-border group text-left w-full"
               >
                 <div className="w-12 h-12 rounded-xl bg-warning-soft flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                   <FolderPlus size={24} className="text-warning" />
@@ -695,7 +696,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             <div>
               <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px] mb-4">Documenti Allegati</h3>
               {(!practice.attachments || practice.attachments.length === 0) ? (
-                <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-white/10">
+                <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-border">
                   <FileText size={28} className="text-text-dim/40 mb-3" />
                   <p className="text-sm text-text-muted">Nessun documento allegato</p>
                   <p className="text-xs text-text-dim mt-1">Carica PDF o documenti nel vault crittografato</p>
@@ -734,7 +735,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             <div className="mt-6">
               <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px] mb-4">Cartelle Collegate</h3>
               {folders.length === 0 ? (
-                <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-white/10">
+                <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-border">
                   <FolderOpen size={28} className="text-text-dim/40 mb-3" />
                   <p className="text-sm text-text-muted">Nessuna cartella collegata</p>
                   <p className="text-xs text-text-dim mt-1">Collega cartelle locali al fascicolo</p>
@@ -823,7 +824,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
                         newDeadlineRemind === opt.value
                           ? 'bg-primary text-black border-primary shadow-neon'
-                          : 'bg-white/5 text-text-dim border-white/10 hover:bg-white/10 hover:text-text'
+                          : 'bg-surface text-text-dim border-border hover:bg-card hover:text-text'
                       }`}
                     >
                       {opt.label}
@@ -833,7 +834,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   <div className={`inline-flex items-center rounded-xl border transition-all ${
                     newDeadlineRemind === 'custom'
                       ? 'border-primary bg-primary/10 shadow-neon'
-                      : 'border-white/10 bg-white/5 hover:bg-white/10'
+                      : 'border-border bg-surface hover:bg-card'
                   }`}>
                     <button type="button"
                       onClick={() => setNewDeadlineRemind('custom')}
@@ -886,8 +887,15 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   const deadlineLabel = getDeadlineLabel(diff);
                   const key = d.source === 'agenda' ? `agenda_${d.id}` : `${d.date}_${d.label}_${idx}`;
                   
+                  const handleDeadlineClick = () => {
+                    if (onNavigate) {
+                      const timeParam = d.time ? `&time=${d.time}` : '';
+                      onNavigate('/agenda?date=' + d.date + timeParam);
+                    }
+                  };
+
                   return (
-                    <div key={key} className="glass-card p-4 group hover:border-primary/30 transition-colors">
+                    <div key={key} className={`glass-card p-4 group hover:border-primary/30 transition-colors ${onNavigate ? 'cursor-pointer' : ''}`} onClick={handleDeadlineClick} role={onNavigate ? 'button' : undefined} tabIndex={onNavigate ? 0 : undefined}>
                       <div className="flex items-center gap-3">
                         <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
                         <p className="text-sm text-text font-bold flex-1">{d.label}</p>
@@ -895,7 +903,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                           {deadlineLabel}
                         </div>
                         {d.source === 'practice' && (
-                          <button onClick={() => confirmDeleteDeadline(d.idx)} className="opacity-0 group-hover:opacity-100 p-1.5 text-text-dim hover:text-danger transition-all">
+                          <button onClick={(e) => { e.stopPropagation(); confirmDeleteDeadline(d.idx); }} className="opacity-0 group-hover:opacity-100 p-1.5 text-text-dim hover:text-danger transition-all">
                             <Trash2 size={14} />
                           </button>
                         )}
@@ -1009,7 +1017,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   <p className="text-text-dim text-[10px]">Inserisci la Master Password per esportare</p>
                 </div>
               </div>
-              <button onClick={() => setShowExportPwdModal(false)} className="p-2 hover:bg-white/10 rounded-xl text-text-dim hover:text-text transition-all group">
+              <button onClick={() => setShowExportPwdModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim hover:text-text transition-all group">
                 <X size={18} className="group-hover:rotate-90 transition-transform" />
               </button>
             </div>
@@ -1017,7 +1025,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             <form onSubmit={handleExportWithPassword} className="px-6 pb-6">
               <input
                 type="password"
-                className="w-full py-3 px-4 rounded-xl bg-white/[0.05] border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 outline-none transition-colors mb-4"
+                className="w-full py-3 px-4 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 outline-none transition-colors mb-4"
                 placeholder="Master Password…"
                 value={exportPwd}
                 onChange={e => setExportPwd(e.target.value)}
@@ -1025,7 +1033,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               />
               <div className="flex gap-3">
                 <button type="button" onClick={() => setShowExportPwdModal(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-border text-text-dim text-xs font-bold uppercase tracking-widest hover:bg-white/5 hover:text-text transition-all">
+                  className="flex-1 py-2.5 rounded-xl border border-border text-text-dim text-xs font-bold uppercase tracking-widest hover:bg-surface hover:text-text transition-all">
                   Annulla
                 </button>
                 <button type="submit" disabled={!exportPwd}
@@ -1088,4 +1096,5 @@ PracticeDetail.propTypes = {
   onBack: PropTypes.func.isRequired,
   onUpdate: PropTypes.func.isRequired,
   agendaEvents: PropTypes.array,
+  onNavigate: PropTypes.func,
 };

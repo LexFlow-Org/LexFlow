@@ -104,7 +104,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
               <p className="text-text-dim text-xs uppercase tracking-widest font-medium opacity-60">Configurazione Pratica Digitale</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
             <X size={24} className="group-hover:rotate-90 transition-transform" />
           </button>
         </div>
@@ -120,7 +120,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             <div className="relative group">
               <input
                 id="cpm-client"
-                className={`input-field pl-5 w-full bg-white/5 border-white/10 focus:border-primary/50 transition-all ${errors.client ? 'border-danger-border bg-danger-soft' : ''}`}
+                className={`input-field pl-5 w-full bg-surface border-border focus:border-primary/50 transition-all ${errors.client ? 'border-danger-border bg-danger-soft' : ''}`}
                 placeholder="Inserisci il nome del cliente o della società..."
                 value={formData.client}
                 onChange={e => updateField('client', e.target.value)}
@@ -146,8 +146,8 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                   onClick={() => updateField('type', m.id)}
                   className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 border uppercase tracking-wider ${
                     formData.type === m.id
-                      ? `${MATERIA_CSS[m.id]} scale-105 ring-2 ring-white/5`
-                      : 'bg-white/5 border-white/10 text-text-dim hover:bg-white/10 hover:border-white/20'
+                      ? `${MATERIA_CSS[m.id]} scale-105 ring-2 ring-border`
+                      : 'bg-surface border-border text-text-dim hover:bg-card hover:border-border'
                   }`}
                 >
                   {m.label}
@@ -161,7 +161,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             <label htmlFor="cpm-object" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Oggetto della Pratica *</label>
             <input
               id="cpm-object"
-              className={`input-field w-full bg-white/5 border-white/10 ${errors.object ? 'border-danger-border bg-danger-soft' : ''}`}
+              className={`input-field w-full bg-surface border-border ${errors.object ? 'border-danger-border bg-danger-soft' : ''}`}
               placeholder="Es. Recupero crediti o Descrizione sommaria..."
               value={formData.object}
               onChange={e => updateField('object', e.target.value)}
@@ -177,7 +177,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                 <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
                 <input
                   id="cpm-counterparty"
-                  className="input-field pl-12 w-full bg-white/5 border-white/10"
+                  className="input-field pl-12 w-full bg-surface border-border"
                   placeholder="Parte avversa..."
                   value={formData.counterparty}
                   onChange={e => updateField('counterparty', e.target.value)}
@@ -192,7 +192,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                   <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
                   <input
                     id="cpm-court"
-                    className="input-field pl-12 w-full bg-white/5 border-white/10"
+                    className="input-field pl-12 w-full bg-surface border-border"
                     placeholder="Tribunale, Corte, Giudice..."
                     value={formData.court}
                     onChange={e => updateField('court', e.target.value)}
@@ -205,7 +205,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
                   <input
                     id="cpm-courtLocation"
-                    className="input-field pl-12 w-full bg-white/5 border-white/10"
+                    className="input-field pl-12 w-full bg-surface border-border"
                     placeholder="Città o sezione..."
                     value={formData.courtLocation}
                     onChange={e => updateField('courtLocation', e.target.value)}
@@ -220,7 +220,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                 <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
                 <input
                   id="cpm-code"
-                  className="input-field pl-12 w-full font-mono text-sm bg-white/5 border-white/10 tracking-widest"
+                  className="input-field pl-12 w-full font-mono text-sm bg-surface border-border tracking-widest"
                   placeholder="Es. 4567/2026"
                   value={formData.code}
                   onChange={e => updateField('code', e.target.value)}
@@ -237,10 +237,10 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             <button 
               id="cpm-docs"
               type="button"
-              className="border-2 border-dashed border-white/10 rounded-[24px] p-8 flex flex-col items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer group relative w-full text-left"
+              className="border-2 border-dashed border-border rounded-[24px] p-8 flex flex-col items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer group relative w-full text-left"
               onClick={handleSelectFile}
             >
-              <div className="w-14 h-14 bg-white/5 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+              <div className="w-14 h-14 bg-surface rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
                 <FilePlus size={28} className="text-text-dim group-hover:text-primary" />
               </div>
               <div className="text-center">
@@ -274,7 +274,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             <label htmlFor="cpm-notes" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Note / Strategia</label>
             <textarea
               id="cpm-notes"
-              className="input-field w-full min-h-[120px] py-4 px-5 resize-none bg-white/5 border-white/10 focus:bg-white/10 transition-all"
+              className="input-field w-full min-h-[120px] py-4 px-5 resize-none bg-surface border-border focus:bg-card transition-all"
               placeholder="Annotazioni libere..."
               value={formData.description}
               onChange={e => updateField('description', e.target.value)}

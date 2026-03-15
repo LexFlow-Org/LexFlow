@@ -39,7 +39,7 @@ function calcTotals(items) {
 const STATUS_LABELS = { draft: 'Bozza', sent: 'Inviata', paid: 'Pagata' };
 const STATUS_COLORS = {
   draft: 'bg-warning-soft text-warning border-warning-border',
-  sent: 'bg-white/10 text-text-muted border-white/30',
+  sent: 'bg-card text-text-muted border-border',
   paid: 'bg-primary/10 text-primary border-primary/30',
 };
 
@@ -353,7 +353,7 @@ export default function TimeTrackingPage({ practices }) {
           )}
 
           <div className="flex items-center justify-between mb-4">
-            <div className="inline-flex items-center bg-white/[0.04] rounded-xl p-1 border border-white/5 gap-1">
+            <div className="inline-flex items-center bg-surface rounded-xl p-1 border border-border gap-1">
               <button onClick={() => { setWeekOffset(w => w - 1); setSelectedDay(null); }} className="btn-ghost w-7 h-7 p-0 rounded-lg"><ChevronLeft size={14} /></button>
               <span className="text-xs font-bold w-48 text-center text-text">
                 {weekDays[0].getDate()} {MONTHS_IT[weekDays[0].getMonth()]} – {weekDays[6].getDate()} {MONTHS_IT[weekDays[6].getMonth()]}
@@ -392,7 +392,7 @@ export default function TimeTrackingPage({ practices }) {
                   <div className="text-[10px] text-text-dim font-bold">{DAYS_IT[d.getDay()]}</div>
                   <div className={`text-sm font-bold ${isToday ? 'text-primary' : 'text-text'}`}>{d.getDate()}</div>
                   <div className="text-[10px] text-text-dim mt-1">{fmtDuration(dayMin)}</div>
-                  <div className="w-full bg-white/5 rounded-full h-1 mt-1.5">
+                  <div className="w-full bg-surface rounded-full h-1 mt-1.5">
                     <div className="bg-primary h-1 rounded-full transition-all" style={{ width: `${Math.min((dayMin / 480) * 100, 100)}%` }} />
                   </div>
                 </button>
@@ -506,8 +506,8 @@ export default function TimeTrackingPage({ practices }) {
                     </div>
                     <span className="text-sm font-bold text-primary tabular-nums">{'\u20AC'} {totals.total.toFixed(2)}</span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => generatePDF(inv)} className="p-1.5 hover:bg-white/10 rounded-lg text-text-dim" title="Scarica PDF"><Download size={14} /></button>
-                      <button onClick={() => setEditingInvoice(inv)} className="p-1.5 hover:bg-white/10 rounded-lg text-text-dim"><Edit3 size={14} /></button>
+                      <button onClick={() => generatePDF(inv)} className="p-1.5 hover:bg-card-hover rounded-lg text-text-dim" title="Scarica PDF"><Download size={14} /></button>
+                      <button onClick={() => setEditingInvoice(inv)} className="p-1.5 hover:bg-card-hover rounded-lg text-text-dim"><Edit3 size={14} /></button>
                       <button onClick={() => confirmDeleteInvoice(inv.id)} className="p-1.5 hover:bg-danger-soft rounded-lg text-text-dim hover:text-danger"><Trash2 size={14} /></button>
                     </div>
                   </div>
@@ -576,7 +576,7 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Inserisci i dettagli dell&apos;attivit&agrave;</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -691,7 +691,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
                 <p className="text-xs text-text-dim mt-0.5">Compila i dettagli della parcella</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -754,7 +754,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
                 </div>
                 <div>
                   <span className="text-[9px] text-text-dim block mb-1">Totale</span>
-                  <div className="input-field w-full py-2 text-sm text-primary font-bold bg-white/[0.02]">&euro; {(it.total || 0).toFixed(2)}</div>
+                  <div className="input-field w-full py-2 text-sm text-primary font-bold bg-surface">&euro; {(it.total || 0).toFixed(2)}</div>
                 </div>
               </div>
             </div>
