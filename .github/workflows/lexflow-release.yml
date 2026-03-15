@@ -279,6 +279,8 @@ jobs:
           path: ./
           format: cyclonedx-json
           output-file: lexflow-macos-sbom.json
+          upload-artifact: false
+          upload-release-assets: false
 
       - name: SHA256 Checksums & Upload
         env:
