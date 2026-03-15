@@ -1278,160 +1278,52 @@ body.agenda-dragging .agenda-event:hover {
   }
 }
 
-/* ========== 10. LIGHT THEME — OVERLAY REMAPPING ========== */
+/* ========== 10. LIGHT THEME — MINIMAL OVERRIDES (no overlay remapping) ========== */
+/* bg-white/*, border-white/*, text-white/* restano IDENTICI al dark mode.
+   Solo text-white generico e zone colorate hanno override per leggibilità. */
 
 :root[data-theme="light"] {
 
-  /* ═══ BG OVERLAY — opacità 1.5x per compensare percezione su sfondo chiaro ═══ */
-  & .bg-white\/3   { background: rgba(var(--overlay), 0.05); }
-  & .bg-white\/5   { background: rgba(var(--overlay), 0.08); }
-  & .bg-white\/10  { background: rgba(var(--overlay), 0.15); }
-  & .bg-white\/20  { background: rgba(var(--overlay), 0.28); }
-  & .bg-white\/\[0\.02\] { background: rgba(var(--overlay), 0.03); }
-  & .bg-white\/\[0\.03\] { background: rgba(var(--overlay), 0.05); }
-  & .bg-white\/\[0\.04\] { background: rgba(var(--overlay), 0.06); }
-  & .bg-white\/\[0\.05\] { background: rgba(var(--overlay), 0.08); }
-  & .bg-white\/\[0\.06\] { background: rgba(var(--overlay), 0.09); }
-  & .bg-white\/\[0\.07\] { background: rgba(var(--overlay), 0.10); }
-  & .bg-white\/\[0\.08\] { background: rgba(var(--overlay), 0.12); }
-
-  & .hover\:bg-white\/5:hover   { background: rgba(var(--overlay), 0.08); }
-  & .hover\:bg-white\/10:hover  { background: rgba(var(--overlay), 0.15); }
-  & .hover\:bg-white\/\[0\.03\]:hover { background: rgba(var(--overlay), 0.05); }
-  & .hover\:bg-white\/\[0\.04\]:hover { background: rgba(var(--overlay), 0.06); }
-  & .hover\:bg-white\/\[0\.06\]:hover { background: rgba(var(--overlay), 0.09); }
-  & .hover\:bg-white\/\[0\.07\]:hover { background: rgba(var(--overlay), 0.10); }
-  & .hover\:bg-white\/\[0\.08\]:hover { background: rgba(var(--overlay), 0.12); }
-  & .hover\:bg-white\/\[0\.10\]:hover { background: rgba(var(--overlay), 0.15); }
-
-  & .group-hover\/resizetop\:bg-white\/30:is(:where(.group\/resizetop):hover *) { background: rgba(var(--overlay), 0.30); }
-  & .group-hover\/resize\:bg-white\/30:is(:where(.group\/resize):hover *)       { background: rgba(var(--overlay), 0.30); }
-
-  & .bg-black\/20 { background: rgba(0, 0, 0, 0.12); }
-  & .bg-black\/30 { background: rgba(0, 0, 0, 0.15); }
-  & .bg-black\/80 { background: rgba(0, 0, 0, 0.40); }
-
-  /* ═══ BORDER OVERLAY ═══ */
-  & .border-white\/5   { border-color: rgba(var(--overlay), 0.08); }
-  & .border-white\/10  { border-color: rgba(var(--overlay), 0.15); }
-  & .border-white\/15  { border-color: rgba(var(--overlay), 0.20); }
-  & .border-white\/20  { border-color: rgba(var(--overlay), 0.28); }
-  & .border-white\/30  { border-color: rgba(var(--overlay), 0.40); }
-  & .border-white\/\[0\.05\] { border-color: rgba(var(--overlay), 0.08); }
-  & .border-white\/\[0\.06\] { border-color: rgba(var(--overlay), 0.09); }
-  & .border-white\/\[0\.08\] { border-color: rgba(var(--overlay), 0.12); }
-  & .border-white\/\[0\.10\] { border-color: rgba(var(--overlay), 0.15); }
-  & .border-white\/\[0\.12\] { border-color: rgba(var(--overlay), 0.18); }
-  & .border-\[\#2e3352\],
-  & .border-\[\#32374f\] { border-color: var(--border); }
-
-  & .hover\:border-white\/5:hover   { border-color: rgba(var(--overlay), 0.05); }
-  & .hover\:border-white\/10:hover  { border-color: rgba(var(--overlay), 0.10); }
-  & .hover\:border-white\/12:hover  { border-color: rgba(var(--overlay), 0.12); }
-  & .hover\:border-white\/15:hover  { border-color: rgba(var(--overlay), 0.15); }
-  & .hover\:border-white\/18:hover  { border-color: rgba(var(--overlay), 0.18); }
-  & .hover\:border-white\/20:hover  { border-color: rgba(var(--overlay), 0.20); }
-  & .hover\:border-white\/\[0\.12\]:hover { border-color: rgba(var(--overlay), 0.12); }
-
-  & .ring-white\/5  { --tw-ring-color: rgba(var(--overlay), 0.05); }
-  & .ring-white\/10 { --tw-ring-color: rgba(var(--overlay), 0.10); }
-
-  /* ═══ TEXT OVERLAY ═══ */
+  /* ═══ TEXT — text-white generico diventa scuro (ma NON dentro hero/eventi) ═══ */
   & .text-white     { color: var(--text); }
-  & .text-white\/85 { color: rgba(var(--overlay), 0.85); }
-  & .text-white\/80 { color: rgba(var(--overlay), 0.80); }
-  & .text-white\/70 { color: rgba(var(--overlay), 0.70); }
-  & .text-white\/60 { color: rgba(var(--overlay), 0.60); }
-  & .text-white\/50 { color: rgba(var(--overlay), 0.50); }
-  & .text-white\/40 { color: rgba(var(--overlay), 0.40); }
-  & .text-white\/30 { color: rgba(var(--overlay), 0.30); }
-  & .text-white\/25 { color: rgba(var(--overlay), 0.25); }
-  & .text-white\/20 { color: rgba(var(--overlay), 0.20); }
-  & .text-white\/15 { color: rgba(var(--overlay), 0.15); }
-  & .text-white\/\[0\.12\] { color: rgba(var(--overlay), 0.12); }
-
   & .hover\:text-white:hover { color: var(--text); }
   & .group-hover\:text-white:is(:where(.group):hover *) { color: var(--text); }
-
   & .text-slate-300 { color: var(--text-muted); }
   & .text-slate-400 { color: var(--text-dim); }
   & .text-slate-500 { color: var(--text-dim); }
 
-  /* ═══ ZONE COLORATE — testo SEMPRE bianco ═══ */
+  /* ═══ ZONE COLORATE — testo resta bianco ═══ */
+  & .hero-card .text-white,
+  & .agenda-event .text-white,
+  & .ev-text, & .ev-text-strong, & .ev-badge { color: #fff; }
 
-  /* Hero Card — colore sfondo colorato, tutto il contenuto resta bianco */
-  & .hero-card .text-white     { color: #fff; }
-  & .hero-card .text-white\/85 { color: rgba(255, 255, 255, 0.85); }
-  & .hero-card .text-white\/80 { color: rgba(255, 255, 255, 0.8); }
-  & .hero-card .text-white\/70 { color: rgba(255, 255, 255, 0.7); }
-  & .hero-card .text-white\/60 { color: rgba(255, 255, 255, 0.6); }
-  & .hero-card .text-white\/50 { color: rgba(255, 255, 255, 0.5); }
-  & .hero-card .text-white\/40 { color: rgba(255, 255, 255, 0.4); }
-  & .hero-card .text-white\/30 { color: rgba(255, 255, 255, 0.3); }
-  & .hero-card .text-white\/\[0\.12\] { color: rgba(255, 255, 255, 0.12); }
-
-  & .hero-card .bg-white\/5,
-  & .hero-card .bg-white\/10,
-  & .hero-card .bg-white\/\[0\.03\],
-  & .hero-card .bg-white\/\[0\.04\],
-  & .hero-card .bg-white\/\[0\.07\],
-  & .hero-card .bg-white\/\[0\.08\] { background: rgba(255, 255, 255, 0.08); }
-  & .hero-card .hover\:bg-white\/\[0\.07\]:hover { background: rgba(255, 255, 255, 0.07); }
-  & .hero-card .border-white\/5,
-  & .hero-card .border-white\/10,
-  & .hero-card .border-white\/\[0\.08\] { border-color: rgba(255, 255, 255, 0.08); }
-  & .hero-card .bg-black\/10 { background: rgba(0, 0, 0, 0.1); }
-  & .hero-card .bg-black\/20 { background: rgba(0, 0, 0, 0.2); }
-
-  /* Agenda events — sfondo colorato, testo bianco SEMPRE */
-  & .ev-text,
-  & .ev-text-strong,
-  & .ev-badge { color: #fff; }
-  & .agenda-event .text-white     { color: #fff; }
-  & .agenda-event .text-white\/85 { color: rgba(255, 255, 255, 0.85); }
-  & .agenda-event .text-white\/80 { color: rgba(255, 255, 255, 0.80); }
-  & .agenda-event .text-white\/70 { color: rgba(255, 255, 255, 0.70); }
-  & .agenda-event .text-white\/60 { color: rgba(255, 255, 255, 0.60); }
-  & .agenda-event .text-white\/50 { color: rgba(255, 255, 255, 0.50); }
-  & .agenda-event .text-white\/30 { color: rgba(255, 255, 255, 0.30); }
-  & .agenda-event .bg-white\/10 { background: rgba(255, 255, 255, 0.10); }
-  & .agenda-event .bg-white\/30 { background: rgba(255, 255, 255, 0.30); }
+  & .hero-card .text-white\/85, & .agenda-event .text-white\/85 { color: rgba(255,255,255,0.85); }
+  & .hero-card .text-white\/80, & .agenda-event .text-white\/80 { color: rgba(255,255,255,0.80); }
+  & .hero-card .text-white\/70, & .agenda-event .text-white\/70 { color: rgba(255,255,255,0.70); }
+  & .hero-card .text-white\/60, & .agenda-event .text-white\/60 { color: rgba(255,255,255,0.60); }
+  & .hero-card .text-white\/50, & .agenda-event .text-white\/50 { color: rgba(255,255,255,0.50); }
+  & .hero-card .text-white\/40 { color: rgba(255,255,255,0.40); }
+  & .hero-card .text-white\/30, & .agenda-event .text-white\/30 { color: rgba(255,255,255,0.30); }
+  & .hero-card .text-white\/\[0\.12\] { color: rgba(255,255,255,0.12); }
 
   /* ═══ HARDCODED HEX BG → variabili ═══ */
-  & .bg-\[\#08090f\],
-  & .bg-\[\#0a0b12\],
-  & .bg-\[\#0c0d14\],
-  & .bg-\[\#0c0d14\]\/50 { background: var(--bg); }
-  & .bg-\[\#0f1016\],
-  & .bg-\[\#10111a\],
-  & .bg-\[\#13141e\],
-  & .bg-\[\#14151d\],
-  & .bg-\[\#16171e\] { background: var(--bg-card); }
+  & .bg-\[\#08090f\], & .bg-\[\#0a0b12\], & .bg-\[\#0c0d14\], & .bg-\[\#0c0d14\]\/50 { background: var(--bg); }
+  & .bg-\[\#0f1016\], & .bg-\[\#10111a\], & .bg-\[\#13141e\], & .bg-\[\#14151d\], & .bg-\[\#16171e\] { background: var(--bg-card); }
   & .bg-slate-900\/50 { background: var(--bg-card); }
+  & .border-\[\#2e3352\], & .border-\[\#32374f\] { border-color: var(--border); }
 
   /* ═══ SHADOWS ═══ */
-  & .agenda-event:hover { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06); }
-  & .shadow-lg  { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); }
-  & .shadow-2xl { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); }
+  & .agenda-event:hover { box-shadow: 0 8px 20px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.06); }
+  & .shadow-lg  { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  & .shadow-2xl { box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
   & .shadow-neon { box-shadow: 0 0 15px color-mix(in srgb, var(--primary) 18%, transparent); }
 
   /* ═══ MODAL ═══ */
-  & .modal-card {
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.12);
-  }
-  & .modal-backdrop {
-    background: rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(6px);
-  }
+  & .modal-card { box-shadow: 0 25px 50px -12px rgba(0,0,0,0.12); }
+  & .modal-backdrop { background: rgba(0,0,0,0.25); backdrop-filter: blur(6px); }
 
-  /* ═══ Sidebar brand — CIELAB matched ═══ */
+  /* ═══ Sidebar brand ═══ */
   & .sidebar-brand { color: var(--primary); font-weight: 800; }
-
-  /* ═══ SOFT BACKGROUNDS — higher opacity for light mode visibility ═══ */
-  & .bg-danger-soft { background: rgba(248, 113, 113, 0.18); }
-  & .bg-success-soft { background: rgba(52, 211, 153, 0.18); }
-  & .bg-warning-soft { background: rgba(251, 191, 36, 0.18); }
-  & .bg-info-soft { background: rgba(96, 165, 250, 0.18); }
 
   /* ═══ text-black su primary button → bianco ═══ */
   & .text-black { color: #fff; }
