@@ -185,11 +185,11 @@
 
   /* ── Light Theme — SOLO sfondo/testo/bordi cambiano ── */
   :root[data-theme="light"] {
-    /* Primario — CIELAB 55% damped */
-    --primary: #8d7000;
-    --primary-hover: #7d6200;
-    --primary-soft: rgba(141, 112, 0, 0.14);
-    --primary-glow: rgba(141, 112, 0, 0.28);
+    /* Primario — IDENTICO al dark */
+    --primary: #dab550;
+    --primary-hover: #c9a43e;
+    --primary-soft: rgba(218, 181, 80, 0.12);
+    --primary-glow: rgba(218, 181, 80, 0.25);
     --primary-ink: #3d2e0a;
 
     /* Sfondi — luminosità ridotta, buon contrasto bg↔card */
@@ -209,39 +209,39 @@
     --border: #b7bbbf;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 
-    /* Semantici — CIELAB 55% damped */
-    --success: #008753;
-    --warning: #906400;
-    --danger: #db575a;
-    --info: #2f82d3;
+    /* Semantici — IDENTICI al dark */
+    --success: #34d399;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --info: #60a5fa;
 
-    /* Semantici soft — CIELAB 55% damped */
-    --success-soft: rgba(0, 135, 83, 0.12);
-    --success-border: rgba(0, 135, 83, 0.25);
-    --warning-soft: rgba(144, 100, 0, 0.12);
-    --warning-border: rgba(144, 100, 0, 0.25);
-    --danger-soft: rgba(219, 87, 90, 0.12);
-    --danger-border: rgba(219, 87, 90, 0.25);
-    --info-soft: rgba(47, 130, 211, 0.12);
-    --info-border: rgba(47, 130, 211, 0.25);
+    /* Semantici soft — IDENTICI al dark */
+    --success-soft: rgba(52, 211, 153, 0.10);
+    --success-border: rgba(52, 211, 153, 0.20);
+    --warning-soft: rgba(251, 191, 36, 0.10);
+    --warning-border: rgba(251, 191, 36, 0.20);
+    --danger-soft: rgba(248, 113, 113, 0.10);
+    --danger-border: rgba(248, 113, 113, 0.20);
+    --info-soft: rgba(96, 165, 250, 0.10);
+    --info-border: rgba(96, 165, 250, 0.20);
 
-    /* Materia — CIELAB 55% damped */
-    --materia-civile:    #2f82d3;
-    --materia-penale:    #db575a;
-    --materia-lavoro:    #bf6000;
-    --materia-amm:       #008753;
-    --materia-stra:      #906400;
+    /* Materia — IDENTICI al dark */
+    --materia-civile:    #60a5fa;
+    --materia-penale:    #f87171;
+    --materia-lavoro:    #fb923c;
+    --materia-amm:       #34d399;
+    --materia-stra:      #fbbf24;
 
-    /* Contatti — CIELAB 55% damped */
-    --contact-judge:      #8a70de;
-    --contact-consultant: #007f99;
+    /* Contatti — IDENTICI al dark */
+    --contact-judge:      #a78bfc;
+    --contact-consultant: #22d3ee;
 
-    /* ── Categoria — CIELAB 55% damped ── */
-    --cat-udienza:   #8e77be;
-    --cat-scadenza:  #d37171;
-    --cat-riunione:  #4d91a0;
-    --cat-personale: #35947b;
-    --cat-altro:     #80899d;
+    /* ── Categoria — IDENTICHE al dark ── */
+    --cat-udienza:   #A78FD8;
+    --cat-scadenza:  #CC6B6B;
+    --cat-riunione:  #5A9DAD;
+    --cat-personale: #4BA88E;
+    --cat-altro:     #8891A5;
 
     /* ── Sidebar — leggermente più scura dello sfondo per separazione visiva ── */
     --sidebar-bg:   #c6c7cb;
@@ -249,15 +249,15 @@
     --sidebar-text: #1e1f28;
     --sidebar-dim:  #6b7094;
 
-    /* ── Event blocks — CIELAB 55% damped ── */
+    /* ── Event blocks — IDENTICI al dark ── */
     --ev-text:         #ffffff;
-    --ev-text-shadow:  0 1px 2px rgba(0, 0, 0, 0.2);
-    --ev-badge-bg:     rgba(0, 0, 0, 0.12);
-    --ev-bg-udienza:   #b2a2ec;
-    --ev-bg-scadenza:  #ed928e;
-    --ev-bg-riunione:  #8ab6c3;
-    --ev-bg-personale: #7ebda0;
-    --ev-bg-altro:     #a8aecc;
+    --ev-text-shadow:  0 1px 2px rgba(0, 0, 0, 0.3);
+    --ev-badge-bg:     rgba(0, 0, 0, 0.2);
+    --ev-bg-udienza:   #554A8C;
+    --ev-bg-scadenza:  #8C3D3D;
+    --ev-bg-riunione:  #285560;
+    --ev-bg-personale: #185840;
+    --ev-bg-altro:     #484E68;
 
     /* ── Toast ── */
     --toast-bg:   rgba(210, 212, 218, 0.95);
@@ -1426,7 +1426,7 @@ body.agenda-dragging .agenda-event:hover {
   }
 
   /* ═══ Sidebar brand — CIELAB matched ═══ */
-  & .sidebar-brand { color: var(--primary); }
+  & .sidebar-brand { color: #b89520; font-weight: 800; }
 
   /* ═══ text-black su primary button → bianco ═══ */
   & .text-black { color: #fff; }

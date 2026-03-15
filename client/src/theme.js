@@ -84,16 +84,9 @@ export const SEMANTIC = {
 // Colore unico per tema chiaro e scuro — IDENTICO in entrambi i temi.
 // Solo 3 colori: mattina / pomeriggio / sera.
 export const HERO_COLORS = {
-  dark: {
-    morning:   '#6B4233',   // Mogano caldo — prima luce
-    afternoon: '#2D4A5A',   // Blu petrolio — pieno giorno
-    evening:   '#1E2940',   // Blu notte — dopo il tramonto
-  },
-  light: {
-    morning:   '#d8a694',   // CIELAB 55% — mogano chiaro
-    afternoon: '#9bb9cc',   // CIELAB 55% — petrolio chiaro
-    evening:   '#bec8e6',   // CIELAB 55% — lavanda notte
-  },
+  morning:   '#6B4233',   // Mogano caldo — prima luce
+  afternoon: '#2D4A5A',   // Blu petrolio — pieno giorno
+  evening:   '#1E2940',   // Blu notte — dopo il tramonto
 };
 
 /** Determina la fascia oraria (mattina dalle 5, notte 0-4 = sera) */
@@ -104,12 +97,11 @@ export function getTimeOfDay(hour = new Date().getHours()) {
 }
 
 /**
- * Ottiene il colore hero per fascia oraria, adattato al tema.
+ * Ottiene il colore hero per fascia oraria.
  */
-export function getHeroColor(theme) {
+export function getHeroColor() {
   const timeOfDay = getTimeOfDay();
-  const palette = (theme === 'light') ? HERO_COLORS.light : HERO_COLORS.dark;
-  const background = palette[timeOfDay] || palette.morning;
+  const background = HERO_COLORS[timeOfDay] || HERO_COLORS.morning;
 
   return {
     background,

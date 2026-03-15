@@ -142,11 +142,10 @@ Dashboard.propTypes = {
 
 export default function Dashboard({ practices, agendaEvents, onNavigate, onSelectPractice }) {
 
-  // ── Greeting contestuale con colore adattivo al tema ──
-  const currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  // ── Greeting contestuale ──
   const hero = useMemo(() => {
     const h = new Date().getHours();
-    const { background } = getHeroColor(currentTheme);
+    const { background } = getHeroColor();
 
     if (h >= 5 && h < 13) return {
       label: 'AGGIORNAMENTO MATTUTINO',
@@ -169,7 +168,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       background,
       icon: <Coffee size={100} strokeWidth={1} />,
     };
-  }, [currentTheme]);
+  }, []);
 
   // ── Calcoli statistiche (più informative) ──
   const stats = useMemo(() => {
