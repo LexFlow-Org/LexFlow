@@ -887,42 +887,36 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   const key = d.source === 'agenda' ? `agenda_${d.id}` : `${d.date}_${d.label}_${idx}`;
                   
                   return (
-                    <div key={key} className="glass-card p-3 flex items-center gap-4 group hover:border-primary/30 transition-colors">
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
-                      
-                      <div className="flex-1">
-                         <p className="text-sm text-text font-medium">{d.label}</p>
-                         <div className="flex items-center gap-2 flex-wrap">
-                           <p className="text-xs text-text-dim">{formatDateIT(d.date, '')}</p>
-                           {d.time && (
-                             <span className="text-xs text-text-muted font-mono">ore {d.time}</span>
-                           )}
-                           {d.remindMinutes != null && (
-                             <span className="text-[9px] font-bold text-warning uppercase tracking-wider bg-warning-soft px-1.5 py-0.5 rounded">
-                               <BellRing size={10} className="inline-block mr-0.5 -mt-px" /> {d.remindMinutes === 'custom'
-                                 ? `alle ${d.customRemindTime || '—'}`
-                                 : d.remindMinutes >= 1440
-                                   ? `${d.remindMinutes / 1440}g`
-                                   : d.remindMinutes >= 60
-                                     ? `${d.remindMinutes / 60}h`
-                                     : `${d.remindMinutes}min`}
-                             </span>
-                           )}
-                           {d.source === 'agenda' && (
-                             <span className="text-[9px] font-bold text-primary/60 uppercase tracking-wider bg-primary/5 px-1.5 py-0.5 rounded">Agenda</span>
-                           )}
-                         </div>
+                    <div key={key} className="glass-card p-4 group hover:border-primary/30 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
+                        <p className="text-sm text-text font-bold flex-1">{d.label}</p>
+                        <div className="text-xs font-bold px-2.5 py-1 rounded-lg bg-card border border-border text-text-muted">
+                          {deadlineLabel}
+                        </div>
+                        {d.source === 'practice' && (
+                          <button onClick={() => confirmDeleteDeadline(d.idx)} className="opacity-0 group-hover:opacity-100 p-1.5 text-text-dim hover:text-danger transition-all">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
-
-                      <div className="text-xs font-bold px-2 py-1 rounded bg-white/5 text-text-muted">
-                        {deadlineLabel}
+                      <div className="flex items-center gap-2 mt-2 ml-5 flex-wrap">
+                        <span className="text-xs text-text-muted">{formatDateIT(d.date, '')}</span>
+                        {d.time && (
+                          <span className="text-xs text-text-dim font-mono">ore {d.time}</span>
+                        )}
+                        {d.remindMinutes != null && (
+                          <span className="text-[10px] font-semibold text-text-muted bg-card border border-border px-1.5 py-0.5 rounded-lg flex items-center gap-1">
+                            <BellRing size={10} /> {d.remindMinutes === 'custom'
+                              ? `alle ${d.customRemindTime || '—'}`
+                              : d.remindMinutes >= 1440
+                                ? `${d.remindMinutes / 1440}g`
+                                : d.remindMinutes >= 60
+                                  ? `${d.remindMinutes / 60}h`
+                                  : `${d.remindMinutes}min`}
+                          </span>
+                        )}
                       </div>
-
-                      {d.source === 'practice' && (
-                        <button onClick={() => confirmDeleteDeadline(d.idx)} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-all">
-                          <Trash2 size={16} />
-                        </button>
-                      )}
                     </div>
                   );
                 });
@@ -936,7 +930,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl mx-auto">
             {/* Dati Generali */}
             <div className="glass-card p-6">
-              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2">Dati Generali</h3>
+              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2 flex items-center gap-2"><FileText size={14} className="text-text-muted" /> Dati Generali</h3>
               <div className="grid grid-cols-2 gap-y-5 gap-x-8 text-sm">
                 <div>
                   <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Materia</span>
@@ -984,7 +978,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
             {/* Note Strategiche — full width */}
             <div className="glass-card p-6 lg:col-span-2">
-              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2">Note Strategiche</h3>
+              <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2 flex items-center gap-2"><Clock size={14} className="text-text-muted" /> Note Strategiche</h3>
               <p className="text-sm text-text whitespace-pre-line leading-relaxed">
                 {practice.description || 'Nessun appunto registrato.'}
               </p>
