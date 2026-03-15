@@ -2,11 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- LSUIElement: Marks the app as an "agent" (menu bar / tray app).
-         macOS will NOT deprioritize or terminate the process when no windows are visible.
-         The app icon will be hidden from the Dock (expected for tray-only apps). -->
+    <!-- LSUIElement: false — LexFlow is a full desktop app (not a menubar-only agent).
+         Showing in the Dock ensures reliable notification permission dialogs,
+         proper System Settings > Notifications registration, and correct TCC tracking.
+         The system tray icon still works alongside the Dock icon (like Slack/Discord). -->
     <key>LSUIElement</key>
-    <true/>
+    <false/>
 
     <!-- Calendar access — EventKit permission prompt -->
     <key>NSCalendarsUsageDescription</key>

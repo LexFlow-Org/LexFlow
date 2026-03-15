@@ -3140,7 +3140,6 @@ async fn import_vault(
         // (metadata check + separate fs::read could race with file replacement)
         const MAX_IMPORT_SIZE: u64 = 500 * 1024 * 1024;
         let raw = {
-            use std::io::Read;
             let file = fs::File::open(&file_path).map_err(|e| e.to_string())?;
             let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
             if file_len > MAX_IMPORT_SIZE {

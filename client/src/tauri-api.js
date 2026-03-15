@@ -32,7 +32,6 @@ export const importVault = (pwd) => safeInvoke('import_vault', { pwd });
 export const changePassword = (currentPassword, newPassword) =>
   safeInvoke('change_password', { currentPassword, newPassword });
 export const verifyVaultPassword = (pwd) => safeInvoke('verify_vault_password', { pwd });
-export const getAuditLog = () => safeInvoke('get_audit_log');
 
 // Biometrics
 export const checkBio = () => safeInvoke('check_bio');
@@ -67,8 +66,6 @@ export const loadPractices = () => safeInvoke('load_practices');
 export const savePractices = (list) => safeInvoke('save_practices', { list });
 export const loadAgenda = () => safeInvoke('load_agenda');
 export const saveAgenda = (agenda) => safeInvoke('save_agenda', { agenda });
-export const getSummary = () => safeInvoke('get_summary');
-
 // Conflict Check
 export const checkConflict = (name) => safeInvoke('check_conflict', { name });
 
@@ -131,24 +128,12 @@ export const exportTypstPdf = async (practiceData, defaultName) => {
 };
 
 // Notifications
-export const sendNotification = ({ title, body }) =>
-  safeInvoke('send_notification', { title, body });
-export const sendUrgentNotification = ({ title, body }) =>
-  safeInvoke('send_urgent_notification', { title, body });
-export const sendActionableNotification = ({ title, body, eventId, actions }) =>
-  safeInvoke('send_actionable_notification', { title, body, eventId, actions });
 export const syncNotificationSchedule = (schedule) =>
   safeInvoke('sync_notification_schedule', { schedule });
-export const testNotification = () => safeInvoke('test_notification');
 
 // Licensing
 export const checkLicense = () => safeInvoke('check_license');
-// SECURITY FIX (Audit 2026-03-11 I3): verifyLicense now accepts a token string parameter.
-// The Rust command verify_license(key_string: String) requires a token.
-// Previously this bridge passed no arguments, making it unusable.
-export const verifyLicense = (keyString) => safeInvoke('verify_license', { keyString });
 export const activateLicense = (key) => safeInvoke('activate_license', { key });
-export const getMachineFingerprint = () => safeInvoke('get_machine_fingerprint');
 
 // Platform / App
 export const isMac = () => safeInvoke('is_mac');
