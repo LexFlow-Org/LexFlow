@@ -58,7 +58,6 @@ export const bioLogin = async () => {
 export const loginBio = bioLogin;
 
 // Files / Folders
-export const listFolderContents = (path) => safeInvoke('list_folder_contents', { path });
 export const warmSwift = () => safeInvoke('warm_swift');
 
 // Data

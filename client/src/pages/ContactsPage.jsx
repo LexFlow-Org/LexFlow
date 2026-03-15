@@ -44,7 +44,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
       try {
         const data = await api.loadContacts();
         setContacts(data || []);
-      } catch (e) { console.error(e); }
+      } catch (e) { console.error(e); toast.error('Errore caricamento contatti'); }
       setLoading(false);
     })();
   }, []);

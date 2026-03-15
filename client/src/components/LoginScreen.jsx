@@ -70,7 +70,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     const errMsg = err?.message || String(err);
     const isAndroidHandoff = errMsg.includes('android-bio-use-frontend');
 
-    console.warn("Login bio fallito:", isAndroidHandoff ? "(Android handoff)" : err);
+    console.debug("Login bio fallito:", isAndroidHandoff ? "(Android handoff)" : err);
 
     const nextFailed = bioFailed + (isAndroidHandoff ? 0 : 1);
     if (!isAndroidHandoff) setBioFailed(prev => prev + 1);
@@ -319,7 +319,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
             await api.saveBio(providedPwd);
             setBioAvailable(true);
             setBioSaved(true);
-            console.log('[LoginScreen] Biometrics auto-enrolled at first vault creation ✓');
+            console.debug('[LoginScreen] Biometrics auto-enrolled at first vault creation ✓');
           }
         } catch (e) {
           console.warn('[LoginScreen] Biometrics auto-enroll failed (non-critical):', e);

@@ -230,7 +230,7 @@ export default function App() {
       s?.briefingPomeriggio || '14:30',
       s?.briefingSera || '19:30',
     ];
-    console.log('[App] syncScheduleToBackend:', items.length, 'items,', briefingTimes.length, 'briefings, preavviso:', s?.preavviso || 30);
+    console.debug('[App] syncScheduleToBackend:', items.length, 'items,', briefingTimes.length, 'briefings, preavviso:', s?.preavviso || 30);
     await api.syncNotificationSchedule({ briefingTimes, items })
       .catch(e => console.warn('[App] syncScheduleToBackend failed:', e));
   }, [settings]);
@@ -298,7 +298,7 @@ export default function App() {
         agendaRef.current = synced;
         await api.saveAgenda(synced);
         // Sync schedule col backend (include scadenze fascicoli aggiornate)
-        syncScheduleToBackend(synced);
+        await syncScheduleToBackend(synced);
       } catch (e) {
         console.error('[App] savePractices pipeline error:', e);
         toast.error('Errore salvataggio fascicoli');
@@ -312,7 +312,7 @@ export default function App() {
     try {
       if (api.saveAgenda) await api.saveAgenda(newEvents);
       // Sync notification schedule with updated items for backend scheduler
-      syncScheduleToBackend(newEvents);
+      await syncScheduleToBackend(newEvents);
     } catch (e) {
       console.error('[App] saveAgenda error:', e);
       toast.error('Errore salvataggio agenda');

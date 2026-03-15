@@ -150,31 +150,31 @@ fn double_sha256_key(seed: &str) -> Zeroizing<Vec<u8>> {
 // SECURITY FIX (Gemini Audit v2): persistent machine ID — replaces volatile hostname.
 // Generated once at first run, persisted in security_dir. Survives hostname changes,
 // network changes, and macOS Continuity renames. Uses 256-bit random + username hash.
-// SECURITY FIX (Gemini Audit Chunk 01): explicit desktop cfg
+
+/// Cached machine ID — initialized once in setup(), read by all command handlers.
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-fn get_or_create_machine_id() -> String {
-    // SECURITY FIX (Gemini Audit Chunk 02): use home_dir fallback instead of "." (current dir).
-    // Writing security files to "." would leak the machine-id in Downloads or USB drives.
+static MACHINE_ID_CACHE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Fallible initialization — called once during app setup.
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn init_machine_id() -> Result<String, String> {
     let base_dir = dirs::data_dir()
         .or_else(dirs::home_dir)
-        .expect("FATAL: Impossibile risolvere una directory sicura per l'app");
+        .ok_or_else(|| "Impossibile risolvere una directory sicura per l'app".to_string())?;
     let security_dir = base_dir.join("com.pietrolongo.lexflow");
-    // SECURITY FIX (Audit Chunk 02): propagate create_dir_all failure. If we can't create
-    // the directory, continuing would generate a new machine_id every launch, silently
-    // corrupting all files encrypted with the local key (settings, burned-keys, license).
-    fs::create_dir_all(&security_dir).unwrap_or_else(|e| {
-        panic!(
-            "FATAL: Impossibile creare security_dir {:?}: {}. \
+    fs::create_dir_all(&security_dir).map_err(|e| {
+        format!(
+            "Impossibile creare security_dir {:?}: {}. \
                 Senza questa directory il machine-id non può essere persistito \
                 e tutti i file cifrati locali sarebbero inaccessibili.",
             security_dir, e
-        );
-    });
+        )
+    })?;
     let id_path = security_dir.join(MACHINE_ID_FILE);
     if let Ok(existing) = fs::read_to_string(&id_path) {
         let trimmed = existing.trim().to_string();
         if !trimmed.is_empty() {
-            return trimmed;
+            return Ok(trimmed);
         }
     }
     // First run: generate stable machine ID from username + random entropy
@@ -182,7 +182,17 @@ fn get_or_create_machine_id() -> String {
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut id_bytes);
     let machine_id = hex::encode(id_bytes);
     let _ = secure_write(&id_path, machine_id.as_bytes());
-    machine_id
+    Ok(machine_id)
+}
+
+/// Returns the cached machine ID. Panics only if setup() didn't initialize it
+/// (programmer error, never reachable in production).
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn get_or_create_machine_id() -> String {
+    MACHINE_ID_CACHE
+        .get()
+        .expect("MACHINE_ID_CACHE not initialized — init_machine_id() must run in setup()")
+        .clone()
 }
 
 /// V3 key (with hostname in seed) — kept for migration from V3→V4.
@@ -332,12 +342,15 @@ fn get_local_encryption_key() -> Zeroizing<Vec<u8>> {
     }
 }
 
-/// Resolve the Android device ID from environment or persisted file.
-/// Generates and persists a new 256-bit random ID on first run.
+/// Cached Android device ID — initialized once in setup(), read by command handlers.
 #[cfg(target_os = "android")]
-fn get_android_device_id() -> String {
+static ANDROID_DEVICE_ID_CACHE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Fallible initialization — called once during app setup on Android.
+#[cfg(target_os = "android")]
+fn init_android_device_id() -> Result<String, String> {
     if let Ok(id) = std::env::var("LEXFLOW_DEVICE_ID") {
-        return id;
+        return Ok(id);
     }
     let candidate_dirs = [
         dirs::data_dir().map(|d| d.join("com.pietrolongo.lexflow")),
@@ -349,7 +362,7 @@ fn get_android_device_id() -> String {
     for candidate in candidate_dirs.iter().flatten() {
         let id_path = candidate.join(".device_id");
         if let Some(id) = read_trimmed_file(&id_path) {
-            return id;
+            return Ok(id);
         }
         if first_writable.is_none() {
             first_writable = Some(id_path);
@@ -359,19 +372,27 @@ fn get_android_device_id() -> String {
     let mut id_bytes = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut id_bytes);
     let id_hex = hex::encode(id_bytes);
-    let id_path = first_writable.expect(
-        "FATAL: Nessun percorso scrivibile trovato su Android per persistere la master key.",
-    );
+    let id_path = first_writable.ok_or_else(|| {
+        "Nessun percorso scrivibile trovato su Android per persistere la master key.".to_string()
+    })?;
     if let Some(parent) = id_path.parent() {
-        // SECURITY FIX (Audit 2026-03-14): propagate create_dir_all failure with a
-        // meaningful message instead of silently ignoring it and letting the subsequent
-        // fs::write panic with a confusing "No such file or directory" error.
-        fs::create_dir_all(parent).expect(
-            "FATAL: Impossibile creare la directory per device_id. Verifica i permessi del filesystem.",
-        );
+        fs::create_dir_all(parent).map_err(|e| {
+            format!("Impossibile creare la directory per device_id: {}", e)
+        })?;
     }
-    fs::write(&id_path, &id_hex).expect("FATAL: Impossibile salvare device_id. Rischio data loss.");
-    id_hex
+    fs::write(&id_path, &id_hex).map_err(|e| {
+        format!("Impossibile salvare device_id: {}", e)
+    })?;
+    Ok(id_hex)
+}
+
+/// Returns the cached Android device ID. Panics only if setup() didn't initialize it.
+#[cfg(target_os = "android")]
+fn get_android_device_id() -> String {
+    ANDROID_DEVICE_ID_CACHE
+        .get()
+        .expect("ANDROID_DEVICE_ID_CACHE not initialized — init_android_device_id() must run in setup()")
+        .clone()
 }
 
 /// Read a file, trim it, return Some(content) if non-empty.
@@ -1753,7 +1774,6 @@ fn save_bio(state: State<AppState>, pwd: String) -> Result<bool, String> {
 
 /// Shared post-biometric vault unlock: retrieve keyring password, authenticate, unlock vault.
 #[cfg(not(target_os = "android"))]
-#[allow(dead_code)]
 fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
     let user = whoami::username();
     let saved_pwd = keyring::Entry::new(BIO_SERVICE, &user)
@@ -5871,6 +5891,21 @@ pub fn run() {
         })
         .setup(move |app| {
             verify_binary_integrity();
+
+            // Initialize platform-specific device/machine ID caches.
+            // Must run before any command handler that derives encryption keys.
+            #[cfg(not(target_os = "android"))]
+            {
+                let id = init_machine_id()
+                    .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+                MACHINE_ID_CACHE.set(id).ok();
+            }
+            #[cfg(target_os = "android")]
+            {
+                let id = init_android_device_id()
+                    .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+                ANDROID_DEVICE_ID_CACHE.set(id).ok();
+            }
 
             #[cfg(not(target_os = "android"))]
             setup_notification_permissions(app, &data_dir_for_scheduler);

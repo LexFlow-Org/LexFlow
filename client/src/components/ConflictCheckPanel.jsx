@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { Search, AlertTriangle, Shield, ShieldCheck, User, Briefcase, Scale, ChevronRight, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
 import { ROLE_LABELS, FIELD_LABELS, STATUS_LABELS, STATUS_COLORS } from '../utils/conflictConstants';
 
@@ -36,6 +37,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
       setSearched(true);
     } catch (e) {
       console.error('Conflict check failed:', e);
+      toast.error('Errore verifica conflitti');
       setResults({ practiceMatches: [], contactMatches: [] });
       setSearched(true);
     }
