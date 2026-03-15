@@ -20,13 +20,13 @@ const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate 
   }, [showPopover]);
 
   const handleClick = () => {
-    if (d.source === 'agenda') {
-      // Navigate to agenda at the deadline's date + time for auto-scroll
+    if (d.practiceId) {
+      // Has a linked practice — show popover with choice: Agenda or Fascicolo
+      setShowPopover(true);
+    } else {
+      // No linked practice — navigate directly to agenda
       const timeParam = d.timeStart ? `&time=${d.timeStart}` : '';
       if (onNavigate) onNavigate('/agenda?date=' + d.date + timeParam);
-    } else if (d.practiceId) {
-      // Show popover with choice: Agenda or Fascicolo
-      setShowPopover(true);
     }
   };
   return (
@@ -38,34 +38,28 @@ const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate 
       >
       <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-cat-scadenza" />
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold text-text">{d.label}</p>
-        <div className="flex items-center gap-2 mt-0.5">
-          {d.source === 'agenda' ? (
-            <span className="text-[10px] text-text-dim">
-              {d.practiceId && d.client && d.client !== 'Agenda'
-                ? `Fascicolo · ${d.client}`
-                : 'Impegno da Agenda'}
-            </span>
+        <p className="text-sm font-bold text-text">{d.label}</p>
+        <div className="flex items-center gap-2 mt-1">
+          <FolderOpen size={11} className="text-text-muted flex-shrink-0" />
+          {d.client && d.client !== 'Agenda' ? (
+            <span className="text-xs text-text-muted">{d.client}</span>
           ) : (
-            <>
-              <span className="text-[10px] text-text-dim">{d.client}</span>
-              {TYPE_LABELS[d.type] && (
-                <span className="text-[9px] text-text-dim/60 uppercase tracking-wider">
-                  {TYPE_LABELS[d.type]}
-                </span>
-              )}
-            </>
+            <span className="text-xs text-text-dim">Agenda</span>
+          )}
+          {TYPE_LABELS[d.type] && (
+            <span className="text-[10px] text-text-dim uppercase tracking-wider font-semibold">
+              {TYPE_LABELS[d.type]}
+            </span>
           )}
         </div>
       </div>
-      <div className="text-[10px] font-mono text-text-dim bg-white/5 px-2 py-0.5 rounded">{formatDateIT(d.date)}</div>
-      {d.source === 'agenda' && <Calendar size={12} className="text-primary/60 flex-shrink-0" title="Da Agenda" />}
+      <div className="text-xs font-mono text-text-muted bg-white/5 px-2.5 py-1 rounded-lg">{formatDateIT(d.date)}</div>
       <ChevronRight size={14} className="text-text-dim group-hover:text-primary transition flex-shrink-0" />
     </button>
 
     {/* Popover: Apri in Agenda / Vai al Fascicolo */}
     {showPopover && (
-      <div className="absolute right-10 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-1 p-1.5 rounded-xl bg-surface border border-white/10 shadow-xl min-w-[160px] animate-slide-up">
+      <div className="absolute right-4 top-full mt-1 z-50 flex flex-col gap-1 p-1.5 rounded-xl bg-card border border-border shadow-2xl min-w-[180px] animate-slide-up">
         <button onClick={() => { setShowPopover(false); if (onNavigate) { const timeParam = d.timeStart ? `&time=${d.timeStart}` : ''; onNavigate('/agenda?date=' + d.date + timeParam); } }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-white/[0.06] transition">
           <Calendar size={14} className="text-primary" /> Apri in Agenda
         </button>
@@ -190,7 +184,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         practiceId: e.practiceId || null,
         client: e.practiceId ? (practicesMap.get(e.practiceId)?.client || 'Agenda') : 'Agenda',
         object: e.notes || '',
-        type: 'agenda',
+        type: e.practiceId ? (practicesMap.get(e.practiceId)?.type || 'agenda') : 'agenda',
         diff,
         source: 'agenda',
       });

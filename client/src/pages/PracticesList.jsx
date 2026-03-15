@@ -91,7 +91,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           </div>
           <div>
             <div className="text-2xl font-black text-text leading-none mb-1">{stats.total}</div>
-            <div className="text-[10px] text-text-dim uppercase tracking-[2px] font-bold">Totali</div>
+            <div className="text-xs text-text-dim uppercase tracking-[2px] font-bold">Totali</div>
           </div>
         </button>
 
@@ -109,7 +109,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           </div>
           <div>
             <div className="text-2xl font-black text-text leading-none mb-1">{stats.active}</div>
-            <div className="text-[10px] text-text-dim uppercase tracking-[2px] font-bold">Attivi</div>
+            <div className="text-xs text-text-dim uppercase tracking-[2px] font-bold">Attivi</div>
           </div>
         </button>
 
@@ -127,7 +127,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           </div>
           <div>
             <div className="text-2xl font-black text-text leading-none mb-1">{stats.closed}</div>
-            <div className="text-[10px] text-text-dim uppercase tracking-[2px] font-bold">Chiusi</div>
+            <div className="text-xs text-text-dim uppercase tracking-[2px] font-bold">Chiusi</div>
           </div>
         </button>
       </div>
@@ -150,7 +150,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <Filter size={14} className="text-text-dim opacity-50" />
             
             <select 
-              className="bg-transparent border-none text-[10px] font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-all p-0"
+              className="bg-transparent border-none text-xs font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-all p-0"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
@@ -162,7 +162,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <div className="w-[1px] h-4 bg-white/10" />
 
             <select 
-              className="bg-transparent border-none text-[10px] font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-all p-0"
+              className="bg-transparent border-none text-xs font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-all p-0"
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
             >
@@ -195,20 +195,20 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-1 min-w-0">
                     <div className="space-y-1 overflow-hidden">
                       <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Cliente</div>
-                      <div className="text-base font-bold text-text truncate">{p?.client || 'N/D'}</div>
+                      <div className="text-lg tracking-tight font-bold text-text truncate">{p?.client || 'N/D'}</div>
                     </div>
                     
                     <div className="space-y-1 overflow-hidden">
                       <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Materia</div>
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${style.dot}`} />
+                        <div className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
                         <div className={`text-xs font-bold uppercase tracking-wider ${style.color}`}>{style.label}</div>
                       </div>
                     </div>
 
                     <div className="space-y-1 overflow-hidden">
                       <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Riferimento</div>
-                      <div className="text-xs font-mono text-text-muted tracking-widest">{p?.code || '---'}</div>
+                      <div className="text-xs font-mono text-text-muted tracking-widest bg-white/[0.03] px-2 py-0.5 rounded-lg">{p?.code || '---'}</div>
                     </div>
 
                     <div className="hidden lg:flex flex-col justify-center items-end pr-4">

@@ -89,11 +89,11 @@
 
   /* ── Dark Theme (default) ── */
   :root {
-    /* Primario — Oro luminoso e caldo */
-    --primary: #dab550;
-    --primary-hover: #c9a43e;
-    --primary-soft: rgba(218, 181, 80, 0.12);
-    --primary-glow: rgba(218, 181, 80, 0.25);
+    /* Primario — Oro scuro, leggibile su entrambi i temi */
+    --primary: #b89520;
+    --primary-hover: #a68518;
+    --primary-soft: rgba(184, 149, 32, 0.12);
+    --primary-glow: rgba(184, 149, 32, 0.25);
     --primary-ink: #3d2e0a;
 
     /* Sfondi (dark: ammorbiditi — non nero profondo, leggero blu-grigio) */
@@ -186,10 +186,10 @@
   /* ── Light Theme — SOLO sfondo/testo/bordi cambiano ── */
   :root[data-theme="light"] {
     /* Primario — IDENTICO al dark */
-    --primary: #dab550;
-    --primary-hover: #c9a43e;
-    --primary-soft: rgba(218, 181, 80, 0.12);
-    --primary-glow: rgba(218, 181, 80, 0.25);
+    --primary: #b89520;
+    --primary-hover: #a68518;
+    --primary-soft: rgba(184, 149, 32, 0.12);
+    --primary-glow: rgba(184, 149, 32, 0.25);
     --primary-ink: #3d2e0a;
 
     /* Sfondi — luminosità ridotta, buon contrasto bg↔card */
@@ -249,15 +249,15 @@
     --sidebar-text: #1e1f28;
     --sidebar-dim:  #6b7094;
 
-    /* ── Event blocks — IDENTICI al dark ── */
+    /* ── Event blocks — schiariti per light mode ── */
     --ev-text:         #ffffff;
-    --ev-text-shadow:  0 1px 2px rgba(0, 0, 0, 0.3);
-    --ev-badge-bg:     rgba(0, 0, 0, 0.2);
-    --ev-bg-udienza:   #554A8C;
-    --ev-bg-scadenza:  #8C3D3D;
-    --ev-bg-riunione:  #285560;
-    --ev-bg-personale: #185840;
-    --ev-bg-altro:     #484E68;
+    --ev-text-shadow:  0 1px 2px rgba(0, 0, 0, 0.25);
+    --ev-badge-bg:     rgba(0, 0, 0, 0.15);
+    --ev-bg-udienza:   #7B6CB8;
+    --ev-bg-scadenza:  #B85555;
+    --ev-bg-riunione:  #3D7A8A;
+    --ev-bg-personale: #2E7A5E;
+    --ev-bg-altro:     #6A7290;
 
     /* ── Toast ── */
     --toast-bg:   rgba(210, 212, 218, 0.95);
@@ -1426,7 +1426,13 @@ body.agenda-dragging .agenda-event:hover {
   }
 
   /* ═══ Sidebar brand — CIELAB matched ═══ */
-  & .sidebar-brand { color: #b89520; font-weight: 800; }
+  & .sidebar-brand { color: var(--primary); font-weight: 800; }
+
+  /* ═══ SOFT BACKGROUNDS — higher opacity for light mode visibility ═══ */
+  & .bg-danger-soft { background: rgba(248, 113, 113, 0.18); }
+  & .bg-success-soft { background: rgba(52, 211, 153, 0.18); }
+  & .bg-warning-soft { background: rgba(251, 191, 36, 0.18); }
+  & .bg-info-soft { background: rgba(96, 165, 250, 0.18); }
 
   /* ═══ text-black su primary button → bianco ═══ */
   & .text-black { color: #fff; }

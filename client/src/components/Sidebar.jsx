@@ -179,7 +179,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
         {sections.map((section, sIdx) => (
           <div key={section.title || 'main'} className={`space-y-1 ${sIdx > 0 && section.title ? 'pt-2' : ''}`}>
             {section.title && (
-              <div className="px-4 mb-2 mt-1 text-[10px] font-black text-text-dim/60 uppercase tracking-[3px]">
+              <div className="px-4 mb-2 mt-1 text-xs font-black text-text-dim/60 uppercase tracking-[3px]">
                 {section.title}
               </div>
             )}

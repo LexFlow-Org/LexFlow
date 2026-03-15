@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import PropTypes from 'prop-types';
-import { 
-  ArrowLeft, Calendar, FileText, 
-  Clock, Plus, Trash2, Send, FolderOpen, 
+import {
+  ArrowLeft, Calendar, FileText,
+  Clock, Plus, Trash2, Send, FolderOpen,
   FolderPlus, Lock, ChevronDown,
-  FilePlus, Info, Fingerprint, ShieldCheck, Download, X, Users
+  FilePlus, Info, Fingerprint, ShieldCheck, Download, X, Users, BellRing
 } from 'lucide-react';
 import { exportPracticeTypstPDF } from '../utils/typstPdfGenerator';
 import ExportWarningModal from './ExportWarningModal';
@@ -338,7 +338,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
         const fullPath = result.path || '';
         const fileName = fullPath.split(/[/\\]/).pop() || 'PDF';
         toast.success(
-          `PDF salvato con successo!\n📄 ${fileName}`,
+          `PDF salvato con successo!\n${fileName}`,
           { duration: 6000 }
         );
       } else if (result?.cancelled) {
@@ -711,7 +711,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                         className="absolute inset-0 z-0 cursor-pointer"
                         aria-label={`Apri ${att.name}`}
                       />
-                      <FileText size={16} className="text-primary flex-shrink-0" />
+                      <FileText size={16} className="text-text-muted flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-text truncate">{att.name}</p>
                         <p className="text-[10px] text-text-dim">
@@ -899,7 +899,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                            )}
                            {d.remindMinutes != null && (
                              <span className="text-[9px] font-bold text-warning uppercase tracking-wider bg-warning-soft px-1.5 py-0.5 rounded">
-                               🔔 {d.remindMinutes === 'custom'
+                               <BellRing size={10} className="inline-block mr-0.5 -mt-px" /> {d.remindMinutes === 'custom'
                                  ? `alle ${d.customRemindTime || '—'}`
                                  : d.remindMinutes >= 1440
                                    ? `${d.remindMinutes / 1440}g`
@@ -968,7 +968,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             {/* Parti Coinvolte */}
             <div className="glass-card p-6">
               <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2 flex items-center gap-2">
-                <Users size={14} className="text-primary/60" /> Parti Coinvolte
+                <Users size={14} className="text-text-muted" /> Parti Coinvolte
               </h3>
               <div className="space-y-4 text-sm">
                 <div>

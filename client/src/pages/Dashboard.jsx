@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect, memo } from 'react';
 import PropTypes from 'prop-types';
-import { Briefcase, CalendarDays, CalendarClock, Coffee, Sun, Sunrise, ChevronDown } from 'lucide-react';
+import { FolderOpen, CalendarDays, CalendarClock, Coffee, Sun, Sunrise, ChevronDown } from 'lucide-react';
 import { catDotClass, catPillClass, getHeroColor } from '../theme';
 
 const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavigate }) {
@@ -80,10 +80,10 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
               {ev.practiceId && (
                 <button type="button"
                   onClick={(e) => { e.stopPropagation(); if (onSelectPractice) onSelectPractice(ev.practiceId); }}
-                  className="p-1.5 hover:bg-primary/15 bg-primary/5 rounded-lg transition-all flex-shrink-0 group/brief border border-primary/10 hover:border-primary/30"
+                  className="p-1.5 hover:bg-white/15 bg-white/10 rounded-lg transition-all flex-shrink-0 group/brief border border-white/10 hover:border-white/20"
                   title="Vai al Fascicolo"
                 >
-                  <Briefcase size={14} className="text-primary/70 group-hover/brief:text-primary transition-colors" />
+                  <FolderOpen size={14} className="text-white/70 group-hover/brief:text-white transition-colors" />
                 </button>
               )}
 
@@ -142,10 +142,21 @@ Dashboard.propTypes = {
 
 export default function Dashboard({ practices, agendaEvents, onNavigate, onSelectPractice }) {
 
-  // ── Greeting contestuale ──
+  // ── Greeting contestuale — osserva cambio tema via MutationObserver ──
+  const [currentTheme, setCurrentTheme] = useState(() =>
+    document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
+  );
+  useEffect(() => {
+    const obs = new MutationObserver(() => {
+      setCurrentTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+
   const hero = useMemo(() => {
     const h = new Date().getHours();
-    const { background } = getHeroColor();
+    const { background } = getHeroColor(currentTheme);
 
     if (h >= 5 && h < 13) return {
       label: 'AGGIORNAMENTO MATTUTINO',
@@ -168,7 +179,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       background,
       icon: <Coffee size={100} strokeWidth={1} />,
     };
-  }, []);
+  }, [currentTheme]);
 
   // ── Calcoli statistiche (più informative) ──
   const stats = useMemo(() => {
@@ -248,7 +259,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
           <p className="text-[10px] font-black uppercase tracking-[3px] mb-3 text-white/70">
             {hero.label}
           </p>
-          <h1 className="text-3xl font-black tracking-tight mb-1 text-white">{hero.greeting}</h1>
+          <h1 className="text-4xl font-black tracking-tight mb-1 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]">{hero.greeting}</h1>
           <p className="text-sm max-w-md text-white/80">{hero.sub}</p>
         </div>
 
@@ -260,7 +271,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button type="button" onClick={() => onNavigate('/pratiche')} className="glass-card p-5 flex items-center gap-4 hover:border-border transition-colors cursor-pointer group text-left">
           <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
-            <Briefcase size={20} className="text-text-muted group-hover:text-primary transition-colors" />
+            <FolderOpen size={20} className="text-text-muted group-hover:text-primary transition-colors" />
           </div>
           <div>
             <p className="text-2xl font-black text-text tabular-nums">{stats.activeCount}</p>

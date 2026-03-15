@@ -225,7 +225,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                 <div className={`flex flex-col ${isExpanded ? 'lg:flex-row lg:gap-3' : ''}`}>
                   {/* Contact Row */}
                   <div
-                    className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all border group ${
+                    className={`relative flex items-center gap-3 px-4 py-3 rounded-xl border group transition-colors duration-200 ${
                       isExpanded
                         ? 'bg-primary/5 border-primary/20 lg:w-[38%] lg:flex-shrink-0'
                         : 'bg-white/[0.03] border-white/[0.06] w-full'
@@ -243,9 +243,9 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                       <TypeIcon size={18} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-text font-bold text-sm truncate">{c.name}</p>
+                      <p className="text-text font-bold text-base truncate">{c.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-text-dim">{typeInfo.label}</span>
+                        <span className="text-xs font-bold uppercase tracking-wider text-text-dim">{typeInfo.label}</span>
                         {linkedCount > 0 && (
                           <span className="text-[9px] text-text-muted">&bull; {linkedCount} fascicoli</span>
                         )}
@@ -296,7 +296,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
 
                 {/* Detail Card — mobile: below the row */}
                 {isExpanded && (
-                  <div className="lg:hidden bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5 mt-1.5 space-y-4 animate-slide-up">
+                  <div className="lg:hidden bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5 mt-1.5 space-y-4 animate-fade-in">
                     <ContactDetailCard
                       contact={c}
                       typeInfo={typeInfo}
@@ -573,7 +573,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
               <Phone size={14} className="text-primary/60 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Telefono</p>
+                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Telefono</p>
                 <span className="text-text text-xs font-medium">{c.phone}</span>
               </div>
             </div>
@@ -582,7 +582,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
               <Mail size={14} className="text-primary/60 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Email</p>
+                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Email</p>
                 <span className="text-text text-xs font-medium truncate block">{c.email}</span>
               </div>
             </div>
@@ -591,7 +591,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
               <Mail size={14} className="text-warning flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">PEC</p>
+                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">PEC</p>
                 <span className="text-text text-xs font-medium truncate block">{c.pec}</span>
               </div>
             </div>
@@ -600,7 +600,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
               <MapPin size={14} className="text-primary/60 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Indirizzo</p>
+                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Indirizzo</p>
                 <span className="text-text text-xs font-medium truncate block">{c.address}</span>
               </div>
             </div>
@@ -609,7 +609,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
               <Hash size={14} className="text-primary/60 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Codice Fiscale</p>
+                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Codice Fiscale</p>
                 <span className="text-text text-xs font-mono font-medium">{c.fiscalCode}</span>
               </div>
             </div>
@@ -618,7 +618,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
               <Building size={14} className="text-primary/60 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">P.IVA</p>
+                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">P.IVA</p>
                 <span className="text-text text-xs font-mono font-medium">{c.vatNumber}</span>
               </div>
             </div>
@@ -627,7 +627,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
               <Scale size={14} className="text-primary/60 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Ordine / Albo</p>
+                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Ordine / Albo</p>
                 <span className="text-text text-xs font-medium">{c.barAssociation}</span>
               </div>
             </div>
@@ -636,7 +636,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
               <Gavel size={14} className="text-primary/60 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">Tribunale</p>
+                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Tribunale</p>
                 <span className="text-text text-xs font-medium">{c.court}</span>
               </div>
             </div>
@@ -663,7 +663,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
                     <RcIcon size={12} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-text text-xs font-medium truncate">{rc.name}</p>
+                    <p className="text-text text-sm font-medium truncate">{rc.name}</p>
                     <p className="text-[9px] text-text-dim">{role}</p>
                   </div>
                 </div>
@@ -682,7 +682,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
               <button type="button" key={p.id} onClick={() => onSelectPractice?.(p.id)}
                 className="flex items-center gap-2.5 px-3 py-2 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] rounded-lg transition-all group text-left w-full">
                 <Briefcase size={13} className="text-text-dim flex-shrink-0" />
-                <p className="text-text text-xs truncate flex-1 group-hover:text-primary transition-colors">{p.client} — {p.object}</p>
+                <p className="text-text text-sm truncate flex-1 group-hover:text-primary transition-colors">{p.client} — {p.object}</p>
                 <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${p.status === 'active' ? 'bg-success-soft text-success' : 'bg-surface text-text-dim'}`}>
                   {p.status === 'active' ? 'Attivo' : 'Chiuso'}
                 </span>

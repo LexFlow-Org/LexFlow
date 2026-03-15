@@ -56,8 +56,8 @@ export const catPill = (cat) => CAT_PILL_STYLES[cat] || CAT_PILL_STYLES.altro;
 //   text-primary, bg-surface, border-border, text-text, ecc.
 // ★ WCAG AAA: tutti i testi ≥ 7:1 su bg #16171e (dark) o #f4f5f8 (light)
 export const SEMANTIC = {
-  primary:      '#dab550',
-  primaryHover: '#c9a43e',
+  primary:      '#b89520',
+  primaryHover: '#a68518',
   success:      '#22c55e',
   successDark:  '#16a34a',
   danger:       '#ef4444',
@@ -84,9 +84,16 @@ export const SEMANTIC = {
 // Colore unico per tema chiaro e scuro — IDENTICO in entrambi i temi.
 // Solo 3 colori: mattina / pomeriggio / sera.
 export const HERO_COLORS = {
-  morning:   '#6B4233',   // Mogano caldo — prima luce
-  afternoon: '#2D4A5A',   // Blu petrolio — pieno giorno
-  evening:   '#1E2940',   // Blu notte — dopo il tramonto
+  dark: {
+    morning:   '#96623E',   // Cuoio caldo — luce mattutina
+    afternoon: '#6B5040',   // Siena scuro — calore pomeridiano
+    evening:   '#4A5A8A',   // Blu notte chiaro — sera
+  },
+  light: {
+    morning:   '#B8845E',   // Cuoio chiaro — luce mattutina
+    afternoon: '#8A6B58',   // Siena chiaro — calore pomeridiano
+    evening:   '#6878AE',   // Blu notte medio — sera
+  },
 };
 
 /** Determina la fascia oraria (mattina dalle 5, notte 0-4 = sera) */
@@ -97,11 +104,12 @@ export function getTimeOfDay(hour = new Date().getHours()) {
 }
 
 /**
- * Ottiene il colore hero per fascia oraria.
+ * Ottiene il colore hero per fascia oraria, adattato al tema.
  */
-export function getHeroColor() {
+export function getHeroColor(theme) {
   const timeOfDay = getTimeOfDay();
-  const background = HERO_COLORS[timeOfDay] || HERO_COLORS.morning;
+  const palette = (theme === 'light') ? HERO_COLORS.light : HERO_COLORS.dark;
+  const background = palette[timeOfDay] || palette.morning;
 
   return {
     background,

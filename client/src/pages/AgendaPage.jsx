@@ -15,7 +15,6 @@ import {
   Bell,
   BellOff,
   BellRing,
-  Briefcase,
   Check,
   FolderOpen
 } from 'lucide-react';
@@ -846,7 +845,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                                     <div className="flex items-center gap-1.5">
                                         <span className={`text-xs font-bold truncate ${ev.completed ? 'text-white/50' : 'text-white'}`}>{ev.title}</span>
                                         {ev.remindMinutes != null && <BellRing size={12} className="text-white/80 flex-shrink-0" title={ev.remindMinutes === 'custom' ? `Notifica alle ${ev.customRemindTime || '?'}` : `Preavviso: ${ev.remindMinutes} min`} />}
-                                        {ev.practiceId && <Briefcase size={12} className="text-white/80 flex-shrink-0" />}
+                                        {ev.practiceId && <FolderOpen size={12} className="text-white/80 flex-shrink-0" />}
                                     </div>
                                     {height >= 45 && (
                                         <p className="text-[10px] font-bold uppercase tracking-wide mt-0.5 truncate text-white/85 ev-text">{ev.notes || ev.category.toUpperCase()}</p>

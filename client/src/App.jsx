@@ -151,8 +151,27 @@ export default function App() {
       if (privacyEnabled) setBlurred(val);
     });
 
-    const removeLockListener = api.onLock?.(() => handleLockLocal(true));        // autolock backend
-    const removeVaultLockedListener = api.onVaultLocked?.(() => handleLockLocal(true)); // autolock backend
+    // Auto-lock from backend: always lock immediately (clears sensitive data),
+    // but only set autoLocked=true (which triggers biometric prompt) when the
+    // window actually has focus. If unfocused, lock silently and defer the
+    // biometric prompt to when the user returns to the app.
+    const handleAutoLock = () => {
+      if (document.hasFocus()) {
+        handleLockLocal(true);
+      } else {
+        // Lock immediately but without auto-triggering biometric
+        handleLockLocal(false);
+        // When the user returns, flip autoLocked so biometric triggers
+        const onFocusReturn = () => {
+          window.removeEventListener('focus', onFocusReturn);
+          setAutoLocked(true);
+        };
+        window.addEventListener('focus', onFocusReturn);
+      }
+    };
+
+    const removeLockListener = api.onLock?.(handleAutoLock);        // autolock backend
+    const removeVaultLockedListener = api.onVaultLocked?.(handleAutoLock); // autolock backend
 
     return () => {
       if (typeof removeBlurListener === 'function') removeBlurListener();
