@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect, memo, useCallback } from 'react';
+import { useMemo, useState, useRef, useEffect, memo } from 'react';
 import PropTypes from 'prop-types';
 import { Briefcase, CalendarDays, CalendarClock, Coffee, Sun, Sunrise, ChevronDown } from 'lucide-react';
 import { catDotClass, catPillClass, getHeroColor } from '../theme';

@@ -90,9 +90,9 @@ export const HERO_COLORS = {
     evening:   '#1E2940',   // Blu notte — dopo il tramonto
   },
   light: {
-    morning:   '#bc8c7b',   // CIELAB matched — mogano chiaro
-    afternoon: '#84a2b4',   // CIELAB matched — petrolio chiaro
-    evening:   '#b7c1df',   // CIELAB matched — lavanda notte
+    morning:   '#d8a694',   // CIELAB 55% — mogano chiaro
+    afternoon: '#9bb9cc',   // CIELAB 55% — petrolio chiaro
+    evening:   '#bec8e6',   // CIELAB 55% — lavanda notte
   },
 };
 

@@ -185,11 +185,11 @@
 
   /* ── Light Theme — SOLO sfondo/testo/bordi cambiano ── */
   :root[data-theme="light"] {
-    /* Primario — CIELAB matched per stessa percezione su sfondo chiaro */
-    --primary: #8B6C10;
-    --primary-hover: #7A5D08;
-    --primary-soft: rgba(139, 108, 16, 0.14);
-    --primary-glow: rgba(139, 108, 16, 0.28);
+    /* Primario — CIELAB 55% damped */
+    --primary: #8d7000;
+    --primary-hover: #7d6200;
+    --primary-soft: rgba(141, 112, 0, 0.14);
+    --primary-glow: rgba(141, 112, 0, 0.28);
     --primary-ink: #3d2e0a;
 
     /* Sfondi — luminosità ridotta, buon contrasto bg↔card */
@@ -209,39 +209,39 @@
     --border: #b7bbbf;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 
-    /* Semantici — CIELAB matched */
-    --success: #0D7A3A;
-    --warning: #8B5A00;
-    --danger: #971A2E;
-    --info: #1A5AAE;
+    /* Semantici — CIELAB 55% damped */
+    --success: #008753;
+    --warning: #906400;
+    --danger: #db575a;
+    --info: #2f82d3;
 
-    /* Semantici soft — CIELAB matched */
-    --success-soft: rgba(13, 122, 58, 0.12);
-    --success-border: rgba(13, 122, 58, 0.25);
-    --warning-soft: rgba(139, 90, 0, 0.12);
-    --warning-border: rgba(139, 90, 0, 0.25);
-    --danger-soft: rgba(151, 26, 46, 0.12);
-    --danger-border: rgba(151, 26, 46, 0.25);
-    --info-soft: rgba(26, 90, 174, 0.12);
-    --info-border: rgba(26, 90, 174, 0.25);
+    /* Semantici soft — CIELAB 55% damped */
+    --success-soft: rgba(0, 135, 83, 0.12);
+    --success-border: rgba(0, 135, 83, 0.25);
+    --warning-soft: rgba(144, 100, 0, 0.12);
+    --warning-border: rgba(144, 100, 0, 0.25);
+    --danger-soft: rgba(219, 87, 90, 0.12);
+    --danger-border: rgba(219, 87, 90, 0.25);
+    --info-soft: rgba(47, 130, 211, 0.12);
+    --info-border: rgba(47, 130, 211, 0.25);
 
-    /* Materia — CIELAB matched */
-    --materia-civile:    #00468e;
-    --materia-penale:    #920d24;
-    --materia-lavoro:    #701e00;
-    --materia-amm:       #003c12;
-    --materia-stra:      #441c00;
+    /* Materia — CIELAB 55% damped */
+    --materia-civile:    #2f82d3;
+    --materia-penale:    #db575a;
+    --materia-lavoro:    #bf6000;
+    --materia-amm:       #008753;
+    --materia-stra:      #906400;
 
-    /* Contatti — CIELAB matched */
-    --contact-judge:      #46369b;
-    --contact-consultant: #00364d;
+    /* Contatti — CIELAB 55% damped */
+    --contact-judge:      #8a70de;
+    --contact-consultant: #007f99;
 
-    /* ── Categoria — CIELAB matched ── */
-    --cat-udienza:   #503d7e;
-    --cat-scadenza:  #973d40;
-    --cat-riunione:  #005867;
-    --cat-personale: #005842;
-    --cat-altro:     #495264;
+    /* ── Categoria — CIELAB 55% damped ── */
+    --cat-udienza:   #8e77be;
+    --cat-scadenza:  #d37171;
+    --cat-riunione:  #4d91a0;
+    --cat-personale: #35947b;
+    --cat-altro:     #80899d;
 
     /* ── Sidebar — leggermente più scura dello sfondo per separazione visiva ── */
     --sidebar-bg:   #c6c7cb;
@@ -249,15 +249,15 @@
     --sidebar-text: #1e1f28;
     --sidebar-dim:  #6b7094;
 
-    /* ── Event blocks — CIELAB matched (più chiari per stessa percezione) ── */
+    /* ── Event blocks — CIELAB 55% damped ── */
     --ev-text:         #ffffff;
     --ev-text-shadow:  0 1px 2px rgba(0, 0, 0, 0.2);
     --ev-badge-bg:     rgba(0, 0, 0, 0.12);
-    --ev-bg-udienza:   #9485cd;
-    --ev-bg-scadenza:  #cb7471;
-    --ev-bg-riunione:  #6f9ba7;
-    --ev-bg-personale: #64a286;
-    --ev-bg-altro:     #8d93b0;
+    --ev-bg-udienza:   #b2a2ec;
+    --ev-bg-scadenza:  #ed928e;
+    --ev-bg-riunione:  #8ab6c3;
+    --ev-bg-personale: #7ebda0;
+    --ev-bg-altro:     #a8aecc;
 
     /* ── Toast ── */
     --toast-bg:   rgba(210, 212, 218, 0.95);
@@ -1426,7 +1426,7 @@ body.agenda-dragging .agenda-event:hover {
   }
 
   /* ═══ Sidebar brand — CIELAB matched ═══ */
-  & .sidebar-brand { color: #8B6C10; }
+  & .sidebar-brand { color: var(--primary); }
 
   /* ═══ text-black su primary button → bianco ═══ */
   & .text-black { color: #fff; }
