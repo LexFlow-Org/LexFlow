@@ -120,13 +120,13 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             <div className="relative group">
               <input
                 id="cpm-client"
-                className={`input-field pl-5 w-full bg-white/5 border-white/10 focus:border-primary/50 transition-all ${errors.client ? 'border-red-500/50 bg-red-500/5' : ''}`}
+                className={`input-field pl-5 w-full bg-white/5 border-white/10 focus:border-primary/50 transition-all ${errors.client ? 'border-danger-border bg-danger-soft' : ''}`}
                 placeholder="Inserisci il nome del cliente o della società..."
                 value={formData.client}
                 onChange={e => updateField('client', e.target.value)}
               />
             </div>
-            {errors.client && <p className="text-red-400 text-[10px] font-bold flex items-center gap-1 ml-1 mt-1 animate-pulse"><AlertCircle size={10}/> {errors.client}</p>}
+            {errors.client && <p className="text-danger text-[10px] font-bold flex items-center gap-1 ml-1 mt-1 animate-pulse"><AlertCircle size={10}/> {errors.client}</p>}
           </div>
 
           {/* Materia con Pills Colorate */}
@@ -161,12 +161,12 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             <label htmlFor="cpm-object" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Oggetto della Pratica *</label>
             <input
               id="cpm-object"
-              className={`input-field w-full bg-white/5 border-white/10 ${errors.object ? 'border-red-500/50 bg-red-500/5' : ''}`}
+              className={`input-field w-full bg-white/5 border-white/10 ${errors.object ? 'border-danger-border bg-danger-soft' : ''}`}
               placeholder="Es. Recupero crediti o Descrizione sommaria..."
               value={formData.object}
               onChange={e => updateField('object', e.target.value)}
             />
-            {errors.object && <p className="text-red-400 text-[10px] font-bold flex items-center gap-1 ml-1 animate-pulse"><AlertCircle size={10}/> {errors.object}</p>}
+            {errors.object && <p className="text-danger text-[10px] font-bold flex items-center gap-1 ml-1 animate-pulse"><AlertCircle size={10}/> {errors.object}</p>}
           </div>
 
           {/* Grid Dati Tecnici */}
@@ -257,7 +257,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleRemoveAttachment(f.path); }}
-                        className="hover:text-red-300 transition-colors"
+                        className="hover:text-danger transition-colors"
                         aria-label={`Rimuovi ${f.name}`}
                       >
                         <Trash2 size={10} />

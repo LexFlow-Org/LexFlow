@@ -30,9 +30,9 @@
       })();
     </script>
     <style>
-      /* Background critico pre-rendering: matcha il tema scelto */
-      html:not([data-theme="light"]) body { background: #16171e; color: #edeef6; }
-      html[data-theme="light"] body { background: #f4f5f8; color: #1e1e2e; }
+      /* Background critico pre-rendering: matcha il tema scelto — DEVE corrispondere a index.css */
+      html:not([data-theme="light"]) body { background: #1c1d26; color: #edeef6; }
+      html[data-theme="light"] body { background: #d0d1d5; color: #1c1d22; }
       /* Nascondi contenuto finché React non è pronto — evita layout shift */
       #root { opacity: 0; }
       #root.app-mounted { opacity: 1; transition: opacity 0.15s ease; }

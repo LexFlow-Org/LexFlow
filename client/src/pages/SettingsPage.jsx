@@ -78,8 +78,8 @@ function FactoryResetModal({ onClose }) {
         <div className="modal-header-gradient modal-header-gradient-danger">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center border border-red-500/20">
-                <LogOut size={22} className="text-red-400" />
+              <div className="w-12 h-12 bg-danger-soft rounded-2xl flex items-center justify-center border border-danger-border">
+                <LogOut size={22} className="text-danger" />
               </div>
               <div>
                 <h3 id="factory-reset-title" className="text-xl font-bold text-text">Factory Reset</h3>
@@ -112,11 +112,11 @@ function FactoryResetModal({ onClose }) {
               {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-          {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+          {error && <p className="text-danger text-[11px] font-semibold">{error}</p>}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
-          <button onClick={doReset} className="px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest">Conferma Reset</button>
+          <button onClick={doReset} className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-all text-xs font-bold uppercase tracking-widest">Conferma Reset</button>
         </div>
       </div>
     </ModalOverlay>
@@ -204,7 +204,7 @@ function ExportBackupModal({ onClose }) {
                 onKeyDown={e => { if (e.key === 'Enter') doExport(); }} />
             </div>
           </div>
-          {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+          {error && <p className="text-danger text-[11px] font-semibold">{error}</p>}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
@@ -288,7 +288,7 @@ function ImportBackupModal({ onClose }) {
               {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-          {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+          {error && <p className="text-danger text-[11px] font-semibold">{error}</p>}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
@@ -366,15 +366,15 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
 
   const stepIconStyles = {
     enroll: 'bg-primary/10 border-primary/20',
-    'done-deactivated': 'bg-blue-500/10 border-blue-500/20',
+    'done-deactivated': 'bg-info-soft border-info-border',
   };
-  const defaultIconStyle = 'bg-red-500/10 border-red-500/20';
+  const defaultIconStyle = 'bg-danger-soft border-danger-border';
 
   const stepIcons = {
     enroll: <Fingerprint size={22} className="text-primary" />,
-    'done-deactivated': <ShieldCheck size={22} className="text-blue-400" />,
+    'done-deactivated': <ShieldCheck size={22} className="text-info" />,
   };
-  const defaultIcon = <RefreshCw size={22} className="text-red-400" />;
+  const defaultIcon = <RefreshCw size={22} className="text-danger" />;
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="bio-modal-title" zIndex={200}>
@@ -417,7 +417,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
           <div className="modal-footer">
             <button onClick={onClose} className="btn-cancel">Annulla</button>
             <button onClick={doDeactivate} disabled={loading}
-              className={`px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
+              className={`px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-all text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
               {loading ? 'Disattivazione...' : 'Disattiva'}
             </button>
           </div>
@@ -462,7 +462,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
                 {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            {error && <p className="text-red-400 text-[11px] font-semibold">{error}</p>}
+            {error && <p className="text-danger text-[11px] font-semibold">{error}</p>}
           </div>
           <div className="modal-footer">
             <button onClick={onClose} className="btn-cancel">Annulla</button>
@@ -730,7 +730,7 @@ export default function SettingsPage({ onLock }) {
                       }}
                       className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                         notificationTime === opt.value
-                          ? 'bg-primary text-black border-primary shadow-[0_0_12px_rgba(212,169,64,0.3)]'
+                          ? 'bg-primary text-black border-primary shadow-neon'
                           : 'bg-white/[0.04] text-text-muted border-border hover:bg-white/[0.08] hover:text-text'
                       }`}
                     >
@@ -795,7 +795,7 @@ export default function SettingsPage({ onLock }) {
               <div className="flex items-center gap-2">
                 {screenshotProtection ? <Camera size={16} className="text-primary" /> : <CameraOff size={16} className="text-text-dim" />}
                 <span className="font-medium text-text">Blocco Screenshot</span>
-                <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20">SICUREZZA</span>
+                <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/20">SICUREZZA</span>
               </div>
               <p className="text-xs text-text-muted max-w-md">
                 Impedisce la cattura dello schermo (screenshot, registrazioni, condivisione schermo).
@@ -826,7 +826,7 @@ export default function SettingsPage({ onLock }) {
                   onClick={() => handleAutolockChange(opt)}
                   className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                     autolockMinutes === opt.value
-                      ? 'bg-primary text-black border-primary shadow-[0_0_12px_rgba(212,169,64,0.3)]'
+                      ? 'bg-primary text-black border-primary shadow-neon'
                       : 'bg-white/[0.04] text-text-muted border-border hover:bg-white/[0.08] hover:text-text'
                   }`}
                 >
@@ -848,18 +848,18 @@ export default function SettingsPage({ onLock }) {
               onClick={() => setShowBioResetConfirm(true)}
               className={`flex items-center gap-4 p-4 rounded-xl border transition-all group relative ${
                 {
-                  active: 'bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/20',
-                  available: 'bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/20',
+                  active: 'bg-success-soft hover:bg-success-soft border-success-border',
+                  available: 'bg-warning-soft hover:bg-warning-soft border-warning-border',
                 }[bioStatus] || 'bg-white/5 hover:bg-white/10 border-white/10'
               }`}
             >
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                { active: 'bg-emerald-500/15', available: 'bg-amber-500/15' }[bioStatus] || 'bg-white/5'
+                { active: 'bg-success-soft', available: 'bg-warning-soft' }[bioStatus] || 'bg-white/5'
               }`}>
                 <Fingerprint size={20} className={
                   {
-                    active: 'text-emerald-400',
-                    available: 'text-amber-400',
+                    active: 'text-success',
+                    available: 'text-warning',
                     checking: 'text-text-dim animate-pulse',
                   }[bioStatus] || 'text-text-dim'
                 } />
@@ -868,8 +868,8 @@ export default function SettingsPage({ onLock }) {
                 <span className="text-sm font-bold text-text">Biometria</span>
                 <span className={`text-[10px] font-bold uppercase tracking-wider ${
                   {
-                    active: 'text-emerald-400',
-                    available: 'text-amber-400',
+                    active: 'text-success',
+                    available: 'text-warning',
                     checking: 'text-text-dim animate-pulse',
                   }[bioStatus] || 'text-text-dim'
                 }`}>
@@ -958,7 +958,7 @@ export default function SettingsPage({ onLock }) {
       <div className="pt-12 text-center">
         <button 
           onClick={() => setShowFactoryReset(true)}
-          className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group"
+          className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-all duration-300 group"
         >
           <Lock size={18} className="transition-transform group-hover:-rotate-12" />
           <span className="font-black text-[11px] uppercase tracking-widest">Factory Reset Vault</span>

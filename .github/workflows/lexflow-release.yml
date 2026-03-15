@@ -96,6 +96,7 @@ jobs:
           fi
           cp "$EXTRACTED" "$OUT"
           chmod +x "$OUT"
+          strip "$OUT" 2>/dev/null || true
           echo "Typst sidecar ready: $OUT ($(wc -c < "$OUT") bytes)"
           rm -rf "$WORKDIR"
 
@@ -246,6 +247,7 @@ jobs:
             fi
             cp "$EXTRACTED" "$OUT"
             chmod +x "$OUT"
+            strip -x "$OUT" 2>/dev/null || true
             echo "$TAURI_NAME ready ($(wc -c < "$OUT") bytes)"
             rm -rf "$WORKDIR"
           done
@@ -256,6 +258,7 @@ jobs:
             src-tauri/binaries/typst-x86_64-apple-darwin \
             -output "$UNIVERSAL"
           chmod +x "$UNIVERSAL"
+          strip -x "$UNIVERSAL" 2>/dev/null || true
           echo "Universal sidecar ready: $UNIVERSAL ($(wc -c < "$UNIVERSAL") bytes)"
 
       - name: Build macOS DMG

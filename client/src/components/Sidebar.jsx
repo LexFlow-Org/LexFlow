@@ -169,7 +169,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
           </div>
           <div className="flex flex-col">
             <span className="text-2xl font-black tracking-tighter text-text leading-none">LexFlow</span>
-            <span className="text-[9px] font-bold text-primary uppercase tracking-[3px] mt-1">Law Suite</span>
+            <span className="text-[9px] font-extrabold text-primary uppercase tracking-[3px] mt-1 sidebar-brand">Law Suite</span>
           </div>
         </div>
       </div>
@@ -192,7 +192,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
       <div className="flex justify-center px-4 py-3 flex-shrink-0">
         <button
           onClick={onToggleTheme}
-          className="w-10 h-10 flex items-center justify-center rounded-full text-primary/60 hover:text-primary hover:bg-primary/10 transition-all"
+          className="w-10 h-10 flex items-center justify-center rounded-full text-primary hover:text-primary hover:bg-primary/10 transition-all"
           title={isLight ? 'Tema scuro' : 'Tema chiaro'}
         >
           {isLight ? <Moon size={22} strokeWidth={2.5} /> : <Sun size={22} strokeWidth={2.5} />}
@@ -203,14 +203,14 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
       <div className="p-6 bg-sidebar-bg">
         <button
           onClick={onLock}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 group"
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-all duration-300 group"
         >
           <Lock size={18} className="transition-transform group-hover:-rotate-12" />
           <span className="font-black text-[11px] uppercase tracking-widest">Blocca Vault</span>
         </button>
         <div className="flex items-center justify-between px-1 mt-4">
           <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
             <span className="text-[10px] font-bold uppercase tracking-tight text-text-dim/80">v{version}</span>
           </div>
           <div className="flex items-center gap-2">

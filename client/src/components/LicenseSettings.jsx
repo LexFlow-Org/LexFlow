@@ -28,11 +28,11 @@ export default function LicenseSettings() {
         <div className="flex justify-between items-center border-b border-border pb-2">
           <span className="text-text-dim">Stato Attivazione:</span>
           {licenseInfo.inGracePeriod ? (
-            <span className="text-orange-400 font-medium bg-orange-400/10 px-2 py-0.5 rounded">
+            <span className="text-warning font-medium bg-warning-soft px-2 py-0.5 rounded">
               Grace Period ({licenseInfo.graceDays}gg)
             </span>
           ) : (
-            <span className="text-green-400 font-medium bg-green-400/10 px-2 py-0.5 rounded">
+            <span className="text-success font-medium bg-success-soft px-2 py-0.5 rounded">
               Attiva
             </span>
           )}

@@ -1,9 +1,9 @@
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect, memo, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { Briefcase, CalendarDays, CalendarClock, Coffee, Sun, Sunrise, ChevronDown } from 'lucide-react';
-import { catDotClass, catPillClass, getHeroGradient } from '../theme';
+import { catDotClass, catPillClass, getHeroColor } from '../theme';
 
-function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavigate }) {
+const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavigate }) {
   const scrollRef = useRef(null);
   const [scrollInfo, setScrollInfo] = useState({ atBottom: true, hiddenCount: 0 });
 
@@ -13,21 +13,24 @@ function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavig
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    let rafId = 0;
     const update = () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
-      // Count how many items are below the visible area
       const items = el.querySelectorAll('[data-event-row]');
+      const containerBottom = el.getBoundingClientRect().bottom;
       let hidden = 0;
       items.forEach(item => {
-        const rect = item.getBoundingClientRect();
-        const containerRect = el.getBoundingClientRect();
-        if (rect.top >= containerRect.bottom) hidden++;
+        if (item.getBoundingClientRect().top >= containerBottom) hidden++;
       });
       setScrollInfo({ atBottom, hiddenCount: hidden });
     };
+    const onScroll = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(update);
+    };
     update();
-    el.addEventListener('scroll', update, { passive: true });
-    return () => el.removeEventListener('scroll', update);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => { el.removeEventListener('scroll', onScroll); cancelAnimationFrame(rafId); };
   }, [relevant]);
 
   if (relevant.length === 0) {
@@ -121,7 +124,7 @@ function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavig
       )}
     </div>
   );
-}
+});
 
 RelevantEventsWidget.propTypes = {
   relevant: PropTypes.array.isRequired,
@@ -139,10 +142,11 @@ Dashboard.propTypes = {
 
 export default function Dashboard({ practices, agendaEvents, onNavigate, onSelectPractice }) {
 
-  // ── Greeting contestuale con colori stagionali ──
+  // ── Greeting contestuale con colore adattivo al tema ──
+  const currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
   const hero = useMemo(() => {
     const h = new Date().getHours();
-    const { background } = getHeroGradient();
+    const { background } = getHeroColor(currentTheme);
 
     if (h >= 5 && h < 13) return {
       label: 'AGGIORNAMENTO MATTUTINO',
@@ -165,7 +169,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       background,
       icon: <Coffee size={100} strokeWidth={1} />,
     };
-  }, []);
+  }, [currentTheme]);
 
   // ── Calcoli statistiche (più informative) ──
   const stats = useMemo(() => {

@@ -13,11 +13,11 @@ import {
 
 // Mappa dei colori e stili per ogni materia
 const SUBJECT_STYLES = {
-  civile: { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', label: 'Civile', stripe: 'bg-blue-500', dot: 'bg-blue-500' },
-  penale: { color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', label: 'Penale', stripe: 'bg-red-500', dot: 'bg-red-500' },
-  lavoro: { color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20', label: 'Lavoro', stripe: 'bg-orange-500', dot: 'bg-orange-500' },
-  amm: { color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'Amministrativo', stripe: 'bg-emerald-500', dot: 'bg-emerald-500' },
-  stra: { color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', label: 'Stragiudiziale', stripe: 'bg-yellow-500', dot: 'bg-yellow-500' },
+  civile: { color: 'text-materia-civile', bg: 'bg-materia-civile/10', border: 'border-materia-civile/20', label: 'Civile', stripe: 'bg-materia-civile', dot: 'bg-materia-civile' },
+  penale: { color: 'text-materia-penale', bg: 'bg-materia-penale/10', border: 'border-materia-penale/20', label: 'Penale', stripe: 'bg-materia-penale', dot: 'bg-materia-penale' },
+  lavoro: { color: 'text-materia-lavoro', bg: 'bg-materia-lavoro/10', border: 'border-materia-lavoro/20', label: 'Lavoro', stripe: 'bg-materia-lavoro', dot: 'bg-materia-lavoro' },
+  amm: { color: 'text-materia-amm', bg: 'bg-materia-amm/10', border: 'border-materia-amm/20', label: 'Amministrativo', stripe: 'bg-materia-amm', dot: 'bg-materia-amm' },
+  stra: { color: 'text-materia-stra', bg: 'bg-materia-stra/10', border: 'border-materia-stra/20', label: 'Stragiudiziale', stripe: 'bg-materia-stra', dot: 'bg-materia-stra' },
   default: { color: 'text-text-dim', bg: 'bg-white/5', border: 'border-white/10', label: 'Altro', stripe: 'bg-white/40', dot: 'bg-white/40' }
 };
 
@@ -82,7 +82,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           onClick={() => setFilterStatus('all')}
           className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
             filterStatus === 'all' 
-              ? 'border-primary/40 bg-primary/5 shadow-[0_0_15px_rgba(212,169,64,0.08)]' 
+              ? 'border-primary/40 bg-primary/5 shadow-neon' 
               : 'border-white/5 hover:bg-white/[0.03] opacity-70 hover:opacity-100'
           }`}
         >
@@ -100,7 +100,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           onClick={() => setFilterStatus('active')}
           className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
             filterStatus === 'active' 
-              ? 'border-primary/40 bg-primary/5 shadow-[0_0_15px_rgba(212,169,64,0.08)]' 
+              ? 'border-primary/40 bg-primary/5 shadow-neon' 
               : 'border-white/5 hover:bg-white/[0.03] opacity-70 hover:opacity-100'
           }`}
         >
@@ -118,7 +118,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           onClick={() => setFilterStatus('closed')}
           className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
             filterStatus === 'closed' 
-              ? 'border-primary/40 bg-primary/5 shadow-[0_0_15px_rgba(212,169,64,0.08)]' 
+              ? 'border-primary/40 bg-primary/5 shadow-neon' 
               : 'border-white/5 hover:bg-white/[0.03] opacity-70 hover:opacity-100'
           }`}
         >
@@ -214,7 +214,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
                     <div className="hidden lg:flex flex-col justify-center items-end pr-4">
                       <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-white/5 text-text border-border' : 'bg-white/5 text-text-dim border-border'}`}>
                         <span className="flex items-center gap-1.5">
-                          <span className={`w-1.5 h-1.5 rounded-full ${p?.status === 'active' ? 'bg-emerald-400' : 'bg-text-dim'}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full ${p?.status === 'active' ? 'bg-success' : 'bg-text-dim'}`} />
                           {p?.status === 'active' ? 'Attivo' : 'Archiviato'}
                         </span>
                       </div>

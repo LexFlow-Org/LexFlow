@@ -12,8 +12,8 @@ export default function ConflictCheckPage({ onSelectPractice }) {
     <div className="max-w-4xl mx-auto space-y-8 pb-12">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20">
-          <Shield size={28} className="text-amber-400" />
+        <div className="w-14 h-14 bg-warning-soft rounded-2xl flex items-center justify-center border border-warning-border">
+          <Shield size={28} className="text-warning" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-text tracking-tight">Conflitto di Interessi</h1>

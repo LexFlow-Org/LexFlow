@@ -48,6 +48,25 @@
   --color-danger: var(--danger);
   --color-info: var(--info);
 
+  /* Semantici soft */
+  --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+  --color-info-soft: var(--info-soft);
+  --color-info-border: var(--info-border);
+
+  /* Materia (tipo fascicolo) */
+  --color-materia-civile: var(--materia-civile);
+  --color-materia-penale: var(--materia-penale);
+  --color-materia-lavoro: var(--materia-lavoro);
+  --color-materia-amm: var(--materia-amm);
+  --color-materia-stra: var(--materia-stra);
+  --color-contact-judge: var(--contact-judge);
+  --color-contact-consultant: var(--contact-consultant);
+
   /* ── Categoria Agenda ── */
   --color-cat-udienza: var(--cat-udienza);
   --color-cat-scadenza: var(--cat-scadenza);
@@ -104,9 +123,30 @@
     --danger: #f87171;
     --info: #60a5fa;
 
-    /* ── Categoria Agenda — IDENTICI tra dark e light ── */
+    /* Semantici — varianti soft (sfondo + bordo) */
+    --success-soft: rgba(52, 211, 153, 0.10);
+    --success-border: rgba(52, 211, 153, 0.20);
+    --warning-soft: rgba(251, 191, 36, 0.10);
+    --warning-border: rgba(251, 191, 36, 0.20);
+    --danger-soft: rgba(248, 113, 113, 0.10);
+    --danger-border: rgba(248, 113, 113, 0.20);
+    --info-soft: rgba(96, 165, 250, 0.10);
+    --info-border: rgba(96, 165, 250, 0.20);
+
+    /* Materia (tipo fascicolo) */
+    --materia-civile:    #60a5fa;
+    --materia-penale:    #f87171;
+    --materia-lavoro:    #fb923c;
+    --materia-amm:       #34d399;
+    --materia-stra:      #fbbf24;
+
+    /* Contatti (tipo contatto) */
+    --contact-judge:      #a78bfc;
+    --contact-consultant: #22d3ee;
+
+    /* ── Categoria Agenda — scadenza ammorbidita ── */
     --cat-udienza:   #A78FD8;
-    --cat-scadenza:  #E06060;
+    --cat-scadenza:  #CC6B6B;
     --cat-riunione:  #5A9DAD;
     --cat-personale: #4BA88E;
     --cat-altro:     #8891A5;
@@ -122,7 +162,7 @@
     --ev-text-shadow:  0 1px 2px rgba(0, 0, 0, 0.3);
     --ev-badge-bg:     rgba(0, 0, 0, 0.2);
     --ev-bg-udienza:   #554A8C;
-    --ev-bg-scadenza:  #8C2828;
+    --ev-bg-scadenza:  #8C3D3D;
     --ev-bg-riunione:  #285560;
     --ev-bg-personale: #185840;
     --ev-bg-altro:     #484E68;
@@ -137,24 +177,27 @@
     /* ── Hero Card — ombra adattiva ── */
     --hero-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.35);
 
+    /* ── Window controls ── */
+    --danger-close: #e81123;
+
     color-scheme: dark;
   }
 
   /* ── Light Theme — SOLO sfondo/testo/bordi cambiano ── */
   :root[data-theme="light"] {
-    /* Primario — IDENTICO al dark */
-    --primary: #dab550;
-    --primary-hover: #c9a43e;
-    --primary-soft: rgba(218, 181, 80, 0.12);
-    --primary-glow: rgba(218, 181, 80, 0.25);
+    /* Primario — CIELAB matched per stessa percezione su sfondo chiaro */
+    --primary: #8B6C10;
+    --primary-hover: #7A5D08;
+    --primary-soft: rgba(139, 108, 16, 0.14);
+    --primary-glow: rgba(139, 108, 16, 0.28);
     --primary-ink: #3d2e0a;
 
-    /* Sfondi invertiti — luminosità ridotta per meno affaticamento, contrasto bg↔card mantenuto */
-    --bg: #dddee0;
-    --bg-card: #e7e8e9;
-    --bg-card-hover: #e3e4e6;
-    --bg-input: #e7e8e9;
-    --bg-surface: #e7e8e9;
+    /* Sfondi — luminosità ridotta, buon contrasto bg↔card */
+    --bg: #d0d1d5;
+    --bg-card: #dfe0e3;
+    --bg-card-hover: #d8d9dc;
+    --bg-input: #dfe0e3;
+    --bg-surface: #dfe0e3;
 
     /* Testi — scuri e leggibili, non puro nero */
     --text: #1c1d22;
@@ -166,41 +209,65 @@
     --border: #b7bbbf;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 
-    /* Semantici — IDENTICI */
-    --success: #34d399;
-    --warning: #fbbf24;
-    --danger: #f87171;
-    --info: #60a5fa;
+    /* Semantici — CIELAB matched */
+    --success: #0D7A3A;
+    --warning: #8B5A00;
+    --danger: #971A2E;
+    --info: #1A5AAE;
 
-    /* ── Categoria — IDENTICHE al dark ── */
-    --cat-udienza:   #A78FD8;
-    --cat-scadenza:  #E06060;
-    --cat-riunione:  #5A9DAD;
-    --cat-personale: #4BA88E;
-    --cat-altro:     #8891A5;
+    /* Semantici soft — CIELAB matched */
+    --success-soft: rgba(13, 122, 58, 0.12);
+    --success-border: rgba(13, 122, 58, 0.25);
+    --warning-soft: rgba(139, 90, 0, 0.12);
+    --warning-border: rgba(139, 90, 0, 0.25);
+    --danger-soft: rgba(151, 26, 46, 0.12);
+    --danger-border: rgba(151, 26, 46, 0.25);
+    --info-soft: rgba(26, 90, 174, 0.12);
+    --info-border: rgba(26, 90, 174, 0.25);
 
-    /* ── Sidebar — ratio bg↔sidebar IDENTICO al dark ── */
-    --sidebar-bg:   #d7d8d9;
-    --sidebar-deep: #cdcfcd;
+    /* Materia — CIELAB matched */
+    --materia-civile:    #00468e;
+    --materia-penale:    #920d24;
+    --materia-lavoro:    #701e00;
+    --materia-amm:       #003c12;
+    --materia-stra:      #441c00;
+
+    /* Contatti — CIELAB matched */
+    --contact-judge:      #46369b;
+    --contact-consultant: #00364d;
+
+    /* ── Categoria — CIELAB matched ── */
+    --cat-udienza:   #503d7e;
+    --cat-scadenza:  #973d40;
+    --cat-riunione:  #005867;
+    --cat-personale: #005842;
+    --cat-altro:     #495264;
+
+    /* ── Sidebar — leggermente più scura dello sfondo per separazione visiva ── */
+    --sidebar-bg:   #c6c7cb;
+    --sidebar-deep: #bdbec3;
     --sidebar-text: #1e1f28;
     --sidebar-dim:  #6b7094;
 
-    /* ── Event blocks — IDENTICI al dark ── */
+    /* ── Event blocks — CIELAB matched (più chiari per stessa percezione) ── */
     --ev-text:         #ffffff;
-    --ev-text-shadow:  0 1px 2px rgba(0, 0, 0, 0.3);
-    --ev-badge-bg:     rgba(0, 0, 0, 0.2);
-    --ev-bg-udienza:   #554A8C;
-    --ev-bg-scadenza:  #8C2828;
-    --ev-bg-riunione:  #285560;
-    --ev-bg-personale: #185840;
-    --ev-bg-altro:     #484E68;
+    --ev-text-shadow:  0 1px 2px rgba(0, 0, 0, 0.2);
+    --ev-badge-bg:     rgba(0, 0, 0, 0.12);
+    --ev-bg-udienza:   #9485cd;
+    --ev-bg-scadenza:  #cb7471;
+    --ev-bg-riunione:  #6f9ba7;
+    --ev-bg-personale: #64a286;
+    --ev-bg-altro:     #8d93b0;
 
     /* ── Toast ── */
-    --toast-bg:   rgba(255, 255, 255, 0.95);
+    --toast-bg:   rgba(210, 212, 218, 0.95);
     --toast-text: #1e1f28;
 
     /* ── Overlay adattivo ── */
     --overlay: 0, 0, 0;
+
+    /* ── Window controls ── */
+    --danger-close: #e81123;
 
     /* ── Hero Card ── */
     --hero-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.18);
@@ -326,7 +393,7 @@
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 32px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(var(--overlay), 0.03) inset;
     overflow: hidden;
   }
   .modal-card-sm { width: 100%; max-width: 28rem; }
@@ -348,23 +415,23 @@
   /* Varianti gradient predefinite — usare className invece di style inline */
   .modal-header-gradient-primary {
     padding: 32px 32px 20px;
-    background: linear-gradient(135deg, rgba(218, 181, 80, 0.08) 0%, rgba(218, 181, 80, 0.02) 100%);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 8%, transparent) 0%, color-mix(in srgb, var(--primary) 2%, transparent) 100%);
   }
   .modal-header-gradient-danger {
     padding: 32px 32px 20px;
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.02) 100%);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--danger) 8%, transparent) 0%, color-mix(in srgb, var(--danger) 2%, transparent) 100%);
   }
   .modal-header-gradient-warning {
     padding: 32px 32px 20px;
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.02) 100%);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--warning) 8%, transparent) 0%, color-mix(in srgb, var(--warning) 2%, transparent) 100%);
   }
   .modal-header-gradient-info {
     padding: 32px 32px 20px;
-    background: linear-gradient(135deg, rgba(96, 165, 250, 0.08) 0%, rgba(96, 165, 250, 0.02) 100%);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--info) 8%, transparent) 0%, color-mix(in srgb, var(--info) 2%, transparent) 100%);
   }
   .modal-header-gradient-success {
     padding: 32px 32px 20px;
-    background: linear-gradient(135deg, rgba(52, 211, 153, 0.08) 0%, rgba(52, 211, 153, 0.02) 100%);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--success) 8%, transparent) 0%, color-mix(in srgb, var(--success) 2%, transparent) 100%);
   }
   .modal-header-icon {
     width: 48px;
@@ -374,7 +441,7 @@
     align-items: center;
     justify-content: center;
     background: var(--primary-soft);
-    border: 1px solid rgba(218, 181, 80, 0.2);
+    border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
     color: var(--primary);
   }
 
@@ -456,7 +523,7 @@
   }
 
   .btn-danger {
-    background: rgba(248, 113, 113, 0.12);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
     color: var(--danger);
     display: inline-flex;
     align-items: center;
@@ -466,12 +533,12 @@
     border-radius: var(--radius-sm);
     font-weight: 500;
     font-size: 13px;
-    border: 1px solid rgba(248, 113, 113, 0.2);
+    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
     cursor: pointer;
     transition: var(--transition);
   }
   .btn-danger:hover {
-    background: rgba(248, 113, 113, 0.2);
+    background: color-mix(in srgb, var(--danger) 20%, transparent);
   }
 
   .btn-cancel {
@@ -566,7 +633,7 @@
   .tab-btn[data-active="true"],
   .tab-btn.active {
     background: var(--primary);
-    color: #fff;
+    color: var(--primary-ink);
     box-shadow: 0 0 12px var(--primary-glow);
   }
 
@@ -579,8 +646,8 @@
     box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.6);
   }
   .curtain-close-btn {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(var(--overlay), 0.06);
+    border: 1px solid rgba(var(--overlay), 0.1);
     border-radius: 12px;
     width: 44px;
     height: 44px;
@@ -594,7 +661,7 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: radial-gradient(ellipse at top center, rgba(218, 181, 80, 0.07) 0%, transparent 60%);
+    background: radial-gradient(ellipse at top center, color-mix(in srgb, var(--primary) 7%, transparent) 0%, transparent 60%);
   }
   .curtain-container {
     min-height: 100%;
@@ -607,7 +674,7 @@
   .curtain-brand-title {
     font-size: 24px;
     font-weight: 900;
-    color: #fff;
+    color: var(--sidebar-text);
     letter-spacing: -0.04em;
     line-height: 1;
     margin: 0;
@@ -624,14 +691,14 @@
     width: 100%;
     max-width: 280px;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(218, 181, 80, 0.3), transparent);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 30%, transparent), transparent);
     margin-bottom: 16px;
   }
   .curtain-divider-subtle {
     width: 100%;
     max-width: 280px;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+    background: linear-gradient(90deg, transparent, rgba(var(--overlay), 0.06), transparent);
     margin: 12px 0;
   }
   .curtain-nav-link {
@@ -676,8 +743,8 @@
     gap: 10px;
     padding: 12px 24px;
     border-radius: 14px;
-    background: rgba(248, 113, 113, 0.1);
-    border: 1px solid rgba(248, 113, 113, 0.2);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
     color: var(--danger);
     cursor: pointer;
     font-weight: 700;
@@ -687,7 +754,7 @@
     transition: background 0.2s;
   }
   .curtain-lock-btn:hover {
-    background: rgba(248, 113, 113, 0.2);
+    background: color-mix(in srgb, var(--danger) 20%, transparent);
   }
   .curtain-theme-btn {
     width: 100%;
@@ -732,7 +799,7 @@
   }
   .curtain-version {
     font-size: 11px;
-    color: rgba(124, 128, 153, 0.6);
+    color: var(--sidebar-dim);
     font-weight: 600;
   }
 
@@ -767,12 +834,12 @@
     opacity: 0.5;
   }
 
-  /* ═══ MATERIA COLORS (Fascicoli) ═══ */
-  .materia-civile   { background: rgba(59, 130, 246, 0.10); color: #60a5fa; border-color: rgba(59, 130, 246, 0.50); box-shadow: 0 0 15px rgba(59, 130, 246, 0.15); }
-  .materia-penale   { background: rgba(239, 68, 68, 0.10);  color: #f87171; border-color: rgba(239, 68, 68, 0.50);  box-shadow: 0 0 15px rgba(239, 68, 68, 0.15); }
-  .materia-lavoro   { background: rgba(249, 115, 22, 0.10); color: #fb923c; border-color: rgba(249, 115, 22, 0.50); box-shadow: 0 0 15px rgba(249, 115, 22, 0.15); }
-  .materia-amm      { background: rgba(16, 185, 129, 0.10); color: #34d399; border-color: rgba(16, 185, 129, 0.50); box-shadow: 0 0 15px rgba(16, 185, 129, 0.15); }
-  .materia-stra     { background: rgba(234, 179, 8, 0.10);  color: #fbbf24; border-color: rgba(234, 179, 8, 0.50);  box-shadow: 0 0 15px rgba(234, 179, 8, 0.15); }
+  /* ═══ MATERIA COLORS (Fascicoli) — usano CSS variables ═══ */
+  .materia-civile   { background: color-mix(in srgb, var(--materia-civile) 10%, transparent); color: var(--materia-civile); border-color: color-mix(in srgb, var(--materia-civile) 50%, transparent); box-shadow: 0 0 15px color-mix(in srgb, var(--materia-civile) 15%, transparent); }
+  .materia-penale   { background: color-mix(in srgb, var(--materia-penale) 10%, transparent); color: var(--materia-penale); border-color: color-mix(in srgb, var(--materia-penale) 50%, transparent); box-shadow: 0 0 15px color-mix(in srgb, var(--materia-penale) 15%, transparent); }
+  .materia-lavoro   { background: color-mix(in srgb, var(--materia-lavoro) 10%, transparent); color: var(--materia-lavoro); border-color: color-mix(in srgb, var(--materia-lavoro) 50%, transparent); box-shadow: 0 0 15px color-mix(in srgb, var(--materia-lavoro) 15%, transparent); }
+  .materia-amm      { background: color-mix(in srgb, var(--materia-amm) 10%, transparent);    color: var(--materia-amm);    border-color: color-mix(in srgb, var(--materia-amm) 50%, transparent);    box-shadow: 0 0 15px color-mix(in srgb, var(--materia-amm) 15%, transparent); }
+  .materia-stra     { background: color-mix(in srgb, var(--materia-stra) 10%, transparent);   color: var(--materia-stra);   border-color: color-mix(in srgb, var(--materia-stra) 50%, transparent);   box-shadow: 0 0 15px color-mix(in srgb, var(--materia-stra) 15%, transparent); }
 
   /* ═══ TOAST ICON COLORS ═══ */
   .toast-icon-success { color: var(--success); flex-shrink: 0; }
@@ -868,7 +935,7 @@
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(218, 181, 80, 0.5);
+    background: color-mix(in srgb, var(--primary) 50%, transparent);
   }
 
   .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -885,7 +952,7 @@
     border-radius: 9999px;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(218, 181, 80, 0.4);
+    background: color-mix(in srgb, var(--primary) 40%, transparent);
   }
 
   .sidebar-scroll {
@@ -908,7 +975,7 @@
     background: rgba(var(--overlay), 0.15);
   }
   .sidebar-scroll:hover::-webkit-scrollbar-thumb:hover {
-    background: rgba(218, 181, 80, 0.5);
+    background: color-mix(in srgb, var(--primary) 50%, transparent);
   }
 
   /* ── Drag region (Tauri) ── */
@@ -921,7 +988,7 @@
     -webkit-app-region: no-drag;
   }
 
-  .shadow-neon { box-shadow: 0 0 20px rgba(218, 181, 80, 0.4); }
+  .shadow-neon { box-shadow: 0 0 20px color-mix(in srgb, var(--primary) 40%, transparent); }
 
   /* ── Window controls (frameless Win/Linux) ── */
   .window-controls {
@@ -950,8 +1017,8 @@
     color: var(--text);
   }
   .wc-close:hover {
-    background: #e81123;
-    color: #fff;
+    background: var(--danger-close);
+    color: var(--ev-text);
   }
 }
 
@@ -1000,7 +1067,7 @@ body.agenda-dragging .agenda-event:hover {
   font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.25);
+  color: color-mix(in srgb, var(--ev-text) 25%, transparent);
   background: linear-gradient(to top, rgba(0, 0, 0, 0.25) 0%, transparent 100%);
   border-radius: 0 0 8px 8px;
   opacity: 0;
@@ -1029,23 +1096,23 @@ body.agenda-dragging .agenda-event:hover {
 }
 
 @keyframes pulse-dot {
-  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(218, 181, 80, 0.7); }
-  70%  { transform: scale(1.5); box-shadow: 0 0 0 6px rgba(218, 181, 80, 0); }
-  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(218, 181, 80, 0); }
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 70%, transparent); }
+  70%  { transform: scale(1.5); box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent); }
+  100% { transform: scale(1);   box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 0%, transparent); }
 }
 
 .event-udienza {
   border-left: 3px solid var(--primary);
-  background: linear-gradient(90deg, rgba(218, 181, 80, 0.85) 0%, rgba(218, 181, 80, 0.6) 100%);
-  box-shadow: 0 4px 15px rgba(218, 181, 80, 0.2);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--primary) 85%, transparent) 0%, color-mix(in srgb, var(--primary) 60%, transparent) 100%);
+  box-shadow: 0 4px 15px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 .event-udienza:hover {
-  box-shadow: 0 6px 20px rgba(218, 181, 80, 0.4);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 
 .event-scadenza {
   border-left: 3px solid var(--danger);
-  background: linear-gradient(90deg, rgba(248, 113, 113, 0.85) 0%, rgba(248, 113, 113, 0.6) 100%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 85%, transparent) 0%, color-mix(in srgb, var(--danger) 60%, transparent) 100%);
 }
 
 .calendar-grid-header {
@@ -1347,7 +1414,7 @@ body.agenda-dragging .agenda-event:hover {
   & .agenda-event:hover { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06); }
   & .shadow-lg  { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); }
   & .shadow-2xl { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); }
-  & .shadow-neon { box-shadow: 0 0 15px rgba(218, 181, 80, 0.18); }
+  & .shadow-neon { box-shadow: 0 0 15px color-mix(in srgb, var(--primary) 18%, transparent); }
 
   /* ═══ MODAL ═══ */
   & .modal-card {
@@ -1357,6 +1424,9 @@ body.agenda-dragging .agenda-event:hover {
     background: rgba(0, 0, 0, 0.25);
     backdrop-filter: blur(6px);
   }
+
+  /* ═══ Sidebar brand — CIELAB matched ═══ */
+  & .sidebar-brand { color: #8B6C10; }
 
   /* ═══ text-black su primary button → bianco ═══ */
   & .text-black { color: #fff; }

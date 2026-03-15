@@ -84,11 +84,11 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
 
       {/* Clean Result */}
       {isClean && !loading && (
-        <div className="bg-green-500/5 border border-green-500/20 rounded-2xl p-8 text-center animate-fade-in">
-          <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/20">
-            <ShieldCheck size={40} className="text-green-400" />
+        <div className="bg-success-soft border border-success-border rounded-2xl p-8 text-center animate-fade-in">
+          <div className="w-20 h-20 bg-success-soft rounded-full flex items-center justify-center mx-auto mb-4 border border-success-border">
+            <ShieldCheck size={40} className="text-success" />
           </div>
-          <h3 className="text-xl font-bold text-green-400">Nessun Conflitto Rilevato</h3>
+          <h3 className="text-xl font-bold text-success">Nessun Conflitto Rilevato</h3>
           <p className="text-text-dim text-sm mt-2">
             La ricerca per &ldquo;<span className="text-text font-semibold">{query}</span>&rdquo; non ha trovato corrispondenze nei fascicoli o nell&apos;anagrafica contatti.
           </p>
@@ -99,12 +99,12 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
       {hasConflict && !loading && (
         <div className="space-y-6 animate-fade-in">
           {/* Warning Banner */}
-          <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-5 flex items-start gap-4">
-            <div className="w-12 h-12 bg-red-500/10 rounded-xl flex items-center justify-center flex-shrink-0 border border-red-500/20">
-              <AlertTriangle size={24} className="text-red-400" />
+          <div className="bg-danger-soft border border-danger-border rounded-2xl p-5 flex items-start gap-4">
+            <div className="w-12 h-12 bg-danger-soft rounded-xl flex items-center justify-center flex-shrink-0 border border-danger-border">
+              <AlertTriangle size={24} className="text-danger" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-red-400">Conflitto Potenziale</h3>
+              <h3 className="text-lg font-bold text-danger">Conflitto Potenziale</h3>
               <p className="text-text-dim text-sm mt-1">
                 Trovate <span className="text-text font-bold">{practiceMatches.length}</span> pratiche e <span className="text-text font-bold">{contactMatches.length}</span> contatti corrispondenti a &ldquo;<span className="text-text font-semibold">{query}</span>&rdquo;.
               </p>
@@ -147,7 +147,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
                           {/* Matched fields pills */}
                           <div className="flex flex-wrap gap-1 max-w-[200px] justify-end">
                             {(m.matchedFields || []).map((f) => (
-                              <span key={f} className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 whitespace-nowrap">
+                              <span key={f} className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning-border whitespace-nowrap">
                                 {f.startsWith('ruolo:') ? ROLE_LABELS[f.split(':')[1]] || f.split(':')[1] : FIELD_LABELS[f] || f}
                               </span>
                             ))}

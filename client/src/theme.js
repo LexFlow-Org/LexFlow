@@ -12,7 +12,7 @@
 //   Queste costanti servono SOLO come backup / per chart libraries.
 export const CAT_COLORS = {
   udienza:   '#A78FD8',
-  scadenza:  '#E06060',
+  scadenza:  '#CC6B6B',
   riunione:  '#5A9DAD',
   personale: '#4BA88E',
   altro:     '#8891A5',
@@ -82,12 +82,18 @@ export const SEMANTIC = {
 
 // ── Colori Hero Dashboard — 3 fasce orarie ──────────────
 // Colore unico per tema chiaro e scuro — IDENTICO in entrambi i temi.
-// Solo 3 colori: mattina / pomeriggio / sera. Niente stagioni (troppi = poco professionale).
-// Tutti WCAG AAA ≥ 4.5:1 su bianco. Nessuno si confonde con --primary (#dab550).
+// Solo 3 colori: mattina / pomeriggio / sera.
 export const HERO_COLORS = {
-  morning:   '#b06028',   // Ambra alba — caldo/luminoso (4.62:1 AAA ✅)
-  afternoon: '#842e28',   // Mattone granata — profondo (8.74:1 AAA ✅)
-  evening:   '#283450',   // Blu acciaio notte — scuro (12.37:1 AAA ✅, ratio 1.35 vs dark bg)
+  dark: {
+    morning:   '#6B4233',   // Mogano caldo — prima luce
+    afternoon: '#2D4A5A',   // Blu petrolio — pieno giorno
+    evening:   '#1E2940',   // Blu notte — dopo il tramonto
+  },
+  light: {
+    morning:   '#bc8c7b',   // CIELAB matched — mogano chiaro
+    afternoon: '#84a2b4',   // CIELAB matched — petrolio chiaro
+    evening:   '#b7c1df',   // CIELAB matched — lavanda notte
+  },
 };
 
 /** Determina la fascia oraria (mattina dalle 5, notte 0-4 = sera) */
@@ -98,12 +104,12 @@ export function getTimeOfDay(hour = new Date().getHours()) {
 }
 
 /**
- * Ottiene il colore hero per fascia oraria.
- * Colore unico indipendente dal tema — niente gradienti, niente banding.
+ * Ottiene il colore hero per fascia oraria, adattato al tema.
  */
-export function getHeroGradient() {
+export function getHeroColor(theme) {
   const timeOfDay = getTimeOfDay();
-  const background = HERO_COLORS[timeOfDay] || HERO_COLORS.morning;
+  const palette = (theme === 'light') ? HERO_COLORS.light : HERO_COLORS.dark;
+  const background = palette[timeOfDay] || palette.morning;
 
   return {
     background,
@@ -141,7 +147,7 @@ export const TOAST = {
 // Queste costanti sono SOLO per chart/canvas che NON supportano CSS vars.
 export const EVENT_BG = {
   udienza:   '#554A8C',
-  scadenza:  '#8C2828',
+  scadenza:  '#8C3D3D',
   riunione:  '#285560',
   personale: '#185840',
   altro:     '#484E68',

@@ -258,12 +258,12 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     if (/\d/.test(pwd)) score++;
     if (/[^A-Za-z0-9]/.test(pwd)) score++;
     // 6 criteri → 6 segmenti. "Eccellente" (6/6) = isPasswordStrong soddisfatto
-    if (score <= 1) return { label: 'Debole', color: 'bg-red-500', text: 'text-red-500', pct: 17, segments: 1 };
-    if (score <= 2) return { label: 'Insufficiente', color: 'bg-orange-500', text: 'text-orange-500', pct: 33, segments: 2 };
-    if (score <= 3) return { label: 'Sufficiente', color: 'bg-yellow-500', text: 'text-yellow-500', pct: 50, segments: 3 };
-    if (score <= 4) return { label: 'Buona', color: 'bg-amber-400', text: 'text-amber-400', pct: 67, segments: 4 };
+    if (score <= 1) return { label: 'Debole', color: 'bg-danger', text: 'text-danger', pct: 17, segments: 1 };
+    if (score <= 2) return { label: 'Insufficiente', color: 'bg-warning', text: 'text-warning', pct: 33, segments: 2 };
+    if (score <= 3) return { label: 'Sufficiente', color: 'bg-warning', text: 'text-warning', pct: 50, segments: 3 };
+    if (score <= 4) return { label: 'Buona', color: 'bg-warning', text: 'text-warning', pct: 67, segments: 4 };
     if (score <= 5) return { label: 'Forte', color: 'bg-primary', text: 'text-primary', pct: 83, segments: 5 };
-    return { label: 'Eccellente', color: 'bg-emerald-500', text: 'text-emerald-500', pct: 100, segments: 6 };
+    return { label: 'Eccellente', color: 'bg-success', text: 'text-success', pct: 100, segments: 6 };
   };
 
   const isPasswordStrong = (pwd) => {
@@ -464,13 +464,13 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
           </div>
 
           {error && (
-            <div className={`${lockoutSeconds > 0 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-red-500/10 border-red-500/20'} border p-3 rounded-xl flex items-center gap-2 animate-shake`}>
+            <div className={`${lockoutSeconds > 0 ? 'bg-warning-soft border-warning-border' : 'bg-danger-soft border-danger-border'} border p-3 rounded-xl flex items-center gap-2 animate-shake`}>
               {lockoutSeconds > 0 ? (
-                <Timer size={16} className="text-amber-500 flex-shrink-0 animate-pulse" />
+                <Timer size={16} className="text-warning flex-shrink-0 animate-pulse" />
               ) : (
-                <ShieldAlert size={16} className="text-red-500 flex-shrink-0" />
+                <ShieldAlert size={16} className="text-danger flex-shrink-0" />
               )}
-              <p className={`${lockoutSeconds > 0 ? 'text-amber-500' : 'text-red-500'} text-[11px] font-semibold leading-tight`}>{error}</p>
+              <p className={`${lockoutSeconds > 0 ? 'text-warning' : 'text-danger'} text-[11px] font-semibold leading-tight`}>{error}</p>
             </div>
           )}
 
@@ -507,7 +507,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
             <button 
               type="button" 
               onClick={() => { setShowResetModal(true); setResetPassword(''); setResetError(''); }}
-              className="text-text-dim hover:text-red-500 text-[10px] font-bold uppercase tracking-widest transition-colors"
+              className="text-text-dim hover:text-danger text-[10px] font-bold uppercase tracking-widest transition-colors"
             >
               Password dimenticata? Reset Vault
             </button>
@@ -533,8 +533,8 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
             <div className="modal-header-gradient modal-header-gradient-danger">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center border border-red-500/20">
-                    <ShieldAlert size={22} className="text-red-400" />
+                  <div className="w-12 h-12 bg-danger-soft rounded-2xl flex items-center justify-center border border-danger-border">
+                    <ShieldAlert size={22} className="text-danger" />
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-text">Factory Reset</h3>
@@ -549,7 +549,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
             <div className="px-8 py-6 space-y-4">
               <p className="text-text-muted text-xs leading-relaxed">
                 Inserisci la password attuale per confermare il reset completo del Vault.{' '}
-                <span className="text-red-400 font-semibold">Questa azione è irreversibile.</span>
+                <span className="text-danger font-semibold">Questa azione è irreversibile.</span>
               </p>
               <div className="relative">
                 <input 
@@ -567,8 +567,8 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                 />
               </div>
               {resetError && (
-                <div className="bg-red-500/10 border border-red-500/20 p-2 rounded-lg">
-                  <p className="text-red-400 text-[11px] font-semibold">{resetError}</p>
+                <div className="bg-danger-soft border border-danger-border p-2 rounded-lg">
+                  <p className="text-danger text-[11px] font-semibold">{resetError}</p>
                 </div>
               )}
             </div>
@@ -576,7 +576,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               <button onClick={() => setShowResetModal(false)} className="btn-cancel">Annulla</button>
               <button
                 onClick={executeReset}
-                className="px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest"
+                className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-all text-xs font-bold uppercase tracking-widest"
               >
                 Conferma Reset
               </button>

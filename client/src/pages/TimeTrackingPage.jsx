@@ -38,7 +38,7 @@ function calcTotals(items) {
 
 const STATUS_LABELS = { draft: 'Bozza', sent: 'Inviata', paid: 'Pagata' };
 const STATUS_COLORS = {
-  draft: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+  draft: 'bg-warning-soft text-warning border-warning-border',
   sent: 'bg-white/10 text-text-muted border-white/30',
   paid: 'bg-primary/10 text-primary border-primary/30',
 };
@@ -292,7 +292,7 @@ export default function TimeTrackingPage({ practices }) {
           {activeTimer ? (
             <div className="glass-card p-5 mb-4 border border-primary/20 bg-primary/5 space-y-4">
               <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                <div className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse" />
                 <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">Timer in corso</span>
               </div>
               <div className="flex items-center gap-3">
@@ -309,7 +309,7 @@ export default function TimeTrackingPage({ practices }) {
                 <span className="font-mono text-3xl text-primary font-bold tabular-nums">
                   {String(Math.floor(displayElapsed / 3600)).padStart(2, '0')}:{String(Math.floor((displayElapsed % 3600) / 60)).padStart(2, '0')}:{String(displayElapsed % 60).padStart(2, '0')}
                 </span>
-                <button onClick={stopTimer} className="flex items-center gap-2 px-4 py-2.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 rounded-xl transition-colors text-xs font-bold">
+                <button onClick={stopTimer} className="flex items-center gap-2 px-4 py-2.5 bg-danger-soft hover:bg-danger-soft text-danger rounded-xl transition-colors text-xs font-bold">
                   <Square size={14} fill="currentColor" /> Ferma
                 </button>
               </div>
@@ -443,7 +443,7 @@ export default function TimeTrackingPage({ practices }) {
                         <span className="text-sm font-mono font-bold text-primary tabular-nums">{fmtDuration(log.minutes)}</span>
                         <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => setEditingLog(log)} className="p-1.5 hover:bg-primary/10 rounded-full text-text-dim hover:text-primary transition-colors"><Edit3 size={14} /></button>
-                          <button onClick={() => confirmDeleteLog(log.id)} className="p-1.5 hover:bg-red-500/10 rounded-full text-text-dim hover:text-red-400"><Trash2 size={14} /></button>
+                          <button onClick={() => confirmDeleteLog(log.id)} className="p-1.5 hover:bg-danger-soft rounded-full text-text-dim hover:text-danger"><Trash2 size={14} /></button>
                         </div>
                       </div>
                     ))
@@ -508,7 +508,7 @@ export default function TimeTrackingPage({ practices }) {
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => generatePDF(inv)} className="p-1.5 hover:bg-white/10 rounded-lg text-text-dim" title="Scarica PDF"><Download size={14} /></button>
                       <button onClick={() => setEditingInvoice(inv)} className="p-1.5 hover:bg-white/10 rounded-lg text-text-dim"><Edit3 size={14} /></button>
-                      <button onClick={() => confirmDeleteInvoice(inv.id)} className="p-1.5 hover:bg-red-500/10 rounded-lg text-text-dim hover:text-red-400"><Trash2 size={14} /></button>
+                      <button onClick={() => confirmDeleteInvoice(inv.id)} className="p-1.5 hover:bg-danger-soft rounded-lg text-text-dim hover:text-danger"><Trash2 size={14} /></button>
                     </div>
                   </div>
                 );
@@ -732,7 +732,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
               <div className="flex items-center gap-2">
                 <input value={it.description} onChange={e => updateItem(idx, 'description', e.target.value)} className="input-field flex-1 py-2 text-sm" placeholder="Descrizione voce..." />
                 {items.length > 1 && (
-                  <button type="button" onClick={() => removeItem(idx)} className="p-1.5 hover:bg-red-500/10 text-text-dim hover:text-red-400 rounded-lg"><Trash2 size={14} /></button>
+                  <button type="button" onClick={() => removeItem(idx)} className="p-1.5 hover:bg-danger-soft text-text-dim hover:text-danger rounded-lg"><Trash2 size={14} /></button>
                 )}
               </div>
               <div className="grid grid-cols-4 gap-3">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
@@ -7,7 +7,7 @@ import * as api from './tauri-api';
 import { mapAgendaToScheduleItems } from './utils/helpers';
 import { SEMANTIC } from './theme';
 
-// Componenti
+// Componenti (caricati subito — servono al layout)
 import LoginScreen from './components/LoginScreen';
 import LicenseActivation from './components/LicenseActivation';
 import Sidebar, { HamburgerButton } from './components/Sidebar';
@@ -19,14 +19,14 @@ import CreatePracticeModal from './components/CreatePracticeModal';
 import ErrorBoundary from './ErrorBoundary';
 import TccLocationBanner from './components/TccLocationBanner';
 
-// Pagine
+// Pagine — lazy loading: caricate solo quando l'utente ci naviga
 import Dashboard from './pages/Dashboard';
-import PracticesList from './pages/PracticesList';
-import DeadlinesPage from './pages/DeadlinesPage';
-import AgendaPage from './pages/AgendaPage';
-import SettingsPage from './pages/SettingsPage';
-import TimeTrackingPage from './pages/TimeTrackingPage';
-import ContactsPage from './pages/ContactsPage';
+const PracticesList = lazy(() => import('./pages/PracticesList'));
+const DeadlinesPage = lazy(() => import('./pages/DeadlinesPage'));
+const AgendaPage = lazy(() => import('./pages/AgendaPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
+const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 
 export default function App() {
   const navigate = useNavigate();
@@ -414,6 +414,7 @@ export default function App() {
           />
 
           <div className="flex-1 overflow-auto p-4 pt-3 sm:p-8 sm:pt-4">
+            <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 size={24} className="animate-spin text-primary" /></div>}>
             <Routes>
               <Route path="/" element={
                 <Dashboard
@@ -474,6 +475,7 @@ export default function App() {
                 <ContactsPage practices={practices} onSelectPractice={handleSelectPractice} />
               } />
             </Routes>
+            </Suspense>
           </div>
         </main>
 

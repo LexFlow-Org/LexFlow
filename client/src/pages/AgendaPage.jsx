@@ -113,7 +113,7 @@ function createDragGhost(el, ghostId) {
   ghost.style.height = el.style.height;
   ghost.style.zIndex = '60';
   ghost.style.opacity = '0.9';
-  ghost.style.border = '2px dashed rgba(212,169,64,0.6)';
+  ghost.style.border = '2px dashed var(--primary-glow)';
   ghost.style.pointerEvents = 'none';
   ghost.style.cursor = 'copy';
   el.parentElement.appendChild(ghost);
@@ -465,7 +465,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
                   onClick={() => { setRemindMinutes(opt.value); }}
                   className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
                     remindMinutes === opt.value
-                      ? 'bg-primary text-black border-primary shadow-[0_0_10px_rgba(212,169,64,0.25)]'
+                      ? 'bg-primary text-black border-primary shadow-neon'
                       : 'bg-white/5 text-text-dim border-white/10 hover:bg-white/10 hover:text-text'
                   }`}>
                   {opt.label}
@@ -474,7 +474,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
               {/* Pill orario personalizzato */}
               <div className={`inline-flex items-center rounded-xl border transition-all ${
                 remindMinutes === 'custom'
-                  ? 'border-primary bg-primary/10 shadow-[0_0_10px_rgba(212,169,64,0.25)]'
+                  ? 'border-primary bg-primary/10 shadow-neon'
                   : 'border-white/10 bg-white/5 hover:bg-white/10'
               }`}>
                 <button type="button"
@@ -520,7 +520,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
         {/* Footer — stile unificato con Fascicoli */}
         <div className="modal-footer gap-3">
           {isEdit && !event?.autoSync && (
-            <button type="button" onClick={() => setConfirmDelete(true)} className="px-5 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+            <button type="button" onClick={() => setConfirmDelete(true)} className="px-5 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2">
               <Trash2 size={16}/> Elimina
             </button>
           )}
@@ -642,18 +642,18 @@ function UpcomingPanel({ events, onEdit, onToggle }) {
   return (
     <div className="space-y-4 animate-slide-up [animation-delay:0.1s]">
       {overdue.length > 0 && (
-        <div className="glass-card p-4 border border-red-500/20 bg-red-500/5">
+        <div className="glass-card p-4 border border-danger-border bg-danger-soft">
           <div className="flex items-center gap-2 mb-3">
-            <AlertCircle size={14} className="text-red-400" />
-            <span className="text-xs font-bold text-red-400 uppercase tracking-wide">In Ritardo ({overdue.length})</span>
+            <AlertCircle size={14} className="text-danger" />
+            <span className="text-xs font-bold text-danger uppercase tracking-wide">In Ritardo ({overdue.length})</span>
           </div>
           <div className="space-y-2">
             {overdue.slice(0, 3).map(ev => (
-              <button type="button" key={ev.id} onClick={() => onEdit(ev)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-red-500/10 cursor-pointer transition border border-transparent hover:border-red-500/20 text-left w-full">
+              <button type="button" key={ev.id} onClick={() => onEdit(ev)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-danger-soft cursor-pointer transition border border-transparent hover:border-danger-border text-left w-full">
                 <div className={`w-1.5 h-8 rounded-full flex-shrink-0 ${catBarClass(ev.category)}`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-text truncate">{ev.title}</p>
-                  <p className="text-[10px] text-red-300">{formatRelDay(ev.date)}</p>
+                  <p className="text-[10px] text-danger">{formatRelDay(ev.date)}</p>
                 </div>
               </button>
             ))}
@@ -836,7 +836,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                                     onClick={e => { e.stopPropagation(); onToggle(ev.id); }}
                                     className={`pointer-events-auto w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
                                       ev.completed
-                                        ? 'bg-green-500 border-green-500'
+                                        ? 'bg-success border-success'
                                         : 'border-white/30 hover:border-primary hover:bg-primary/10'
                                     }`}
                                   >
@@ -976,7 +976,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
                     const height = Math.max(((eh*60+em-sh*60-sm)/60)*60, 20);
                     const isUdienza = ev.category === 'udienza';
                     return (
-                      <div key={ev.id} className={`week-ev agenda-event absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 cursor-pointer overflow-hidden text-left border-l-2 ev-text ${evBgClass(ev.category)} ${isUdienza ? 'shadow-[0_2px_8px_rgba(212,169,64,0.3)]' : ''}`}
+                      <div key={ev.id} className={`week-ev agenda-event absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 cursor-pointer overflow-hidden text-left border-l-2 ev-text ${evBgClass(ev.category)} ${isUdienza ? 'shadow-neon' : ''}`}
                         style={{
                             top, height, fontSize: 10,
                         }}>
@@ -1150,8 +1150,8 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
       <div className="glass-card border border-white/10 shadow-2xl p-6 animate-fade-in relative z-10 max-w-[400px] w-full">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center">
-              <BellRing size={18} className="text-amber-400" />
+            <div className="w-9 h-9 rounded-xl bg-warning-soft flex items-center justify-center">
+              <BellRing size={18} className="text-warning" />
             </div>
             <h3 id="notif-settings-title" className="text-base font-bold text-white uppercase tracking-wide">Impostazioni Avvisi</h3>
           </div>
@@ -1190,7 +1190,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
                   onClick={() => setPreavviso(opt.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                     preavviso === opt.value
-                      ? 'bg-primary text-black border-primary shadow-[0_0_12px_rgba(212,169,64,0.3)]'
+                      ? 'bg-primary text-black border-primary shadow-neon'
                       : 'bg-white/[0.04] text-text-muted border-white/5 hover:bg-white/[0.08] hover:text-white'
                   }`}
                 >
@@ -1372,7 +1372,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
         {activeFilters.length > 0 && (
           <button 
             onClick={() => setActiveFilters([])} 
-            className="px-2 py-1.5 text-text-dim hover:text-red-400 transition-colors flex-shrink-0"
+            className="px-2 py-1.5 text-text-dim hover:text-danger transition-colors flex-shrink-0"
             title="Pulisci filtri"
           >
             <X size={14}/>

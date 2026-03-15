@@ -41,6 +41,13 @@ export default defineConfig({
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['lucide-react', 'react-hot-toast'],
+          'vendor-motion': ['framer-motion'],
+          'vendor-tauri': ['@tauri-apps/api', '@tauri-apps/plugin-notification'],
+          'vendor-pdf': ['jspdf', 'jspdf-autotable'],
+        },
       },
     },
   },

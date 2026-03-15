@@ -115,7 +115,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
               {bioConfigured === true && (bioAttempted ? 'Autenticazione non riuscita. Riprova o usa la password.' : 'Autenticazione biometrica in corso...')}
             </p>
             {bioConfigured === false && (
-              <p className="text-[10px] text-amber-400/70 mt-2 font-semibold">Biometria non configurata — usa la password</p>
+              <p className="text-[10px] text-warning mt-2 font-semibold">Biometria non configurata — usa la password</p>
             )}
           </div>
           {/* Biometric retry + fallback (only when bio IS configured) */}
@@ -146,7 +146,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
                 autoFocus
               />
               {practicePasswordError && (
-                <p className="text-red-400 text-[11px] font-semibold">{practicePasswordError}</p>
+                <p className="text-danger text-[11px] font-semibold">{practicePasswordError}</p>
               )}
               <button type="submit" className="btn-primary w-full py-3 text-sm">
                 <Lock size={16} /> Sblocca Fascicolo
@@ -217,7 +217,7 @@ function StatusDropdown({ status, onChangeStatus }) {
             : 'bg-white/5 text-text-muted border-border hover:bg-white/10'
         }`}
       >
-        <span className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-emerald-400' : 'bg-text-dim'}`} />
+        <span className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-success' : 'bg-text-dim'}`} />
         {status === 'active' ? 'Attivo' : 'Archiviato'}
         <ChevronDown size={14} className="text-text-dim" />
       </button>
@@ -225,7 +225,7 @@ function StatusDropdown({ status, onChangeStatus }) {
         <div className="absolute right-0 top-full mt-2 bg-card border border-border rounded-xl shadow-2xl z-50 py-1 min-w-[200px] animate-fade-in">
           <button onClick={() => doSet('active')}
             className={`w-full flex items-center gap-3 px-4 py-3 text-xs hover:bg-white/5 transition-colors text-left ${status === 'active' ? 'bg-white/[0.03]' : ''}`}>
-            <span className="w-2 h-2 rounded-full bg-emerald-400" /><span className="text-text font-medium">Attivo</span>
+            <span className="w-2 h-2 rounded-full bg-success" /><span className="text-text font-medium">Attivo</span>
           </button>
           <button onClick={() => doSet('closed')}
             className={`w-full flex items-center gap-3 px-4 py-3 text-xs hover:bg-white/5 transition-colors text-left ${status === 'closed' ? 'bg-white/[0.03]' : ''}`}>
@@ -621,7 +621,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <span className="text-[11px] font-semibold text-primary/90 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/15">
                         {new Date(note.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(note.date).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}
                       </span>
-                      <button onClick={() => confirmDeleteNote(idx)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/10 text-white/30 hover:text-red-400 transition-all">
+                      <button onClick={() => confirmDeleteNote(idx)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-danger-soft text-white/30 hover:text-danger transition-all">
                          <Trash2 size={14} />
                       </button>
                     </div>
@@ -681,8 +681,8 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 onClick={linkFolder}
                 className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-white/5 hover:border-white/15 transition-all border border-white/5 group text-left w-full"
               >
-                <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
-                  <FolderPlus size={24} className="text-amber-400" />
+                <div className="w-12 h-12 rounded-xl bg-warning-soft flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                  <FolderPlus size={24} className="text-warning" />
                 </div>
                 <div>
                   <p className="text-base font-bold text-text">Collega Cartella</p>
@@ -721,7 +721,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <button onClick={(e) => { e.stopPropagation(); att.path && api.openPath(att.path); }} className="btn-ghost text-xs p-2 relative z-[1]">
                         <FolderOpen size={14} />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveAttachment(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-red-400 transition-all relative z-[1]">
+                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveAttachment(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-all relative z-[1]">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -743,14 +743,14 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 <div className="space-y-2">
                   {folders.map((fld, idx) => (
                     <div key={fld.path}
-                      className="glass-card p-3 flex items-center gap-3 group hover:border-amber-500/30 transition-colors text-left w-full relative"
+                      className="glass-card p-3 flex items-center gap-3 group hover:border-warning-border transition-colors text-left w-full relative"
                     >
                       <button type="button"
                         onClick={() => openFolderAtPath(fld.path)}
                         className="absolute inset-0 z-0 cursor-pointer"
                         aria-label={`Apri ${fld.name}`}
                       />
-                      <FolderOpen size={16} className="text-amber-400 flex-shrink-0" />
+                      <FolderOpen size={16} className="text-warning flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-text truncate">{fld.name}</p>
                         <p className="text-[10px] text-text-dim">
@@ -760,7 +760,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <button onClick={(e) => { e.stopPropagation(); openFolderAtPath(fld.path); }} className="btn-ghost text-xs p-2 relative z-[1]" title="Apri nel Finder">
                         <FolderOpen size={14} />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveFolder(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-red-400 transition-all relative z-[1]">
+                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveFolder(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-all relative z-[1]">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -822,7 +822,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       onClick={() => setNewDeadlineRemind(opt.value)}
                       className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
                         newDeadlineRemind === opt.value
-                          ? 'bg-primary text-black border-primary shadow-[0_0_10px_rgba(212,169,64,0.25)]'
+                          ? 'bg-primary text-black border-primary shadow-neon'
                           : 'bg-white/5 text-text-dim border-white/10 hover:bg-white/10 hover:text-text'
                       }`}
                     >
@@ -832,7 +832,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   {/* Pill orario personalizzato "Alle" */}
                   <div className={`inline-flex items-center rounded-xl border transition-all ${
                     newDeadlineRemind === 'custom'
-                      ? 'border-primary bg-primary/10 shadow-[0_0_10px_rgba(212,169,64,0.25)]'
+                      ? 'border-primary bg-primary/10 shadow-neon'
                       : 'border-white/10 bg-white/5 hover:bg-white/10'
                   }`}>
                     <button type="button"
@@ -879,12 +879,12 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   );
                 }
 
-                return allDeadlines.map((d) => {
+                return allDeadlines.map((d, idx) => {
                   const dDate = new Date(d.date); dDate.setHours(0,0,0,0);
                   const diff = Math.ceil((dDate - today) / (1000 * 60 * 60 * 24));
                   const dotColor = getDeadlineDotColor(diff);
                   const deadlineLabel = getDeadlineLabel(diff);
-                  const key = d.source === 'agenda' ? `agenda_${d.id}` : `${d.date}_${d.label}`;
+                  const key = d.source === 'agenda' ? `agenda_${d.id}` : `${d.date}_${d.label}_${idx}`;
                   
                   return (
                     <div key={key} className="glass-card p-3 flex items-center gap-4 group hover:border-primary/30 transition-colors">
@@ -898,7 +898,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                              <span className="text-xs text-text-muted font-mono">ore {d.time}</span>
                            )}
                            {d.remindMinutes != null && (
-                             <span className="text-[9px] font-bold text-amber-400/80 uppercase tracking-wider bg-amber-400/10 px-1.5 py-0.5 rounded">
+                             <span className="text-[9px] font-bold text-warning uppercase tracking-wider bg-warning-soft px-1.5 py-0.5 rounded">
                                🔔 {d.remindMinutes === 'custom'
                                  ? `alle ${d.customRemindTime || '—'}`
                                  : d.remindMinutes >= 1440
@@ -919,7 +919,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       </div>
 
                       {d.source === 'practice' && (
-                        <button onClick={() => confirmDeleteDeadline(d.idx)} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-red-400 transition-all">
+                        <button onClick={() => confirmDeleteDeadline(d.idx)} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-all">
                           <Trash2 size={16} />
                         </button>
                       )}

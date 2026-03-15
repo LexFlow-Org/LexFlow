@@ -25,8 +25,8 @@ export default function ExportWarningModal({ isOpen, onClose, onConfirm }) {
         <div className="modal-header-gradient modal-header-gradient-warning">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20">
-                <ShieldAlert size={22} className="text-amber-400" />
+              <div className="w-12 h-12 bg-warning-soft rounded-2xl flex items-center justify-center border border-warning-border">
+                <ShieldAlert size={22} className="text-warning" />
               </div>
               <div>
                 <h2 id="export-warning-title" className="text-xl font-bold text-text">Avviso di Sicurezza</h2>

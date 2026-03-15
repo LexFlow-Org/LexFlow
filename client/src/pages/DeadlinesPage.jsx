@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import PropTypes from 'prop-types';
 import { CalendarClock, ChevronRight, Check, Calendar, FolderOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -7,7 +7,7 @@ import { formatDateIT, mapAgendaToScheduleItems } from '../utils/helpers';
 
 const TYPE_LABELS = { civile: 'Civile', penale: 'Penale', amm: 'Amministrativo', lavoro: 'Lavoro', stra: 'Stragiudiziale' };
 
-function DeadlineRow({ d, onSelectPractice, onNavigate }) {
+const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate }) {
   const [showPopover, setShowPopover] = useState(false);
   const popRef = useRef(null);
 
@@ -76,7 +76,7 @@ function DeadlineRow({ d, onSelectPractice, onNavigate }) {
     )}
     </div>
   );
-}
+});
 
 DeadlineRow.propTypes = {
   d: PropTypes.shape({

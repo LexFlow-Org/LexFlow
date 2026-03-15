@@ -376,13 +376,10 @@ fn init_android_device_id() -> Result<String, String> {
         "Nessun percorso scrivibile trovato su Android per persistere la master key.".to_string()
     })?;
     if let Some(parent) = id_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            format!("Impossibile creare la directory per device_id: {}", e)
-        })?;
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Impossibile creare la directory per device_id: {}", e))?;
     }
-    fs::write(&id_path, &id_hex).map_err(|e| {
-        format!("Impossibile salvare device_id: {}", e)
-    })?;
+    fs::write(&id_path, &id_hex).map_err(|e| format!("Impossibile salvare device_id: {}", e))?;
     Ok(id_hex)
 }
 
@@ -5897,8 +5894,8 @@ pub fn run() {
             // Must run before any command handler that derives encryption keys.
             #[cfg(not(target_os = "android"))]
             {
-                let id = init_machine_id()
-                    .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+                let id =
+                    init_machine_id().map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
                 MACHINE_ID_CACHE.set(id).ok();
             }
             #[cfg(target_os = "android")]

@@ -10,12 +10,12 @@ import { ROLE_LABELS } from '../utils/conflictConstants';
 import { genId } from '../utils/helpers';
 
 const CONTACT_TYPES = [
-  { id: 'client', label: 'Cliente', icon: User, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-  { id: 'counterparty', label: 'Controparte', icon: Scale, color: 'text-red-400 bg-red-500/10 border-red-500/20' },
-  { id: 'opposing_counsel', label: 'Avv. Controparte', icon: UserCheck, color: 'text-orange-400 bg-orange-500/10 border-orange-500/20' },
-  { id: 'judge', label: 'Giudice', icon: Gavel, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
-  { id: 'consultant', label: 'Consulente', icon: Briefcase, color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20' },
-  { id: 'other', label: 'Altro', icon: Users, color: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20' },
+  { id: 'client', label: 'Cliente', icon: User, color: 'text-materia-civile bg-materia-civile/10 border-materia-civile/20' },
+  { id: 'counterparty', label: 'Controparte', icon: Scale, color: 'text-materia-penale bg-materia-penale/10 border-materia-penale/20' },
+  { id: 'opposing_counsel', label: 'Avv. Controparte', icon: UserCheck, color: 'text-materia-lavoro bg-materia-lavoro/10 border-materia-lavoro/20' },
+  { id: 'judge', label: 'Giudice', icon: Gavel, color: 'text-contact-judge bg-contact-judge/10 border-contact-judge/20' },
+  { id: 'consultant', label: 'Consulente', icon: Briefcase, color: 'text-contact-consultant bg-contact-consultant/10 border-contact-consultant/20' },
+  { id: 'other', label: 'Altro', icon: Users, color: 'text-text-dim bg-surface border-white/20' },
 ];
 
 const TYPE_MAP = Object.fromEntries(CONTACT_TYPES.map(t => [t.id, t]));
@@ -560,8 +560,8 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
           <button type="button" onClick={onEdit} className="p-2.5 hover:bg-primary/10 rounded-full transition-all group/edit cursor-pointer" title="Modifica">
             <Edit3 size={15} className="text-text-dim group-hover/edit:text-primary transition-colors" />
           </button>
-          <button type="button" onClick={onDelete} className="p-2.5 hover:bg-red-500/10 rounded-full transition-all cursor-pointer" title="Elimina">
-            <Trash2 size={15} className="text-red-400/60 hover:text-red-400" />
+          <button type="button" onClick={onDelete} className="p-2.5 hover:bg-danger-soft rounded-full transition-all cursor-pointer" title="Elimina">
+            <Trash2 size={15} className="text-danger hover:text-danger" />
           </button>
         </div>
       </div>
@@ -589,7 +589,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
           )}
           {c.pec && (
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
-              <Mail size={14} className="text-amber-400/70 flex-shrink-0" />
+              <Mail size={14} className="text-warning flex-shrink-0" />
               <div className="min-w-0">
                 <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest">PEC</p>
                 <span className="text-text text-xs font-medium truncate block">{c.pec}</span>
@@ -683,7 +683,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
                 className="flex items-center gap-2.5 px-3 py-2 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] rounded-lg transition-all group text-left w-full">
                 <Briefcase size={13} className="text-text-dim flex-shrink-0" />
                 <p className="text-text text-xs truncate flex-1 group-hover:text-primary transition-colors">{p.client} — {p.object}</p>
-                <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${p.status === 'active' ? 'bg-green-500/10 text-green-400' : 'bg-zinc-500/10 text-zinc-400'}`}>
+                <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${p.status === 'active' ? 'bg-success-soft text-success' : 'bg-surface text-text-dim'}`}>
                   {p.status === 'active' ? 'Attivo' : 'Chiuso'}
                 </span>
               </button>
