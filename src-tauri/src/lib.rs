@@ -1774,6 +1774,7 @@ fn save_bio(state: State<AppState>, pwd: String) -> Result<bool, String> {
 
 /// Shared post-biometric vault unlock: retrieve keyring password, authenticate, unlock vault.
 #[cfg(not(target_os = "android"))]
+#[allow(dead_code)] // Called only on macOS/Windows cfg blocks; unused on Linux CI
 fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
     let user = whoami::username();
     let saved_pwd = keyring::Entry::new(BIO_SERVICE, &user)
