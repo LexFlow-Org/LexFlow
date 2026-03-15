@@ -258,15 +258,10 @@ jobs:
           chmod +x "$UNIVERSAL"
           echo "Universal sidecar ready: $UNIVERSAL ($(wc -c < "$UNIVERSAL") bytes)"
 
-      - name: Build macOS DMG (ad-hoc signed)
+      - name: Build macOS DMG
         uses: tauri-apps/tauri-action@6a45448f17a006facb105cc5257b3edbc353038a
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Ad-hoc code signing: "-" signs without Apple Developer ID.
-          # This makes the binary internally consistent, fixes TCC/notification
-          # permissions, and changes the Gatekeeper dialog from "damaged app"
-          # to "unidentified developer" (bypassable with right-click > Open).
-          APPLE_SIGNING_IDENTITY: "-"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:

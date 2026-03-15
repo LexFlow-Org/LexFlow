@@ -5,9 +5,5 @@
     <!-- App Sandbox OFF — required for tauri dev and direct notification delivery -->
     <key>com.apple.security.app-sandbox</key>
     <false/>
-
-    <!-- Time-Sensitive Notifications — bypass Focus / DND -->
-    <key>com.apple.developer.usernotifications.time-sensitive</key>
-    <true/>
 </dict>
 </plist>
