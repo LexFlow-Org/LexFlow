@@ -68,7 +68,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         </div>
         <button 
           onClick={() => typeof onNewPractice === 'function' && onNewPractice()} 
-          className="btn-primary flex items-center gap-2 px-7 py-3.5 shadow-2xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+          className="btn-primary flex items-center gap-2 px-7 py-3.5 hover:scale-[1.02] active:scale-[0.98] transition-all"
         >
           <Plus size={18} strokeWidth={3} />
           <span className="font-bold uppercase tracking-widest text-xs">Nuovo Fascicolo</span>
@@ -82,7 +82,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           onClick={() => setFilterStatus('all')}
           className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
             filterStatus === 'all' 
-              ? 'border-primary/40 bg-primary/5 shadow-neon' 
+              ? 'border-primary/40 bg-primary/5'
               : 'border-border hover:bg-surface opacity-70 hover:opacity-100'
           }`}
         >
@@ -212,7 +212,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
                     </div>
 
                     <div className="hidden lg:flex flex-col justify-center items-end pr-4">
-                      <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-surface text-text border-border' : 'bg-surface text-text-dim border-border'}`}>
+                      <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-success-soft text-success border-success-border' : 'bg-surface text-text-dim border-border'}`}>
                         <span className="flex items-center gap-1.5">
                           <span className={`w-1.5 h-1.5 rounded-full ${p?.status === 'active' ? 'bg-success' : 'bg-text-dim'}`} />
                           {p?.status === 'active' ? 'Attivo' : 'Archiviato'}

@@ -21,7 +21,7 @@ export default function ConfirmDialog({ open, title, message, confirmLabel = 'Co
                 <h3 id="confirm-dialog-title" className="text-xl font-bold text-text">{title}</h3>
               </div>
             </div>
-            <button onClick={onCancel} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+            <button onClick={onCancel} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>

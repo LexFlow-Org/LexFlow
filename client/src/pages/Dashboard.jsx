@@ -45,7 +45,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
   }
 
   return (
-    <div className="relative z-10 mt-6 rounded-2xl p-5 bg-black/20 backdrop-blur-sm">
+    <div className="relative z-10 mt-6 rounded-2xl p-5">
       <div
         ref={scrollRef}
         className="space-y-2 overflow-y-auto no-scrollbar"
@@ -58,7 +58,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
               tabIndex={0}
               onClick={() => { if (onNavigate) { const tp = ev.timeStart ? `&time=${ev.timeStart}` : ''; onNavigate('/agenda?date=' + ev.date + tp); } }}
               onKeyDown={(e) => { if (e.key === 'Enter') { const tp = ev.timeStart ? `&time=${ev.timeStart}` : ''; onNavigate?.('/agenda?date=' + ev.date + tp); } }}
-              className="w-full flex items-center gap-3 text-sm rounded-xl px-4 py-3 transition-colors group text-left cursor-pointer hover:bg-white/[0.07]"
+              className="w-full flex items-center gap-3 text-sm rounded-xl px-4 py-3 transition-colors group text-left cursor-pointer"
               title="Apri in Agenda"
             >
               {/* Pallino categoria */}
@@ -72,7 +72,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
               )}
 
               {/* Nome impegno — in una pill */}
-              <span className="truncate group-hover:text-primary transition-colors min-w-0 text-left font-semibold text-sm px-2.5 py-0.5 rounded-lg text-white bg-white/[0.08]">
+              <span className="truncate group-hover:text-primary transition-colors min-w-0 text-left font-semibold text-sm px-2.5 py-0.5 rounded-lg text-white">
                 {ev.title}
               </span>
 
@@ -80,7 +80,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
               {ev.practiceId && (
                 <button type="button"
                   onClick={(e) => { e.stopPropagation(); if (onSelectPractice) onSelectPractice(ev.practiceId); }}
-                  className="p-1.5 hover:bg-white/15 bg-white/10 rounded-lg transition-all flex-shrink-0 group/brief border border-white/10 hover:border-white/20"
+                  className="p-1.5 rounded-lg transition-all flex-shrink-0 group/brief border border-transparent hover:border-white/20"
                   title="Vai al Fascicolo"
                 >
                   <FolderOpen size={14} className="text-white/70 group-hover/brief:text-white transition-colors" />
@@ -103,8 +103,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
       {/* ── Indicatore "altri impegni" — fade + testo dinamico ── */}
       {needsScroll && !scrollInfo.atBottom && (
         <div className="relative mt-0">
-          {/* Gradient fade */}
-          <div className="absolute -top-10 left-0 right-0 h-10 bg-gradient-to-t from-black/20 to-transparent pointer-events-none rounded-b-2xl" />
+          {/* Spacer (gradient rimosso — nessun overlay) */}
           {/* Text indicator */}
           <button
             onClick={() => scrollRef.current?.scrollBy({ top: 120, behavior: 'smooth' })}
@@ -142,21 +141,10 @@ Dashboard.propTypes = {
 
 export default function Dashboard({ practices, agendaEvents, onNavigate, onSelectPractice }) {
 
-  // ── Greeting contestuale — osserva cambio tema via MutationObserver ──
-  const [currentTheme, setCurrentTheme] = useState(() =>
-    document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
-  );
-  useEffect(() => {
-    const obs = new MutationObserver(() => {
-      setCurrentTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
-    });
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => obs.disconnect();
-  }, []);
-
+  // ── Greeting contestuale — colori identici in dark e light ──
   const hero = useMemo(() => {
     const h = new Date().getHours();
-    const { background } = getHeroColor(currentTheme);
+    const { background } = getHeroColor();
 
     if (h >= 5 && h < 13) return {
       label: 'AGGIORNAMENTO MATTUTINO',
@@ -179,7 +167,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       background,
       icon: <Coffee size={100} strokeWidth={1} />,
     };
-  }, [currentTheme]);
+  }, []);
 
   // ── Calcoli statistiche (più informative) ──
   const stats = useMemo(() => {
@@ -259,7 +247,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
           <p className="text-[10px] font-black uppercase tracking-[3px] mb-3 text-white/70">
             {hero.label}
           </p>
-          <h1 className="text-4xl font-black tracking-tight mb-1 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]">{hero.greeting}</h1>
+          <h1 className="text-4xl font-black tracking-tight mb-1 text-white">{hero.greeting}</h1>
           <p className="text-sm max-w-md text-white/80">{hero.sub}</p>
         </div>
 

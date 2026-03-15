@@ -710,7 +710,7 @@ export default function SettingsPage({ onLock }) {
                   setNotifyEnabled(val);
                   saveNotifySettings({ notifyEnabled: val });
                 }}
-                className={`w-12 h-6 rounded-full transition-colors relative ${notifyEnabled ? 'bg-primary' : 'bg-card'}`}
+                className={`w-12 h-6 rounded-full transition-colors relative ${notifyEnabled ? 'bg-primary' : 'bg-card border border-border'}`}
               >
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${notifyEnabled ? 'left-7' : 'left-1'}`} />
               </button>
@@ -730,7 +730,7 @@ export default function SettingsPage({ onLock }) {
                       }}
                       className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                         notificationTime === opt.value
-                          ? 'bg-primary text-black border-primary shadow-neon'
+                          ? 'bg-primary text-black border-primary'
                           : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
                       }`}
                     >
@@ -783,7 +783,7 @@ export default function SettingsPage({ onLock }) {
             </div>
             <button 
               onClick={handlePrivacyToggle}
-              className={`w-12 h-6 rounded-full transition-colors relative ${privacyEnabled ? 'bg-primary' : 'bg-card'}`}
+              className={`w-12 h-6 rounded-full transition-colors relative ${privacyEnabled ? 'bg-primary' : 'bg-card border border-border'}`}
             >
               <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${privacyEnabled ? 'left-7' : 'left-1'}`} />
             </button>
@@ -803,7 +803,7 @@ export default function SettingsPage({ onLock }) {
             </div>
             <button 
               onClick={handleScreenshotToggle}
-              className={`w-12 h-6 rounded-full transition-colors relative ${screenshotProtection ? 'bg-primary' : 'bg-card'}`}
+              className={`w-12 h-6 rounded-full transition-colors relative ${screenshotProtection ? 'bg-primary' : 'bg-card border border-border'}`}
             >
               <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${screenshotProtection ? 'left-7' : 'left-1'}`} />
             </button>
@@ -826,7 +826,7 @@ export default function SettingsPage({ onLock }) {
                   onClick={() => handleAutolockChange(opt)}
                   className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                     autolockMinutes === opt.value
-                      ? 'bg-primary text-black border-primary shadow-neon'
+                      ? 'bg-primary text-black border-primary'
                       : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
                   }`}
                 >

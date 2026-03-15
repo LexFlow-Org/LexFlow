@@ -29,8 +29,7 @@
 .lic-overlay {
   position: fixed; inset: 0; z-index: 10000;
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at 30% 20%, rgba(212,169,64,0.04) 0%, transparent 60%),
-              var(--bg);
+  background: var(--bg);
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
   -webkit-app-region: drag;
 }
@@ -42,7 +41,7 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 36px 32px 28px;
-  box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03) inset;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.5);
   -webkit-app-region: no-drag;
   animation: lic-card-in 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -58,8 +57,8 @@
 }
 .lic-icon-ring {
   width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
-  background: linear-gradient(135deg, var(--primary-soft), rgba(212,169,64,0.06));
-  border: 1px solid rgba(212,169,64,0.15);
+  background: var(--primary-soft);
+  border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center;
   color: var(--primary);
 }
@@ -109,12 +108,12 @@
 .lic-eye-btn {
   position: absolute; right: 10px; top: 10px;
   width: 28px; height: 28px; border-radius: 6px;
-  background: rgba(255,255,255,0.04); border: none;
+  background: var(--bg-surface); border: none;
   color: var(--text-muted); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background 0.15s, color 0.15s;
 }
-.lic-eye-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.lic-eye-btn:hover { background: var(--bg-card-hover); color: var(--text); }
 
 .lic-hint {
   font-size: 0.72rem; color: var(--text-dim);
@@ -123,7 +122,7 @@
 .lic-hint code {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.68rem; padding: 1px 4px;
-  background: rgba(255,255,255,0.04); border-radius: 3px;
+  background: var(--bg-surface); border-radius: 3px;
   color: var(--text-muted);
 }
 
@@ -139,7 +138,6 @@
 }
 .lic-btn-activate:hover:not(:disabled) {
   background: var(--primary-hover);
-  box-shadow: 0 4px 20px rgba(212,169,64,0.25);
 }
 .lic-btn-activate:active:not(:disabled) { transform: scale(0.98); }
 .lic-btn-activate:disabled {
@@ -211,7 +209,7 @@
   display: flex; align-items: center; justify-content: center;
   border-radius: 6px; transition: opacity 0.15s, background 0.15s;
 }
-.lic-toast-close:hover { opacity: 1; background: rgba(255,255,255,0.06); }
+.lic-toast-close:hover { opacity: 1; background: var(--bg-surface); }
 
 /* ── Grace Period Banner ────────────────────────────────── */
 .lic-grace-banner {

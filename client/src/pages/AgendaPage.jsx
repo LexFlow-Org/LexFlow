@@ -464,7 +464,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
                   onClick={() => { setRemindMinutes(opt.value); }}
                   className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
                     remindMinutes === opt.value
-                      ? 'bg-primary text-black border-primary shadow-neon'
+                      ? 'bg-primary text-black border-primary'
                       : 'bg-surface text-text-dim border-border hover:bg-card hover:text-text'
                   }`}>
                   {opt.label}
@@ -473,7 +473,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
               {/* Pill orario personalizzato */}
               <div className={`inline-flex items-center rounded-xl border transition-all ${
                 remindMinutes === 'custom'
-                  ? 'border-primary bg-primary/10 shadow-neon'
+                  ? 'border-primary bg-primary/10'
                   : 'border-border bg-surface hover:bg-card'
               }`}>
                 <button type="button"
@@ -532,7 +532,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
           <button 
             type="submit"
             onClick={handleSubmit} 
-            className="btn-primary px-10 py-3 flex items-center gap-3 shadow-xl shadow-primary/20 active:scale-[0.98] transition-all"
+            className="btn-primary px-10 py-3 flex items-center gap-3 active:scale-[0.98] transition-all"
           >
             <span className="font-black uppercase tracking-widest text-xs">{isEdit ? 'Salva Modifiche' : 'Crea Impegno'}</span>
           </button>
@@ -575,12 +575,12 @@ function StatsCard({ events }) {
         <div className="flex items-center gap-5 relative z-10">
           <div className="relative flex-shrink-0">
             <svg width={72} height={72} className="transform -rotate-90">
-              <circle cx={36} cy={36} r={28} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={6}/>
+              <circle cx={36} cy={36} r={28} fill="none" stroke="var(--border)" strokeWidth={6}/>
               <circle cx={36} cy={36} r={28} fill="none" stroke="var(--primary)" strokeWidth={6}
                 strokeLinecap="round" strokeDasharray={2*Math.PI*28}
                 strokeDashoffset={2*Math.PI*28*(1 - todayPct/100)}
                 className="transition-all duration-1000 ease-out"
-                style={{ filter: todayPct > 0 ? 'drop-shadow(0 0 6px var(--primary))' : 'none' }}/>
+                />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center flex-col">
                  <span className="text-sm font-bold text-text">{todayPct}%</span>
@@ -762,7 +762,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                         <div className="absolute left-14 right-0 z-30 flex items-center" style={{top}}>
                            <div className="text-[9px] font-bold text-primary w-10 text-right pr-2 -ml-12">{fmtTime(now.getHours(), now.getMinutes())}</div>
                            <div className="flex-1 border-t border-primary relative">
-                             <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
+                             <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-primary" />
                            </div>
                         </div>
                     );
@@ -799,7 +799,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                       const colLeft = totalCols > 1 ? `calc(56px + ${ev.col} * ((100% - 56px - 8px) / ${totalCols}))` : undefined;
                       return (
                         <div key={ev.id} data-evid={ev.id}
-                          className={`agenda-event absolute rounded-lg px-3 py-1.5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-black/20 hover:z-20 text-left border-l-4 ev-text
+                          className={`agenda-event absolute rounded-lg px-3 py-1.5 cursor-pointer transition-all duration-200 hover:z-20 text-left border-l-4 ev-text
                               ${evBgClass(ev.category)}
                               ${ev.completed ? 'opacity-40 line-through' : ''}
                           `}
@@ -826,7 +826,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                             className="resize-handle absolute top-0 left-0 right-0 h-2 cursor-ns-resize group/resizetop z-10"
                             onMouseDown={e => handleResizeTop(e, { startMin: ev.startMin, endMin: ev.endMin, minHeight: 32, selector: '[data-evid]', ev, onSave })}
                           >
-                            <div className="mx-auto w-8 h-0.5 bg-white/10 group-hover/resizetop:bg-white/30 rounded-full mt-0.5 transition" />
+                            <div className="mx-auto w-8 h-0.5 bg-white/30 rounded-full mt-0.5 transition opacity-0 group-hover/resizetop:opacity-100" />
                           </button>
                           <div className="flex justify-between items-start h-full relative z-[1] pointer-events-none">
                                <div className="flex items-start gap-2 min-w-0 flex-1">
@@ -836,7 +836,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                                     className={`pointer-events-auto w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
                                       ev.completed
                                         ? 'bg-success border-success'
-                                        : 'border-white/30 hover:border-primary hover:bg-primary/10'
+                                        : 'border-white/50 hover:border-primary hover:bg-primary/10'
                                     }`}
                                   >
                                     {ev.completed && <Check size={10} className="text-white" strokeWidth={3} />}
@@ -860,7 +860,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                             className="resize-handle absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize group/resize z-10"
                             onMouseDown={e => handleResizeBottom(e, { startMin: ev.startMin, endMin: ev.endMin, minHeight: 32, selector: '[data-evid]', ev, onSave })}
                           >
-                            <div className="mx-auto w-8 h-0.5 bg-white/10 group-hover/resize:bg-white/30 rounded-full mt-0.5 transition" />
+                            <div className="mx-auto w-8 h-0.5 bg-white/30 rounded-full mt-0.5 transition opacity-0 group-hover/resize:opacity-100" />
                           </button>
                         </div>
                       );
@@ -927,14 +927,14 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
       </div>
 
       <div className="glass-card flex-1 flex flex-col overflow-hidden">
-        <div className="grid grid-cols-[50px_repeat(7,1fr)] border-b border-border bg-black/20">
+        <div className="grid grid-cols-[50px_repeat(7,1fr)] border-b border-border bg-surface">
           <div/>
           {days.map(({date, str}) => {
             const isToday = str === todayStr;
             return (
               <div key={str} className={`text-center py-3 ${isToday ? 'bg-primary/5' : ''}`}>
                 <div className="text-[10px] font-bold text-text-dim mb-1">{DAYS_SHORT[date.getDay()]}</div>
-                <div className={`text-sm font-bold w-7 h-7 mx-auto flex items-center justify-center rounded-full ${isToday ? 'bg-primary text-black shadow-lg shadow-primary/50' : 'text-text'}`}>
+                <div className={`text-sm font-bold w-7 h-7 mx-auto flex items-center justify-center rounded-full ${isToday ? 'bg-primary text-black' : 'text-text'}`}>
                     {date.getDate()}
                 </div>
               </div>
@@ -943,7 +943,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
         </div>
         <div ref={scrollRef} className="overflow-y-auto flex-1 no-scrollbar relative">
           <div className="grid grid-cols-[50px_repeat(7,1fr)] relative" style={{height: HOURS.length * 60}}>
-            <div className="relative border-r border-border bg-black/20">
+            <div className="relative border-r border-border bg-surface">
               {HOURS.map(h => (
                 <div key={h} className="absolute w-full text-right pr-2 text-[10px] text-text-dim font-medium" style={{top: h*60 + 5}}>
                   {String(h).padStart(2,'0')}
@@ -973,9 +973,8 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
                     const [eh,em] = ev.timeEnd.split(':').map(Number);
                     const top = ((sh*60+sm)/60)*60;
                     const height = Math.max(((eh*60+em-sh*60-sm)/60)*60, 20);
-                    const isUdienza = ev.category === 'udienza';
                     return (
-                      <div key={ev.id} className={`week-ev agenda-event absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 cursor-pointer overflow-hidden text-left border-l-2 ev-text ${evBgClass(ev.category)} ${isUdienza ? 'shadow-neon' : ''}`}
+                      <div key={ev.id} className={`week-ev agenda-event absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 cursor-pointer overflow-hidden text-left border-l-2 ev-text ${evBgClass(ev.category)}`}
                         style={{
                             top, height, fontSize: 10,
                         }}>
@@ -1053,7 +1052,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
         </button>
       </div>
       <div className="glass-card flex-1 flex flex-col overflow-hidden p-0">
-        <div className="grid grid-cols-7 border-b border-border bg-black/20">
+        <div className="grid grid-cols-7 border-b border-border bg-surface">
           {['LUN','MAR','MER','GIO','VEN','SAB','DOM'].map((d, i) => (
             <div key={d} className={`text-center py-2 text-[10px] font-bold ${i>=5 ? 'text-primary' : 'text-text-dim'}`}>{d}</div>
           ))}
@@ -1064,7 +1063,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
             const dayEvts = eventsByDate.get(str) || [];
             return (
               <div key={str}
-                className={`border-b border-r border-border p-1 relative cursor-pointer hover:bg-surface transition group text-left ${outside ? 'opacity-30 bg-black/20' : ''} ${isToday ? 'bg-primary/[0.05]' : ''}`}>
+                className={`border-b border-r border-border p-1 relative cursor-pointer hover:bg-surface transition group text-left ${outside ? 'opacity-30' : ''} ${isToday ? 'bg-primary/[0.05]' : ''}`}>
                 <button type="button" className="absolute inset-0 z-0 cursor-pointer" aria-label={`Aggiungi evento il ${str}`}
                   onClick={() => onAdd(str)} />
                 <div className={`text-[10px] font-bold mb-1 ml-1 w-5 h-5 flex items-center justify-center rounded-full relative z-[1] pointer-events-none ${isToday ? 'bg-primary text-black' : 'text-text-muted'}`}>
@@ -1073,7 +1072,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
                 <div className="space-y-0.5 overflow-y-auto max-h-[80px] no-scrollbar relative z-[1]">
                   {dayEvts.slice(0, 4).map(ev => (
                     <button type="button" key={ev.id} onClick={e => {e.stopPropagation(); onEdit(ev);}}
-                      className={`agenda-event text-[9px] font-bold px-1.5 py-1 rounded-sm truncate border-l-[2px] transition-all hover:brightness-125 hover:shadow-md hover:scale-[1.02] hover:z-10 block w-full text-left cursor-pointer ev-text-strong ${evBgClass(ev.category)}`}
+                      className={`agenda-event text-[9px] font-bold px-1.5 py-1 rounded-sm truncate border-l-[2px] transition-all hover:scale-[1.02] hover:z-10 block w-full text-left cursor-pointer ev-text-strong ${evBgClass(ev.category)}`}
                       title={`${ev.title} — ${CAT_LABELS[ev.category] || ev.category}`}>
                       {ev.title}
                     </button>
@@ -1189,8 +1188,8 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
                   onClick={() => setPreavviso(opt.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                     preavviso === opt.value
-                      ? 'bg-primary text-black border-primary shadow-neon'
-                      : 'bg-surface text-text-muted border-border hover:bg-card hover:text-white'
+                      ? 'bg-primary text-black border-primary'
+                      : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
                   }`}
                 >
                   {opt.label}

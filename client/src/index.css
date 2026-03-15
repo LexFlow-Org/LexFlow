@@ -215,15 +215,15 @@
     --danger: #f87171;
     --info: #60a5fa;
 
-    /* Semantici soft — IDENTICI al dark */
-    --success-soft: rgba(52, 211, 153, 0.10);
-    --success-border: rgba(52, 211, 153, 0.20);
-    --warning-soft: rgba(251, 191, 36, 0.10);
-    --warning-border: rgba(251, 191, 36, 0.20);
-    --danger-soft: rgba(248, 113, 113, 0.10);
-    --danger-border: rgba(248, 113, 113, 0.20);
-    --info-soft: rgba(96, 165, 250, 0.10);
-    --info-border: rgba(96, 165, 250, 0.20);
+    /* Semantici soft — opacità aumentata per visibilità su sfondo chiaro */
+    --success-soft: rgba(52, 211, 153, 0.18);
+    --success-border: rgba(52, 211, 153, 0.35);
+    --warning-soft: rgba(251, 191, 36, 0.18);
+    --warning-border: rgba(251, 191, 36, 0.35);
+    --danger-soft: rgba(248, 113, 113, 0.18);
+    --danger-border: rgba(248, 113, 113, 0.35);
+    --info-soft: rgba(96, 165, 250, 0.18);
+    --info-border: rgba(96, 165, 250, 0.35);
 
     /* Materia — IDENTICI al dark */
     --materia-civile:    #60a5fa;
@@ -249,15 +249,8 @@
     --sidebar-text: #1e1f28;
     --sidebar-dim:  #6b7094;
 
-    /* ── Event blocks — schiariti per light mode ── */
-    --ev-text:         #ffffff;
-    --ev-text-shadow:  0 1px 2px rgba(0, 0, 0, 0.25);
-    --ev-badge-bg:     rgba(0, 0, 0, 0.15);
-    --ev-bg-udienza:   #7B6CB8;
-    --ev-bg-scadenza:  #B85555;
-    --ev-bg-riunione:  #3D7A8A;
-    --ev-bg-personale: #2E7A5E;
-    --ev-bg-altro:     #6A7290;
+    /* ── Event blocks — IDENTICI al dark (no override) ──
+       --ev-text, --ev-text-shadow, --ev-badge-bg, --ev-bg-* ereditati dal dark */
 
     /* ── Toast ── */
     --toast-bg:   rgba(210, 212, 218, 0.95);
@@ -322,6 +315,16 @@
 .cat-pill-personale { color: var(--cat-personale); background: color-mix(in srgb, var(--cat-personale) 12%, transparent); border-color: color-mix(in srgb, var(--cat-personale) 20%, transparent); }
 .cat-pill-altro     { color: var(--cat-altro); background: color-mix(in srgb, var(--cat-altro) 12%, transparent); border-color: color-mix(in srgb, var(--cat-altro) 20%, transparent); }
 
+/* ── Pill dentro hero-card — più visibili su sfondo colorato ── */
+.hero-card .cat-pill-udienza,
+.hero-card .cat-pill-scadenza,
+.hero-card .cat-pill-riunione,
+.hero-card .cat-pill-personale,
+.hero-card .cat-pill-altro {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
 /* ── Bar (progress bar / side accent) ── */
 .cat-bar-udienza   { background: var(--cat-udienza); }
 .cat-bar-scadenza  { background: var(--cat-scadenza); }
@@ -383,7 +386,7 @@
     overflow: hidden;
     padding: 2rem;
     margin-bottom: 2rem;
-    border: 1px solid rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--border);
     box-shadow: var(--hero-shadow);
   }
 
@@ -1027,12 +1030,11 @@
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border-left: 3px solid transparent;
-  backdrop-filter: blur(4px);
 }
 .agenda-event:hover {
   transform: scale(1.02);
   z-index: 50;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(var(--overlay), 0.08);
+  box-shadow: 0 0 0 1px rgba(var(--overlay), 0.08);
 }
 .agenda-event:active {
   cursor: grab;
@@ -1067,7 +1069,7 @@ body.agenda-dragging .agenda-event:hover {
   letter-spacing: 1px;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--ev-text) 25%, transparent);
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.25) 0%, transparent 100%);
+  background: none;
   border-radius: 0 0 8px 8px;
   opacity: 0;
   transition: opacity 0.2s;
@@ -1115,8 +1117,8 @@ body.agenda-dragging .agenda-event:hover {
 }
 
 .calendar-grid-header {
-  border-bottom: 1px solid rgba(var(--overlay), 0.05);
-  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
 }
 
 /* ========== 8. RESPONSIVE MOBILE ========== */
@@ -1313,7 +1315,6 @@ body.agenda-dragging .agenda-event:hover {
   & .border-\[\#2e3352\], & .border-\[\#32374f\] { border-color: var(--border); }
 
   /* ═══ SHADOWS ═══ */
-  & .agenda-event:hover { box-shadow: 0 8px 20px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.06); }
   & .shadow-lg  { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
   & .shadow-2xl { box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
   & .shadow-neon { box-shadow: 0 0 15px color-mix(in srgb, var(--primary) 18%, transparent); }

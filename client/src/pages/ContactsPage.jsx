@@ -239,10 +239,10 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                       onClick={() => setExpandedId(isExpanded ? null : c.id)}
                       className="absolute inset-0 z-0 cursor-pointer rounded-xl hover:bg-card"
                     />
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center border flex-shrink-0 ${typeInfo.color}`}>
+                    <div className={`relative z-[1] w-10 h-10 rounded-xl flex items-center justify-center border flex-shrink-0 ${typeInfo.color}`}>
                       <TypeIcon size={18} />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="relative z-[1] flex-1 min-w-0">
                       <p className="text-text font-bold text-base truncate">{c.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-xs font-bold uppercase tracking-wider text-text-dim">{typeInfo.label}</span>
@@ -513,7 +513,7 @@ function ContactModal({ initial, onSave, onClose }) {
         {/* Footer — stile unificato */}
         <div className="modal-footer gap-4">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
-          <button onClick={handleSubmit} className="btn-primary px-10 py-3 flex items-center gap-3 shadow-xl shadow-primary/20 hover:scale-[1.05] active:scale-[0.98] transition-all">
+          <button onClick={handleSubmit} className="btn-primary px-10 py-3 flex items-center gap-3 hover:scale-[1.05] active:scale-[0.98] transition-all">
             <Check size={18} />
             <span className="font-black uppercase tracking-widest text-xs">{initial ? 'Aggiorna' : 'Salva Contatto'}</span>
           </button>

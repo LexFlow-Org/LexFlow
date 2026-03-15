@@ -371,7 +371,7 @@ export default function App() {
   return (
     <LicenseActivation>
       <ErrorBoundary>
-      <div className="flex h-screen bg-background text-text-primary overflow-hidden border border-white/5 rounded-lg shadow-2xl relative">
+      <div className="flex h-screen bg-background text-text-primary overflow-hidden border border-border rounded-lg shadow-2xl relative">
         
         {/* Privacy Shield */}
         {privacyEnabled && blurred && (

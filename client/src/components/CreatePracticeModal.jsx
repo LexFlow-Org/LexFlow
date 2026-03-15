@@ -289,7 +289,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
           </button>
           <button 
             onClick={handleSubmit} 
-            className="btn-primary px-10 py-3 flex items-center gap-3 shadow-xl shadow-primary/20 hover:scale-[1.05] active:scale-[0.98] transition-all"
+            className="btn-primary px-10 py-3 flex items-center gap-3 hover:scale-[1.05] active:scale-[0.98] transition-all"
           >
             <Save size={18} />
             <span className="font-black uppercase tracking-widest text-xs">Salva Fascicolo</span>

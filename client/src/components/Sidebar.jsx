@@ -125,8 +125,8 @@ function DesktopNavItem({ item }) {
       to={item.path}
       className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative cursor-pointer ${
         isActive
-          ? 'bg-primary shadow-lg shadow-primary/20 scale-[1.02] sidebar-nav-active'
-          : 'text-text-dim hover:text-text hover:bg-primary-soft'
+          ? 'bg-primary scale-[1.02] sidebar-nav-active'
+          : 'text-text-dim hover:text-primary hover:bg-primary-soft'
       }`}
     >
       {isActive && (
@@ -135,7 +135,7 @@ function DesktopNavItem({ item }) {
       <item.icon
         size={20}
         className={`transition-all duration-300 ${
-          isActive ? 'sidebar-nav-active' : 'group-hover:text-primary group-hover:scale-110'
+          isActive ? 'sidebar-nav-active' : 'group-hover:scale-110'
         }`}
       />
       <span className={`text-sm tracking-wide ${isActive ? 'font-bold' : 'font-medium'}`}>
@@ -158,13 +158,11 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
 
   return (
     <aside className="w-68 h-screen flex flex-col flex-shrink-0 z-20 pt-14 relative bg-sidebar-bg shadow-[1px_0_0_0_var(--border)]">
-      <div className="absolute top-0 left-0 w-full h-32 bg-primary/5 blur-[80px] -z-10 pointer-events-none" />
 
       {/* Logo */}
       <div className="h-20 flex items-center px-8 mb-6">
         <div className="flex items-center gap-4">
           <div className="relative">
-            <div className="absolute inset-0 bg-primary/20 blur-lg rounded-full" />
             <img src={logo} alt="LexFlow" className="w-10 h-10 object-contain relative z-10" />
           </div>
           <div className="flex flex-col">
@@ -349,7 +347,6 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
                 className="flex flex-col items-center mb-5"
               >
                 <div className="relative mb-2.5">
-                  <div className="absolute -inset-2 bg-primary/18 rounded-full blur-[14px]" />
                   <img src={logo} alt="LexFlow" className="w-12 h-12 object-contain relative z-[1]" />
                 </div>
                 <h2 className="curtain-brand-title">LexFlow</h2>

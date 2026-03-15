@@ -65,11 +65,11 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
           value={query}
           onChange={e => handleInput(e.target.value)}
           placeholder="Nome, cognome, società, codice fiscale, P.IVA..."
-          className="w-full pl-14 pr-12 py-4 bg-white/5 border border-border rounded-2xl text-text text-lg placeholder:text-text-dim/50 focus:border-primary/50 focus:bg-white/[0.07] focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+          className="w-full pl-14 pr-12 py-4 bg-surface border border-border rounded-2xl text-text text-lg placeholder:text-text-dim/50 focus:border-primary/50 focus:bg-card focus:ring-2 focus:ring-primary/20 transition-all outline-none"
           autoFocus
         />
         {query && (
-          <button onClick={() => { setQuery(''); setResults(null); setSearched(false); }} className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded-lg transition-colors">
+          <button onClick={() => { setQuery(''); setResults(null); setSearched(false); }} className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-surface rounded-lg transition-colors">
             <X size={18} className="text-text-dim" />
           </button>
         )}
@@ -126,7 +126,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
                       type="button"
                       key={p.id || i}
                       onClick={() => onSelectPractice?.(p.id)}
-                      className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] rounded-xl p-4 cursor-pointer transition-all group active:scale-[0.99] text-left w-full"
+                      className="bg-card hover:bg-card-hover border border-border rounded-xl p-4 cursor-pointer transition-all group active:scale-[0.99] text-left w-full"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
@@ -172,7 +172,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
                 {contactMatches.map((cm, i) => {
                   const c = cm.contact;
                   return (
-                    <div key={c.id || i} className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4">
+                    <div key={c.id || i} className="bg-card border border-border rounded-xl p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
                           <span className="text-text font-bold text-sm">{c.name}</span>

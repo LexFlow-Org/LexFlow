@@ -249,7 +249,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   }, [isLockedOut]); // re-trigger only on transition 0→positive
 
   const getStrength = (pwd) => {
-    if (!pwd) return { label: '', color: 'bg-white/10', text: 'text-white/10', pct: 0, segments: 0 };
+    if (!pwd) return { label: '', color: 'bg-surface', text: 'text-text-dim', pct: 0, segments: 0 };
     let score = 0;
     if (pwd.length >= 8) score++;
     if (pwd.length >= 12) score++;
@@ -353,16 +353,11 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   return (
     <div className="flex items-center justify-center min-h-screen bg-background relative drag-region overflow-hidden">
       
-      {/* Background Decor — identici in dark e light grazie a --primary */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/[0.12] rounded-full" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/[0.12] rounded-full" />
-
       {/* Login / Setup Card */}
       <div className="glass-card p-10 w-full max-w-[440px] mx-4 relative z-10 no-drag animate-slide-up shadow-2xl border-border/50">
-        
+
         <div className="flex flex-col items-center mb-10">
           <div className="relative mb-6">
-            <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full" />
             <img src={logoSrc} alt="LexFlow" className="w-20 h-20 object-contain relative z-10" draggable={false} />
           </div>
           
@@ -389,7 +384,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               type="button" 
               onClick={() => handleBioLogin(false)} 
               disabled={loading} 
-              className="w-full py-4 bg-primary text-black rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl shadow-primary/20 font-bold"
+              className="w-full py-4 bg-primary text-black rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] font-bold"
             >
               <Fingerprint size={24} />
               Accedi con Biometria
@@ -438,7 +433,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                   {[1, 2, 3, 4, 5, 6].map((s) => (
                     <div 
                       key={s} 
-                      className={`h-full flex-1 rounded-full transition-all duration-500 ${s <= strength.segments ? strength.color : 'bg-white/10'}`} 
+                      className={`h-full flex-1 rounded-full transition-all duration-500 ${s <= strength.segments ? strength.color : 'bg-surface'}`}
                     />
                   ))}
                 </div>
@@ -477,7 +472,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
           <button 
             type="submit" 
             disabled={loading || lockoutSeconds > 0} 
-            className="btn-primary w-full py-4 rounded-2xl justify-center font-bold text-sm tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="btn-primary w-full py-4 rounded-2xl justify-center font-bold text-sm tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             {(() => {
               if (loading) {
@@ -541,7 +536,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                     <p className="text-xs text-text-dim mt-0.5">Tutti i dati verranno eliminati</p>
                   </div>
                 </div>
-                <button onClick={() => setShowResetModal(false)} className="p-2 hover:bg-white/10 rounded-xl text-text-dim transition-all group">
+                <button onClick={() => setShowResetModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
                   <X size={20} className="group-hover:rotate-90 transition-transform" />
                 </button>
               </div>

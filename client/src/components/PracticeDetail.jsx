@@ -573,7 +573,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               {label}
               {count > 0 && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                  activeTab === id ? 'bg-white/20 text-white' : 'bg-white/10 text-text-dim'
+                  activeTab === id ? 'bg-primary-soft text-primary' : 'bg-surface text-text-dim'
                 }`}>
                   {count}
                 </span>
@@ -622,7 +622,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <span className="text-[11px] font-semibold text-primary/90 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/15">
                         {new Date(note.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(note.date).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}
                       </span>
-                      <button onClick={() => confirmDeleteNote(idx)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-danger-soft text-white/30 hover:text-danger transition-all">
+                      <button onClick={() => confirmDeleteNote(idx)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-danger-soft text-text-dim hover:text-danger transition-all">
                          <Trash2 size={14} />
                       </button>
                     </div>
@@ -823,7 +823,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       onClick={() => setNewDeadlineRemind(opt.value)}
                       className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
                         newDeadlineRemind === opt.value
-                          ? 'bg-primary text-black border-primary shadow-neon'
+                          ? 'bg-primary text-black border-primary'
                           : 'bg-surface text-text-dim border-border hover:bg-card hover:text-text'
                       }`}
                     >
@@ -833,7 +833,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   {/* Pill orario personalizzato "Alle" */}
                   <div className={`inline-flex items-center rounded-xl border transition-all ${
                     newDeadlineRemind === 'custom'
-                      ? 'border-primary bg-primary/10 shadow-neon'
+                      ? 'border-primary bg-primary/10'
                       : 'border-border bg-surface hover:bg-card'
                   }`}>
                     <button type="button"
@@ -899,7 +899,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <div className="flex items-center gap-3">
                         <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
                         <p className="text-sm text-text font-bold flex-1">{d.label}</p>
-                        <div className="text-xs font-bold px-2.5 py-1 rounded-lg bg-card border border-border text-text-muted">
+                        <div className="text-xs font-bold px-2.5 py-1 rounded-lg bg-card border border-border text-text-muted min-w-[70px] text-center flex-shrink-0">
                           {deadlineLabel}
                         </div>
                         {d.source === 'practice' && (

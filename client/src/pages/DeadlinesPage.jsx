@@ -222,7 +222,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         <div className="glass-card p-5 border border-border">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">In Scadenza Oggi</p>
           <p className="text-3xl font-black text-text">{todayDeadlines.length}</p>
-          <p className="text-[10px] text-text-dim mt-1">
+          <p className="text-xs text-text-muted mt-1 truncate">
             {todayDeadlines.length === 0 ? 'Nessuna scadenza' : todayDeadlines.map(d => d.label).join(', ')}
           </p>
         </div>
@@ -231,7 +231,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         <div className="glass-card p-5 border border-border">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">In Ritardo</p>
           <p className="text-3xl font-black text-text">{pastDeadlines.length}</p>
-          <p className="text-[10px] text-text-dim mt-1">
+          <p className="text-xs text-text-muted mt-1 truncate">
             {pastDeadlines.length === 0
               ? 'Tutto in regola'
               : (() => {
@@ -246,7 +246,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         <div className="glass-card p-5 border border-border">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">Prossimi 30 Giorni</p>
           <p className="text-3xl font-black text-text">{next30.length}</p>
-          <p className="text-[10px] text-text-dim mt-1">
+          <p className="text-xs text-text-muted mt-1 truncate">
             {next30.length === 0 ? 'Calendario libero' : `${next30.length} in arrivo`}
           </p>
         </div>
@@ -269,7 +269,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
             ].map(({ label, value, onChange }) => (
               <div key={label} className="flex items-center justify-between bg-surface rounded-lg px-3 py-2 border border-border">
                 <span className="text-xs text-text font-medium">{label}</span>
-                <input type="time" disabled={settings?.notifyEnabled === false} className={`bg-black/30 border border-border rounded-lg px-2.5 py-1 text-xs text-white font-mono text-center focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all w-20 ${settings?.notifyEnabled === false ? 'cursor-not-allowed' : ''}`} value={value} onChange={onChange} />
+                <input type="time" disabled={settings?.notifyEnabled === false} className={`bg-surface border border-border rounded-lg px-2.5 py-1 text-xs text-text font-mono text-center focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all w-20 ${settings?.notifyEnabled === false ? 'cursor-not-allowed' : ''}`} value={value} onChange={onChange} />
               </div>
             ))}
           </div>
