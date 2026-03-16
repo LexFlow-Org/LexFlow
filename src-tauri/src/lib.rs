@@ -731,8 +731,20 @@ fn lockout_load(data_dir: &std::path::Path) -> (u32, Option<std::time::SystemTim
     }
     let data_part = format!("{}:{}", parts[0], parts[1]);
     let stored_hmac = parts[2];
-    let expected_hmac = lockout_hmac(&data_part);
-    if stored_hmac != expected_hmac {
+    // SECURITY FIX: use constant-time HMAC verify instead of string == comparison
+    // to prevent timing side-channels (consistent with license check at line 2248).
+    let hmac_valid = hex::decode(stored_hmac)
+        .ok()
+        .map(|stored_bytes| {
+            let key = get_local_encryption_key();
+            let mut verify_mac = <Hmac<Sha256> as Mac>::new_from_slice(&key)
+                .expect("HMAC can take key of any size");
+            verify_mac.update(b"LOCKOUT-INTEGRITY:");
+            verify_mac.update(data_part.as_bytes());
+            verify_mac.verify_slice(&stored_bytes).is_ok()
+        })
+        .unwrap_or(false);
+    if !hmac_valid {
         eprintln!("[SECURITY] Lockout file HMAC mismatch — possible tampering. Fail-closed.");
         return (MAX_FAILED_ATTEMPTS, None);
     }
@@ -3047,24 +3059,36 @@ fn activate_license(state: State<AppState>, key: String) -> Value {
         record_failed_attempt(&state, &sec_dir);
         return json!({"success": false, "error": verification.message});
     }
-    clear_lockout(&state, &sec_dir);
 
     let fingerprint = compute_machine_fingerprint();
 
     // SECURITY CHECK 3: burned-key registry
     if let Err(msg) = check_burned_key_registry(&sec_dir, &key, &fingerprint) {
+        record_failed_attempt(&state, &sec_dir);
         return msg;
     }
 
     // SECURITY CHECK 4: burned-keys file integrity
     if sentinel_path.exists() && !sec_dir.join(BURNED_KEYS_FILE).exists() {
+        record_failed_attempt(&state, &sec_dir);
         return json!({"success": false, "error": "Registro chiavi compromesso. Contattare il supporto per assistenza."});
     }
 
     let client = verification
         .client
         .unwrap_or_else(|| "Studio Legale".to_string());
-    perform_license_activation(&sec_dir, &path, &sentinel_path, &key, &client, &fingerprint)
+    let result = perform_license_activation(&sec_dir, &path, &sentinel_path, &key, &client, &fingerprint);
+
+    // SECURITY FIX: clear lockout only after ALL checks pass and activation succeeds.
+    // Previously, lockout was cleared right after signature verification, allowing an
+    // attacker with a valid-but-rejected key to reset the brute-force counter.
+    if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+        clear_lockout(&state, &sec_dir);
+    } else {
+        record_failed_attempt(&state, &sec_dir);
+    }
+
+    result
 }
 
 // ═══════════════════════════════════════════════════════════
