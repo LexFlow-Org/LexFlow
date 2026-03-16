@@ -636,7 +636,7 @@ export default function SettingsPage({ onLock }) {
         </div>
       </div>
 
-      <div className={`grid gap-6 transition-opacity duration-300 ${settingsLoaded ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`grid gap-6 ${settingsLoaded ? 'opacity-100' : 'opacity-0'}`}>
         
         {/* SEZIONE PROFILO STUDIO */}
         {(lawyerName || studioName) && (

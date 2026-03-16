@@ -73,11 +73,15 @@ export default function App() {
     // Carichiamo informazioni non-legate alla licenza (version, settings)
 
   api.getAppVersion?.().then(v => setVersion(v || '')).catch(() => {});
-  
-  // Warm Swift on macOS to reduce first biometric prompt latency
+
+  // Detect platform and set CSS class for platform-specific optimizations
+  // (e.g. disable backdrop-filter on Windows where WebView2 renders it in software)
   api.isMac?.().then(isMac => {
     if (isMac) {
+      document.body.classList.add('is-macos');
       try { api.warmSwift?.(); } catch { /* ignore */ }
+    } else {
+      document.body.classList.add('is-windows');
     }
   }).catch(() => {});
 
@@ -377,7 +381,7 @@ export default function App() {
         {privacyEnabled && blurred && (
           <button 
             type="button"
-            className="fixed inset-0 z-[9999] bg-background/80 backdrop-blur-3xl flex items-center justify-center transition-opacity duration-300 cursor-pointer animate-fade-in border-none outline-none w-full"
+            className="fixed inset-0 z-[9999] bg-background/95 backdrop-blur-xl flex items-center justify-center transition-opacity duration-300 cursor-pointer animate-fade-in border-none outline-none w-full"
             onClick={handleManualLock}
           >
             <div className="text-center">

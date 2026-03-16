@@ -5647,6 +5647,13 @@ fn setup_desktop(
     let ah = app.handle().clone();
     std::thread::spawn(move || autolock_loop(ah));
 
+    // Windows: disable native decorations (we use custom WindowControls).
+    // Config keeps decorations:true for macOS overlay titlebar compatibility.
+    #[cfg(target_os = "windows")]
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_decorations(false);
+    }
+
     // Show main window
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
