@@ -737,8 +737,8 @@ fn lockout_load(data_dir: &std::path::Path) -> (u32, Option<std::time::SystemTim
         .ok()
         .map(|stored_bytes| {
             let key = get_local_encryption_key();
-            let mut verify_mac = <Hmac<Sha256> as Mac>::new_from_slice(&key)
-                .expect("HMAC can take key of any size");
+            let mut verify_mac =
+                <Hmac<Sha256> as Mac>::new_from_slice(&key).expect("HMAC can take key of any size");
             verify_mac.update(b"LOCKOUT-INTEGRITY:");
             verify_mac.update(data_part.as_bytes());
             verify_mac.verify_slice(&stored_bytes).is_ok()
@@ -3077,12 +3077,17 @@ fn activate_license(state: State<AppState>, key: String) -> Value {
     let client = verification
         .client
         .unwrap_or_else(|| "Studio Legale".to_string());
-    let result = perform_license_activation(&sec_dir, &path, &sentinel_path, &key, &client, &fingerprint);
+    let result =
+        perform_license_activation(&sec_dir, &path, &sentinel_path, &key, &client, &fingerprint);
 
     // SECURITY FIX: clear lockout only after ALL checks pass and activation succeeds.
     // Previously, lockout was cleared right after signature verification, allowing an
     // attacker with a valid-but-rejected key to reset the brute-force counter.
-    if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if result
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         clear_lockout(&state, &sec_dir);
     } else {
         record_failed_attempt(&state, &sec_dir);
