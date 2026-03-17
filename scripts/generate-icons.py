@@ -34,7 +34,8 @@ def ensure_dirs():
     """Crea le cartelle di output."""
     ICONS_DIR.mkdir(parents=True, exist_ok=True)
     (ICONS_DIR / "android").mkdir(exist_ok=True)
-    for dpi in ["mipmap-mdpi", "mipmap-hdpi", "mipmap-xhdpi", "mipmap-xxhdpi", "mipmap-xxxhdpi"]:
+    for dpi in ["mipmap-mdpi", "mipmap-hdpi", "mipmap-xhdpi", "mipmap-xxhdpi", "mipmap-xxxhdpi",
+                 "mipmap-anydpi-v26", "values"]:
         (ICONS_DIR / "android" / dpi).mkdir(parents=True, exist_ok=True)
     (ICONS_DIR / "ios").mkdir(exist_ok=True)
 
@@ -156,9 +157,12 @@ def generate_macos_icns(master: Image.Image):
 
 
 def generate_android_icons(master: Image.Image):
-    """Genera le icone Android (adaptive icons)."""
+    """Genera le icone Android complete (adaptive icons + legacy launcher)."""
     print("🤖 Generando icone Android...")
-    
+
+    # Dark background color matching LexFlow theme
+    BG_COLOR = (13, 14, 22, 255)  # #0D0E16
+
     android_sizes = {
         "mipmap-mdpi": 48,
         "mipmap-hdpi": 72,
@@ -166,12 +170,69 @@ def generate_android_icons(master: Image.Image):
         "mipmap-xxhdpi": 144,
         "mipmap-xxxhdpi": 192,
     }
+    # Adaptive icon foreground is 108dp (icon fills ~66% center, with 18% safe zone)
+    adaptive_fg_sizes = {
+        "mipmap-mdpi": 108,
+        "mipmap-hdpi": 162,
+        "mipmap-xhdpi": 216,
+        "mipmap-xxhdpi": 324,
+        "mipmap-xxxhdpi": 432,
+    }
     for dpi, size in android_sizes.items():
-        # Foreground (icona intera)
-        resize(master, size).save(ICONS_DIR / "android" / dpi / "ic_launcher_foreground.png")
-        # Round (con bordi arrotondati)
-        make_rounded(master, size).save(ICONS_DIR / "android" / dpi / "ic_launcher_round.png")
-        print(f"  ✅ android/{dpi}/ ({size}x{size})")
+        dpi_dir = ICONS_DIR / "android" / dpi
+
+        # 1. ic_launcher.png — legacy icon with dark background (pre-Android 8.0)
+        icon_size = int(size * 0.80)
+        bg = Image.new("RGBA", (size, size), BG_COLOR)
+        fg = resize(master, icon_size)
+        offset = (size - icon_size) // 2
+        bg.paste(fg, (offset, offset), fg)
+        bg.save(dpi_dir / "ic_launcher.png")
+
+        # 2. ic_launcher_foreground.png — adaptive icon foreground (108dp equivalent)
+        fg_size = adaptive_fg_sizes[dpi]
+        icon_inner = int(fg_size * 0.66)
+        canvas = Image.new("RGBA", (fg_size, fg_size), (0, 0, 0, 0))
+        fg_resized = resize(master, icon_inner)
+        fg_offset = (fg_size - icon_inner) // 2
+        canvas.paste(fg_resized, (fg_offset, fg_offset), fg_resized)
+        canvas.save(dpi_dir / "ic_launcher_foreground.png")
+
+        # 3. ic_launcher_round.png — round icon with dark circular background
+        round_bg = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(round_bg)
+        draw.ellipse([(0, 0), (size - 1, size - 1)], fill=BG_COLOR)
+        round_icon_size = int(size * 0.65)
+        round_fg = resize(master, round_icon_size)
+        round_offset = (size - round_icon_size) // 2
+        round_bg.paste(round_fg, (round_offset, round_offset), round_fg)
+        round_bg.save(dpi_dir / "ic_launcher_round.png")
+
+        print(f"  ✅ android/{dpi}/ (launcher={size}, foreground={fg_size}, round={size})")
+
+    # 4. Adaptive icon XML files (for Android 8.0+ / API 26+)
+    anydpi_dir = ICONS_DIR / "android" / "mipmap-anydpi-v26"
+    anydpi_dir.mkdir(parents=True, exist_ok=True)
+    values_dir = ICONS_DIR / "android" / "values"
+    values_dir.mkdir(parents=True, exist_ok=True)
+
+    adaptive_xml = '''<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
+'''
+    (anydpi_dir / "ic_launcher.xml").write_text(adaptive_xml)
+    (anydpi_dir / "ic_launcher_round.xml").write_text(adaptive_xml)
+
+    bg_color_xml = '''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#0D0E16</color>
+</resources>
+'''
+    (values_dir / "ic_launcher_background.xml").write_text(bg_color_xml)
+    print("  ✅ android/mipmap-anydpi-v26/ (adaptive icon XML)")
+    print("  ✅ android/values/ (background color)")
 
 
 def generate_ios_icons(master: Image.Image):

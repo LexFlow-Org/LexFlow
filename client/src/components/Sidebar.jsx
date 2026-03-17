@@ -15,7 +15,7 @@ import {
   CalendarDays, Settings, Lock, ShieldCheck, X, Menu,
   Clock, Users, Sun, Moon
 } from 'lucide-react';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.svg';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Nav items per il Liquid Curtain (mobile) ───────────────────────────────

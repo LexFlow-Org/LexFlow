@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import PropTypes from 'prop-types';
 import { 
   Search, 
@@ -19,6 +19,66 @@ const SUBJECT_STYLES = {
   amm: { color: 'text-materia-amm', bg: 'bg-materia-amm/10', border: 'border-materia-amm/20', label: 'Amministrativo', stripe: 'bg-materia-amm', dot: 'bg-materia-amm' },
   stra: { color: 'text-materia-stra', bg: 'bg-materia-stra/10', border: 'border-materia-stra/20', label: 'Stragiudiziale', stripe: 'bg-materia-stra', dot: 'bg-materia-stra' },
   default: { color: 'text-text-dim', bg: 'bg-surface', border: 'border-border', label: 'Altro', stripe: 'bg-text-dim', dot: 'bg-text-dim' }
+};
+
+// PERF: memoized row component — prevents re-rendering all 100+ rows when
+// parent state changes (e.g. search input, filter toggles).
+const PracticeRow = memo(function PracticeRow({ practice: p, onSelect }) {
+  const style = SUBJECT_STYLES[p.type] || SUBJECT_STYLES.default;
+  return (
+    <button type="button"
+      key={p?.id}
+      onClick={() => typeof onSelect === 'function' && onSelect(p.id)}
+      className="glass-card p-6 flex items-center justify-between group hover:bg-surface hover:border-border transition-all cursor-pointer border border-border relative overflow-hidden text-left w-full"
+    >
+      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${style.stripe}`} />
+
+      <div className="flex items-center gap-6 flex-1 min-w-0">
+        <div className={`w-14 h-14 rounded-2xl flex-shrink-0 flex items-center justify-center transition-all group-hover:scale-110 ${style.bg} ${style.color}`}>
+          <Briefcase size={26} />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-1 min-w-0">
+          <div className="space-y-1 overflow-hidden">
+            <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Cliente</div>
+            <div className="text-lg tracking-tight font-bold text-text truncate">{p?.client || 'N/D'}</div>
+          </div>
+
+          <div className="space-y-1 overflow-hidden">
+            <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Materia</div>
+            <div className="flex items-center gap-2">
+              <div className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
+              <div className={`text-xs font-bold uppercase tracking-wider ${style.color}`}>{style.label}</div>
+            </div>
+          </div>
+
+          <div className="space-y-1 overflow-hidden">
+            <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Riferimento</div>
+            <div className="text-xs font-mono text-text-muted tracking-widest bg-surface px-2 py-0.5 rounded-lg">{p?.code || '---'}</div>
+          </div>
+
+          <div className="hidden lg:flex flex-col justify-center items-end pr-4">
+            <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-success-soft text-success border-success-border' : 'bg-surface text-text-dim border-border'}`}>
+              <span className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${p?.status === 'active' ? 'bg-success' : 'bg-text-dim'}`} />
+                {p?.status === 'active' ? 'Attivo' : 'Archiviato'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4">
+         {p?.biometricProtected && <Fingerprint size={16} className="text-primary/60" title="Protetto con biometria" />}
+         <ChevronRight className="text-text-dim group-hover:text-primary group-hover:translate-x-1 transition-all" size={24} />
+      </div>
+    </button>
+  );
+});
+
+PracticeRow.propTypes = {
+  practice: PropTypes.object.isRequired,
+  onSelect: PropTypes.func,
 };
 
 export default function PracticesList({ practices = [], onSelect, onNewPractice }) {
@@ -177,58 +237,9 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
       {/* Lista Fascicoli */}
       <div className="space-y-4">
         {filteredPractices.length > 0 ? (
-          filteredPractices.map((p, index) => {
-            const style = SUBJECT_STYLES[p.type] || SUBJECT_STYLES.default;
-            return (
-              <button type="button"
-                key={p?.id || `practice-${index}`}
-                onClick={() => typeof onSelect === 'function' && onSelect(p.id)}
-                className="glass-card p-6 flex items-center justify-between group hover:bg-surface hover:border-border transition-all cursor-pointer border border-border relative overflow-hidden text-left w-full"
-              >
-                <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${style.stripe}`} />
-
-                <div className="flex items-center gap-6 flex-1 min-w-0">
-                  <div className={`w-14 h-14 rounded-2xl flex-shrink-0 flex items-center justify-center transition-all group-hover:scale-110 ${style.bg} ${style.color}`}>
-                    <Briefcase size={26} />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-1 min-w-0">
-                    <div className="space-y-1 overflow-hidden">
-                      <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Cliente</div>
-                      <div className="text-lg tracking-tight font-bold text-text truncate">{p?.client || 'N/D'}</div>
-                    </div>
-                    
-                    <div className="space-y-1 overflow-hidden">
-                      <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Materia</div>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
-                        <div className={`text-xs font-bold uppercase tracking-wider ${style.color}`}>{style.label}</div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1 overflow-hidden">
-                      <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Riferimento</div>
-                      <div className="text-xs font-mono text-text-muted tracking-widest bg-surface px-2 py-0.5 rounded-lg">{p?.code || '---'}</div>
-                    </div>
-
-                    <div className="hidden lg:flex flex-col justify-center items-end pr-4">
-                      <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-success-soft text-success border-success-border' : 'bg-surface text-text-dim border-border'}`}>
-                        <span className="flex items-center gap-1.5">
-                          <span className={`w-1.5 h-1.5 rounded-full ${p?.status === 'active' ? 'bg-success' : 'bg-text-dim'}`} />
-                          {p?.status === 'active' ? 'Attivo' : 'Archiviato'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-4">
-                   {p?.biometricProtected && <Fingerprint size={16} className="text-primary/60" title="Protetto con biometria" />}
-                   <ChevronRight className="text-text-dim group-hover:text-primary group-hover:translate-x-1 transition-all" size={24} />
-                </div>
-              </button>
-            );
-          })
+          filteredPractices.map((p, index) => (
+            <PracticeRow key={p?.id || `practice-${index}`} practice={p} onSelect={onSelect} />
+          ))
         ) : (
           <div className="glass-card p-24 flex flex-col items-center justify-center text-center space-y-6 border border-dashed border-border">
             <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center text-text-dim/20">

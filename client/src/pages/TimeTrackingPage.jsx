@@ -2,8 +2,18 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { Clock, Play, Square, Plus, Trash2, ChevronLeft, ChevronRight, Edit3, Check, X, DollarSign, Receipt, Download, Briefcase, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+// PERF: jsPDF + autotable (~403KB) lazy-loaded only when exporting PDF
+let _jsPDF = null;
+async function getJsPDF() {
+  if (!_jsPDF) {
+    const [mod] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
+    _jsPDF = mod.default;
+  }
+  return _jsPDF;
+}
 import ConfirmDialog from '../components/ConfirmDialog';
 import ModalOverlay from '../components/ModalOverlay';
 import PracticeCombobox from '../components/PracticeCombobox';
@@ -204,6 +214,7 @@ export default function TimeTrackingPage({ practices }) {
   const [selectedDay, setSelectedDay] = useState(null);
 
   const generatePDF = async (inv) => {
+    const jsPDF = await getJsPDF();
     const doc = new jsPDF();
     const gold = [212, 169, 64];
     doc.setFillColor(...gold);
@@ -235,7 +246,7 @@ export default function TimeTrackingPage({ practices }) {
       `\u20AC ${(it.total || 0).toFixed(2)}`,
     ]);
     const totals = calcTotals(inv.items || []);
-    autoTable(doc, {
+    doc.autoTable({
       startY: y,
       head: [['Descrizione', 'Qt\u00E0', 'Prezzo', 'Importo']],
       body: tableBody,

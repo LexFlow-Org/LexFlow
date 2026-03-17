@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <!-- Gold gradient for the gavel -->
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F2D06B"/>
+      <stop offset="40%" stop-color="#D4A94C"/>
+      <stop offset="100%" stop-color="#B8862D"/>
+    </linearGradient>
+    <!-- Lighter gold for highlights -->
+    <linearGradient id="goldLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE8A0"/>
+      <stop offset="100%" stop-color="#D4A94C"/>
+    </linearGradient>
+    <!-- Dark circular background gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#1E1F2E"/>
+      <stop offset="100%" stop-color="#0D0E16"/>
+    </radialGradient>
+    <!-- Subtle glow behind the icon -->
+    <radialGradient id="glow" cx="50%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#D4A94C" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#D4A94C" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Dark background circle -->
+  <circle cx="256" cy="256" r="248" fill="url(#bgGrad)" stroke="#2A2B3D" stroke-width="4"/>
+
+  <!-- Subtle glow -->
+  <circle cx="256" cy="256" r="200" fill="url(#glow)"/>
+
+  <!-- Gavel head (top-left to bottom-right, rotated ~45deg) -->
+  <g transform="translate(256,220) rotate(-45)">
+    <!-- Main head block -->
+    <rect x="-90" y="-28" width="180" height="56" rx="14" fill="url(#gold)" stroke="url(#goldLight)" stroke-width="3"/>
+    <!-- Left striking face -->
+    <rect x="-100" y="-32" width="24" height="64" rx="8" fill="url(#goldLight)" stroke="#B8862D" stroke-width="2"/>
+    <!-- Right striking face -->
+    <rect x="76" y="-32" width="24" height="64" rx="8" fill="url(#goldLight)" stroke="#B8862D" stroke-width="2"/>
+    <!-- Center band detail -->
+    <rect x="-12" y="-28" width="24" height="56" rx="4" fill="#B8862D" opacity="0.35"/>
+  </g>
+
+  <!-- Handle -->
+  <g transform="translate(256,220) rotate(-45)">
+    <rect x="-10" y="26" width="20" height="120" rx="8" fill="url(#gold)" stroke="#B8862D" stroke-width="2"/>
+    <!-- Handle grip lines -->
+    <line x1="-6" y1="100" x2="6" y2="100" stroke="#B8862D" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+    <line x1="-6" y1="110" x2="6" y2="110" stroke="#B8862D" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+    <line x1="-6" y1="120" x2="6" y2="120" stroke="#B8862D" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  </g>
+
+  <!-- Curved arrow (flow/progress symbol) -->
+  <path d="M 310 340 C 350 370, 370 340, 360 300 C 350 260, 370 230, 400 240"
+        stroke="url(#gold)" stroke-width="12" stroke-linecap="round" fill="none"/>
+  <!-- Arrow tip -->
+  <polygon points="396,224 412,244 390,248" fill="url(#goldLight)"/>
+</svg>

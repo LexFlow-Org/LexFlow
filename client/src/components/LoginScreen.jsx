@@ -10,7 +10,7 @@ import {
   Timer,
   X
 } from 'lucide-react';
-import logoSrc from '../assets/logo.png';
+import logoSrc from '../assets/logo.svg';
 import * as api from '../tauri-api';
 
 export default function LoginScreen({ onUnlock, autoLocked = false }) {

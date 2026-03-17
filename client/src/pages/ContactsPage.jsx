@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import PropTypes from 'prop-types';
 import { Users, Plus, Search, User, Scale, Briefcase, Building, Gavel, UserCheck, Edit3, Trash2, X, Check, Phone, Mail, MapPin, Hash, ChevronRight, Info, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -529,7 +529,8 @@ ContactsPage.propTypes = {
 };
 
 /* ──── Inline Detail Card (dynamic per type) ──── */
-function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts, onEdit, onDelete, onSelectPractice }) {
+// PERF: memoized to prevent re-rendering all detail cards when parent state changes
+const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts, onEdit, onDelete, onSelectPractice }) {
   const TypeIcon = typeInfo.icon;
   const c = contact;
 
@@ -693,7 +694,7 @@ function ContactDetailCard({ contact, typeInfo, linkedPractices, relatedContacts
       )}
     </>
   );
-}
+});
 
 ContactDetailCard.propTypes = {
   contact: PropTypes.object.isRequired,

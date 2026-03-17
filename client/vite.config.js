@@ -46,7 +46,9 @@ export default defineConfig({
           'vendor-ui': ['lucide-react', 'react-hot-toast'],
           'vendor-motion': ['framer-motion'],
           'vendor-tauri': ['@tauri-apps/api', '@tauri-apps/plugin-notification'],
-          'vendor-pdf': ['jspdf', 'jspdf-autotable'],
+          // PERF: jspdf + jspdf-autotable (~403KB) removed from manual chunks.
+          // They are now lazy-loaded via dynamic import() on first PDF export,
+          // so they never appear in the initial bundle.
         },
       },
     },
