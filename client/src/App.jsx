@@ -28,6 +28,17 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 
+// PERF: preload all lazy pages after initial render to eliminate navigation delay.
+// Chunks download in background so page switches are instant.
+const preloadPages = () => {
+  import('./pages/PracticesList');
+  import('./pages/DeadlinesPage');
+  import('./pages/AgendaPage');
+  import('./pages/SettingsPage');
+  import('./pages/TimeTrackingPage');
+  import('./pages/ContactsPage');
+};
+
 export default function App() {
   const navigate = useNavigate();
   
@@ -75,11 +86,14 @@ export default function App() {
   api.getAppVersion?.().then(v => setVersion(v || '')).catch(() => {});
 
   // Detect platform and set CSS class for platform-specific optimizations
-  // (e.g. disable backdrop-filter on Windows where WebView2 renders it in software)
-  api.isMac?.().then(isMac => {
-    if (isMac) {
+  // (e.g. disable backdrop-filter on Windows/Android where WebView renders it in software)
+  api.getPlatform?.().then(platform => {
+    if (platform === 'macos') {
       document.body.classList.add('is-macos');
       try { api.warmSwift?.(); } catch { /* ignore */ }
+    } else if (platform === 'android' || platform === 'ios') {
+      document.body.classList.add('is-mobile');
+      document.body.classList.add(`is-${platform}`);
     } else {
       document.body.classList.add('is-windows');
     }
@@ -260,25 +274,31 @@ export default function App() {
 
   const loadAllData = useCallback(async () => {
     try {
-      const pracs = (await api.loadPractices().catch(() => []) || []).map(p => ({
+      // PERF FIX: parallelize independent reads (was sequential → 3x round-trip)
+      const [rawPracs, agenda, currentSettings] = await Promise.all([
+        api.loadPractices().catch(() => []),
+        api.loadAgenda().catch(() => []),
+        api.getSettings().catch(() => ({})),
+      ]);
+
+      const pracs = (rawPracs || []).map(p => ({
         ...p,
-        biometricProtected: p.biometricProtected !== false, // default true per tutti
+        biometricProtected: p.biometricProtected !== false,
       }));
-      const agenda = await api.loadAgenda().catch(() => []) || [];
-      const currentSettings = await api.getSettings().catch(() => ({}));
-      
+
       setPractices(pracs);
       setSettings(currentSettings);
-      const synced = syncDeadlinesToAgenda(pracs, agenda);
+      const synced = syncDeadlinesToAgenda(pracs, agenda || []);
       setAgendaEvents(synced);
       agendaRef.current = synced;
-      
-      await api.saveAgenda(synced).catch(e => console.warn('[App] saveAgenda sync failed:', e));
 
-      // Sync schedule al backend (riusa syncScheduleToBackend con settings override)
-      await syncScheduleToBackend(synced, currentSettings);
-    } catch (e) { 
-      console.error("Errore caricamento dati:", e); 
+      // PERF FIX: parallelize independent writes
+      await Promise.all([
+        api.saveAgenda(synced).catch(e => console.warn('[App] saveAgenda sync failed:', e)),
+        syncScheduleToBackend(synced, currentSettings),
+      ]);
+    } catch (e) {
+      console.error("Errore caricamento dati:", e);
     }
   }, [syncDeadlinesToAgenda, syncScheduleToBackend]);
 
@@ -286,6 +306,8 @@ export default function App() {
     setBlurred(false);
     setAutoLocked(false);
     setIsLocked(false);
+    // PERF: preload all lazy pages in background while data loads
+    preloadPages();
     await loadAllData();
 
     // Request notification permission on first unlock (macOS requires explicit grant)
@@ -315,13 +337,15 @@ export default function App() {
     setPractices(newList);
     if (api.savePractices) {
       try {
-        await api.savePractices(newList);
         const synced = syncDeadlinesToAgenda(newList, agendaRef.current);
         setAgendaEvents(synced);
         agendaRef.current = synced;
-        await api.saveAgenda(synced);
-        // Sync schedule col backend (include scadenze fascicoli aggiornate)
-        await syncScheduleToBackend(synced);
+        // PERF FIX: parallelize independent saves (practices, agenda, schedule)
+        await Promise.all([
+          api.savePractices(newList),
+          api.saveAgenda(synced),
+          syncScheduleToBackend(synced),
+        ]);
       } catch (e) {
         console.error('[App] savePractices pipeline error:', e);
         toast.error('Errore salvataggio fascicoli');
@@ -333,9 +357,11 @@ export default function App() {
     setAgendaEvents(newEvents);
     agendaRef.current = newEvents;
     try {
-      if (api.saveAgenda) await api.saveAgenda(newEvents);
-      // Sync notification schedule with updated items for backend scheduler
-      await syncScheduleToBackend(newEvents);
+      // PERF FIX: parallelize save + schedule sync
+      await Promise.all([
+        api.saveAgenda?.(newEvents),
+        syncScheduleToBackend(newEvents),
+      ]);
     } catch (e) {
       console.error('[App] saveAgenda error:', e);
       toast.error('Errore salvataggio agenda');

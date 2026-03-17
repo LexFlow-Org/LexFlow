@@ -1381,3 +1381,48 @@ body.is-windows {
     transform: translateZ(0);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   12. MOBILE PERFORMANCE — Android/iOS WebView optimizations
+   Android WebView has even worse backdrop-filter performance than
+   WebView2. Also removes desktop-only decorations (rounded corners,
+   shadows) that waste GPU on mobile.
+   ═══════════════════════════════════════════════════════════════ */
+body.is-mobile {
+  /* Kill ALL backdrop-filter globally — mobile GPUs can't handle them */
+  & *,
+  & *::before,
+  & *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Remove desktop window decorations — full-screen on mobile */
+  & .flex.h-screen {
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Faster animations — mobile needs snappier transitions */
+  & .animate-cascade-in,
+  & .animate-fade-in-up,
+  & .animate-fade-in-down {
+    animation-duration: 0.1s;
+  }
+
+  & .page-cascade > * {
+    animation-duration: 0.15s;
+  }
+
+  /* Reduce transition durations globally */
+  & [class*="transition-"] {
+    transition-duration: 0.1s !important;
+  }
+
+  /* GPU compositing for main content */
+  & main {
+    will-change: auto;
+    transform: translateZ(0);
+  }
+}
