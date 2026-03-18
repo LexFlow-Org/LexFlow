@@ -2,18 +2,29 @@
 //  BIOMETRICS — Touch ID / Windows Hello / Android
 // ═══════════════════════════════════════════════════════════
 
-use crate::audit::append_audit_log;
-use crate::constants::*;
-use crate::io::secure_write;
-use crate::lockout::{check_lockout, clear_lockout};
-use crate::state::{zeroize_password, AppState, SecureKey};
-use crate::vault::authenticate_vault_password;
+use crate::state::{zeroize_password, AppState};
 use serde_json::{json, Value};
+use tauri::State;
+
+// Desktop-only imports (bio_unlock_vault, save_bio, clear_bio, bio_login)
+#[cfg(not(target_os = "android"))]
+use crate::audit::append_audit_log;
+#[cfg(not(target_os = "android"))]
+use crate::constants::*;
+#[cfg(not(target_os = "android"))]
+use crate::io::secure_write;
+#[cfg(not(target_os = "android"))]
+use crate::lockout::{check_lockout, clear_lockout};
+#[cfg(not(target_os = "android"))]
+use crate::state::SecureKey;
+#[cfg(not(target_os = "android"))]
+use crate::vault::authenticate_vault_password;
+#[cfg(not(target_os = "android"))]
 use std::fs;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::time::Duration;
+#[cfg(not(target_os = "android"))]
 use std::time::Instant;
-use tauri::State;
 
 #[tauri::command]
 pub(crate) fn check_bio() -> bool {

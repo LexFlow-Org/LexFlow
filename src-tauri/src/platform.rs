@@ -3,11 +3,16 @@
 // ═══════════════════════════════════════════════════════════
 
 use crate::constants::*;
-use crate::crypto::{decrypt_data, encrypt_data};
-use crate::io::{atomic_write_with_sync, safe_bounded_read, secure_write};
+use crate::crypto::decrypt_data;
+use crate::io::safe_bounded_read;
 use sha2::{Digest, Sha256};
 use std::fs;
 use zeroize::Zeroizing;
+
+#[cfg(not(target_os = "android"))]
+use crate::crypto::encrypt_data;
+#[cfg(not(target_os = "android"))]
+use crate::io::{atomic_write_with_sync, secure_write};
 
 // ─── Platform UID ────────────────────────────────────────────
 

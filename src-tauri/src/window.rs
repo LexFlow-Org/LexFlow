@@ -4,6 +4,7 @@
 
 use crate::state::{notify_autolock_condvar, AppState};
 use std::time::{Duration, Instant};
+#[allow(unused_imports)] // Manager needed for get_webview_window on desktop
 use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]

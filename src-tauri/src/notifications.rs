@@ -11,6 +11,7 @@ use crate::platform::{decrypt_local_with_migration, get_local_encryption_key};
 use crate::state::{notify_autolock_condvar, AppState};
 use chrono::TimeZone as _;
 use serde_json::{json, Value};
+use sha2::{Digest as _, Sha256};
 use std::fs;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
