@@ -24,6 +24,7 @@ mod window;
 
 use state::AppState;
 use std::fs;
+#[allow(unused_imports)] // needed for get_webview_window in run() event handler
 use tauri::Manager;
 
 pub fn run() {
