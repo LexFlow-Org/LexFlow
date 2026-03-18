@@ -63,6 +63,10 @@ export const warmSwift = () => safeInvoke('warm_swift');
 // Vault Health (v4)
 export const getVaultHealth = () => safeInvoke('get_vault_health');
 
+// PERF: Index-only reads (v4) — instant list rendering without decrypting records
+export const getVaultIndex = () => safeInvoke('get_vault_index');
+export const loadRecordDetail = (recordId) => safeInvoke('load_record_detail', { recordId });
+
 // Data
 export const loadPractices = () => safeInvoke('load_practices');
 export const savePractices = (list) => safeInvoke('save_practices', { list });

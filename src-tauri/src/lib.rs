@@ -172,6 +172,9 @@ pub fn run() {
             vault::load_agenda,
             vault::save_agenda,
             vault::get_summary,
+            // Index-only reads (v4 perf)
+            vault::get_vault_index,
+            vault::load_record_detail,
             // Conflict Check
             vault::check_conflict,
             // Time Tracking
