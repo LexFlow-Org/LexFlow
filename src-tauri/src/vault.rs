@@ -11,7 +11,8 @@ use crate::crypto::{
 use crate::io::{atomic_write_with_sync, secure_write};
 use crate::lockout::{check_lockout, clear_lockout, record_failed_attempt};
 use crate::state::{
-    get_vault_dek, get_vault_key, get_vault_version, zeroize_password, AppState, SecureKey,
+    get_vault_dek, get_vault_key, get_vault_version, invalidate_vault_cache, zeroize_password,
+    AppState, SecureKey,
 };
 use crate::vault_v4;
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
@@ -24,25 +25,40 @@ use zeroize::Zeroizing;
 // ─── Internal vault I/O (v2/v4 transparent) ─────────────────
 
 /// Read full vault data as a JSON value.
-/// In v4: decrypts all records and reassembles {practices:[], agenda:[], ...}
-/// In v2: decrypts the monolithic blob as before.
+/// PERF: returns cached data if available, avoiding re-decryption.
 pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, String> {
-    let version = get_vault_version(state);
-    if version == 4 {
-        return read_vault_v4(state);
-    }
-    // v2 legacy path
-    let key = get_vault_key(state)?;
-    let path = state
-        .data_dir
+    // PERF: check cache first
+    if let Some(cached) = state
+        .vault_cache
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .join(VAULT_FILE);
-    if !path.exists() {
-        return Ok(json!({"practices":[], "agenda":[]}));
+        .as_ref()
+    {
+        return Ok(cached.clone());
     }
-    let decrypted = decrypt_data(&key, &fs::read(path).map_err(|e| e.to_string())?)?;
-    serde_json::from_slice(&decrypted).map_err(|e| e.to_string())
+
+    let version = get_vault_version(state);
+    let result = if version == 4 {
+        read_vault_v4(state)?
+    } else {
+        // v2 legacy path
+        let key = get_vault_key(state)?;
+        let path = state
+            .data_dir
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .join(VAULT_FILE);
+        if !path.exists() {
+            return Ok(json!({"practices":[], "agenda":[]}));
+        }
+        let decrypted = decrypt_data(&key, &fs::read(path).map_err(|e| e.to_string())?)?;
+        serde_json::from_slice(&decrypted).map_err(|e| e.to_string())?
+    };
+
+    // PERF: store in cache
+    *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some(result.clone());
+
+    Ok(result)
 }
 
 /// v4: read vault by decrypting index + all records, reassemble into monolithic JSON.
@@ -94,10 +110,19 @@ fn read_vault_v4(state: &State<AppState>) -> Result<Value, String> {
 /// Write full vault data.
 /// In v4: diffs against existing records, encrypts only changed ones.
 /// In v2: encrypts the monolithic blob as before.
+/// PERF: invalidates cache after successful write.
 pub(crate) fn write_vault_internal(state: &State<AppState>, data: &Value) -> Result<(), String> {
+    // PERF: invalidate cache before write (so concurrent reads don't get stale data)
+    invalidate_vault_cache(state);
+
     let version = get_vault_version(state);
     if version == 4 {
-        return write_vault_v4(state, data);
+        let result = write_vault_v4(state, data);
+        // PERF: update cache with new data on success
+        if result.is_ok() {
+            *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some(data.clone());
+        }
+        return result;
     }
     // v2 legacy path
     let key = get_vault_key(state)?;
@@ -108,7 +133,11 @@ pub(crate) fn write_vault_internal(state: &State<AppState>, data: &Value) -> Res
         .clone();
     let plaintext = Zeroizing::new(serde_json::to_vec(data).map_err(|e| e.to_string())?);
     let encrypted = encrypt_data(&key, &plaintext)?;
-    atomic_write_with_sync(&dir.join(VAULT_FILE), &encrypted)
+    let result = atomic_write_with_sync(&dir.join(VAULT_FILE), &encrypted);
+    if result.is_ok() {
+        *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some(data.clone());
+    }
+    result
 }
 
 /// v4: write vault by encrypting individual records and updating the index.
@@ -672,13 +701,15 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
 
 #[tauri::command]
 pub(crate) fn lock_vault(state: State<AppState>) -> bool {
-    // Zero both v2 key and v4 DEK
+    // Zero both v2 key and v4 DEK + clear cache
     *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
     *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
     *state
         .vault_version
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = 0;
+    // SECURITY: clear plaintext cache on lock
+    *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
     true
 }
 
@@ -736,6 +767,7 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
         .vault_version
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = 0;
+    *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
     zeroize_password(password);
     json!({"success": true})
 }
