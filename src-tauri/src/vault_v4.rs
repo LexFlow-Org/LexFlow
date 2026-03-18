@@ -119,37 +119,51 @@ pub(crate) fn benchmark_argon2_params() -> KdfParams {
     let mut best: Option<(KdfParams, i128)> = None;
     let test_salt = [0u8; 32];
 
-    for &m in candidates_m {
+    // Strategy: single probe per (m,p) combo — if within target, accept immediately.
+    // Only do 3-run median for the first good match to confirm stability.
+    'outer: for &m in candidates_m {
         if m > max_m {
             break;
         }
         for p in 1..=max_p {
-            // Run 3 times, take median
-            let mut durations = Vec::with_capacity(3);
-            for _ in 0..3 {
-                let start = std::time::Instant::now();
-                let _ = derive_kek_raw("benchmark_test_pwd", &test_salt, m, 3, p);
-                durations.push(start.elapsed().as_millis());
+            // Quick single probe first
+            let start = std::time::Instant::now();
+            let _ = derive_kek_raw("benchmark_test_pwd", &test_salt, m, 3, p);
+            let probe_ms = start.elapsed().as_millis();
+
+            // Skip if way too slow (> 2x target) — higher m/p will be worse
+            if probe_ms > target_ms * 2 {
+                break; // skip remaining p values for this m
             }
-            durations.sort();
-            let median = durations[1];
 
-            let distance = (median as i128 - target_ms as i128).abs();
+            // If within range, confirm with 2 more runs (median of 3)
+            if (200..=800).contains(&probe_ms) {
+                let mut durations = vec![probe_ms];
+                for _ in 0..2 {
+                    let start = std::time::Instant::now();
+                    let _ = derive_kek_raw("benchmark_test_pwd", &test_salt, m, 3, p);
+                    durations.push(start.elapsed().as_millis());
+                }
+                durations.sort();
+                let median = durations[1];
+                let distance = (median as i128 - target_ms as i128).abs();
 
-            // Accept if within 200-800ms range
-            if (200..=800).contains(&median)
-                && (best.is_none() || distance < best.as_ref().unwrap().1)
-            {
-                best = Some((
-                    KdfParams {
-                        alg: "argon2id".to_string(),
-                        m,
-                        t: 3,
-                        p,
-                        salt: String::new(), // filled later
-                    },
-                    distance,
-                ));
+                if best.is_none() || distance < best.as_ref().unwrap().1 {
+                    best = Some((
+                        KdfParams {
+                            alg: "argon2id".to_string(),
+                            m,
+                            t: 3,
+                            p,
+                            salt: String::new(),
+                        },
+                        distance,
+                    ));
+                    // If very close to target (within 50ms), stop searching
+                    if distance < 50 {
+                        break 'outer;
+                    }
+                }
             }
         }
     }
