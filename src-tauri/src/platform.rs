@@ -67,7 +67,7 @@ pub(crate) fn init_machine_id() -> Result<String, String> {
         }
     }
     let mut id_bytes = [0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut id_bytes);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut id_bytes);
     let machine_id = hex::encode(id_bytes);
     let _ = secure_write(&id_path, machine_id.as_bytes());
     Ok(machine_id)
@@ -216,7 +216,7 @@ pub(crate) fn init_android_device_id() -> Result<String, String> {
         }
     }
     let mut id_bytes = [0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut id_bytes);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut id_bytes);
     let id_hex = hex::encode(id_bytes);
     let id_path = first_writable.ok_or_else(|| {
         "Nessun percorso scrivibile trovato su Android per persistere la master key.".to_string()

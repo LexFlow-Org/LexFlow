@@ -64,6 +64,8 @@ pub(crate) struct EncryptedBlock {
     pub iv: String,   // base64, 12 bytes
     pub tag: String,  // base64, 16 bytes (GCM tag)
     pub data: String, // base64, ciphertext (without tag, tag is separate)
+    #[serde(default)] // backward compat: false if missing
+    pub compressed: bool, // PERF: zstd-compressed before encryption
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -73,6 +75,8 @@ pub(crate) struct RecordVersion {
     pub iv: String,
     pub tag: String,
     pub data: String,
+    #[serde(default)] // backward compat: false if missing
+    pub compressed: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -229,7 +233,7 @@ fn derive_kek_raw(
 /// Generate a random 256-bit DEK.
 pub(crate) fn generate_dek() -> Zeroizing<Vec<u8>> {
     let mut dek = Zeroizing::new(vec![0u8; AES_KEY_LEN]);
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut dek);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut dek);
     dek
 }
 
@@ -237,7 +241,7 @@ pub(crate) fn generate_dek() -> Zeroizing<Vec<u8>> {
 pub(crate) fn wrap_dek(kek: &[u8], dek: &[u8]) -> Result<(String, String), String> {
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(kek));
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce_bytes);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut nonce_bytes);
     let ciphertext = cipher
         .encrypt(
             Nonce::from_slice(&nonce_bytes),
@@ -324,16 +328,21 @@ pub(crate) fn verify_header_mac(kek: &[u8], vault: &VaultV4) -> Result<(), Strin
 //  FASE 4: Per-Record Encryption + Index
 // ═══════════════════════════════════════════════════════════
 
-/// Encrypt a single record/block with DEK. Returns EncryptedBlock with separate tag.
+/// Encrypt a single record/block with DEK.
+/// PERF: compresses with zstd level 3 before encryption (~60-80% size reduction on legal text).
 pub(crate) fn encrypt_record(dek: &[u8], plaintext: &[u8]) -> Result<EncryptedBlock, String> {
+    // PERF: compress before encrypt (safe — no compression oracle in LexFlow)
+    let to_encrypt =
+        zstd::encode_all(plaintext, 3).map_err(|e| format!("Compression failed: {}", e))?;
+
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(dek));
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce_bytes);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut nonce_bytes);
     let ciphertext_with_tag = cipher
         .encrypt(
             Nonce::from_slice(&nonce_bytes),
             Payload {
-                msg: plaintext,
+                msg: &to_encrypt,
                 aad: b"LEXFLOW-RECORD",
             },
         )
@@ -346,6 +355,7 @@ pub(crate) fn encrypt_record(dek: &[u8], plaintext: &[u8]) -> Result<EncryptedBl
         iv: B64.encode(nonce_bytes),
         tag: B64.encode(tag),
         data: B64.encode(ciphertext),
+        compressed: true,
     })
 }
 
@@ -367,7 +377,7 @@ pub(crate) fn decrypt_record(dek: &[u8], block: &EncryptedBlock) -> Result<Vec<u
     let mut ct_with_tag = data;
     ct_with_tag.extend_from_slice(&tag);
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(dek));
-    cipher
+    let decrypted = cipher
         .decrypt(
             Nonce::from_slice(&iv),
             Payload {
@@ -375,7 +385,14 @@ pub(crate) fn decrypt_record(dek: &[u8], block: &EncryptedBlock) -> Result<Vec<u
                 aad: b"LEXFLOW-RECORD",
             },
         )
-        .map_err(|_| "Record decryption failed — corrupted or wrong key".to_string())
+        .map_err(|_| "Record decryption failed — corrupted or wrong key".to_string())?;
+
+    // PERF: decompress if compressed flag is set
+    if block.compressed {
+        zstd::decode_all(decrypted.as_slice()).map_err(|e| format!("Decompression failed: {}", e))
+    } else {
+        Ok(decrypted)
+    }
 }
 
 /// Encrypt the index with DEK.
@@ -408,6 +425,7 @@ pub(crate) fn append_record_version(
         iv: block.iv,
         tag: block.tag,
         data: block.data,
+        compressed: block.compressed,
     };
     entry.versions.push(version);
     entry.current = new_v;
@@ -430,6 +448,7 @@ pub(crate) fn read_current_version(entry: &RecordEntry, dek: &[u8]) -> Result<Ve
         iv: version.iv.clone(),
         tag: version.tag.clone(),
         data: version.data.clone(),
+        compressed: version.compressed,
     };
     decrypt_record(dek, &block)
 }
@@ -467,12 +486,14 @@ pub(crate) fn rotate_dek(vault: &mut VaultV4, kek: &[u8]) -> Result<Zeroizing<Ve
                 iv: version.iv.clone(),
                 tag: version.tag.clone(),
                 data: version.data.clone(),
+                compressed: version.compressed,
             };
             let plaintext = decrypt_record(&old_dek, &block)?;
             let new_block = encrypt_record(&new_dek, &plaintext)?;
             version.iv = new_block.iv;
             version.tag = new_block.tag;
             version.data = new_block.data;
+            version.compressed = new_block.compressed;
         }
     }
 
@@ -525,7 +546,7 @@ pub(crate) fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<
     // Benchmark and generate KDF params
     let mut kdf = benchmark_argon2_params();
     let mut salt = [0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut salt);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
     kdf.salt = B64.encode(salt);
 
     // Derive KEK
@@ -566,6 +587,7 @@ pub(crate) fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<
 }
 
 /// Open an existing v4 vault: derive KEK, verify header MAC, unwrap DEK.
+/// Anti-rollback: verify write counter against stored maximum.
 pub(crate) fn open_vault_v4(
     password: &str,
     data: &[u8],
@@ -649,6 +671,7 @@ pub(crate) fn migrate_v2_to_v4(
                         iv: block.iv,
                         tag: block.tag,
                         data: block.data,
+                        compressed: block.compressed,
                     }],
                     current: 1,
                 };

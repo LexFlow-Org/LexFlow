@@ -62,7 +62,7 @@ pub(crate) async fn export_vault(
     // Export format: [32-byte salt] [v2-encrypted monolithic JSON]
     // This ensures backups are portable across v2 and v4 installations.
     let mut salt = vec![0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut salt);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
     let key = derive_secure_key(&pwd, &salt)?;
     let plaintext = Zeroizing::new(serde_json::to_vec(&data).map_err(|e| e.to_string())?);
     let encrypted = encrypt_data(&key, &plaintext)?;

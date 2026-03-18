@@ -32,7 +32,7 @@ pub(crate) fn derive_secure_key(password: &str, salt: &[u8]) -> Result<Zeroizing
 pub(crate) fn encrypt_data(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce_bytes);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut nonce_bytes);
     let payload = Payload {
         msg: plaintext,
         aad: VAULT_MAGIC,

@@ -272,7 +272,7 @@ fn validate_password_strength(password: &str) -> Result<(), Value> {
 fn create_new_vault_salt(password: &str, salt_path: &std::path::Path) -> Result<Vec<u8>, Value> {
     validate_password_strength(password)?;
     let mut s = vec![0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut s);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut s);
     secure_write(salt_path, &s).map_err(
         |e| json!({"success": false, "error": format!("Errore scrittura vault: {}", e)}),
     )?;
@@ -516,6 +516,28 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
             // Open v4 vault directly
             match vault_v4::open_vault_v4(&password, &raw) {
                 Ok((vault, dek)) => {
+                    // SECURITY: anti-rollback check
+                    let counter_path = sec_dir.join(".vault-writes-counter");
+                    let stored_counter = fs::read_to_string(&counter_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u64>().ok())
+                        .unwrap_or(0);
+                    if vault.rotation.writes < stored_counter {
+                        eprintln!(
+                            "[SECURITY] ROLLBACK DETECTED: vault writes={} < stored counter={}",
+                            vault.rotation.writes, stored_counter
+                        );
+                        zeroize_password(password);
+                        return json!({"success": false, "error": "Possibile rollback del vault rilevato. Il file vault potrebbe essere stato sostituito con una versione precedente. Contattare il supporto."});
+                    }
+                    // Update stored counter
+                    if vault.rotation.writes > stored_counter {
+                        let _ = atomic_write_with_sync(
+                            &counter_path,
+                            vault.rotation.writes.to_string().as_bytes(),
+                        );
+                    }
+
                     *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
                         Some(SecureKey(Zeroizing::new(dek.to_vec())));
                     *state
@@ -814,7 +836,7 @@ pub(crate) fn change_password(
     };
 
     let mut new_salt = vec![0u8; ARGON2_SALT_LEN];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut new_salt);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut new_salt);
     let new_key = derive_secure_key(&new_password, &new_salt)?;
 
     let vault_plaintext =
@@ -868,7 +890,7 @@ fn change_password_v4(
     // Generate new KDF params with benchmark
     let mut new_kdf = vault_v4::benchmark_argon2_params();
     let mut salt = [0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut salt);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
     new_kdf.salt = B64.encode(salt);
 
     // Derive new KEK

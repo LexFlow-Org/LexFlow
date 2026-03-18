@@ -32,6 +32,7 @@ tauri-plugin-window-state = "2"
 dirs = "5"
 whoami = "1"
 rand = "0.8"
+zstd = "0.13"
 hex = "0.4"
 tokio = { version = "1", features = ["sync", "time"] }
 
