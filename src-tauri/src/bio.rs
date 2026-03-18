@@ -10,7 +10,7 @@ use crate::state::{zeroize_password, AppState, SecureKey};
 use crate::vault::authenticate_vault_password;
 use serde_json::{json, Value};
 use std::fs;
-#[cfg(not(target_os = "android"))]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::time::Duration;
 use std::time::Instant;
 use tauri::State;
