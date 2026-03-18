@@ -60,6 +60,9 @@ export const loginBio = bioLogin;
 // Files / Folders
 export const warmSwift = () => safeInvoke('warm_swift');
 
+// Vault Health (v4)
+export const getVaultHealth = () => safeInvoke('get_vault_health');
+
 // Data
 export const loadPractices = () => safeInvoke('load_practices');
 export const savePractices = (list) => safeInvoke('save_practices', { list });

@@ -270,14 +270,17 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     return pwd.length >= 12 && /[A-Z]/.test(pwd) && /[a-z]/.test(pwd) && /\d/.test(pwd) && /[!@#$%^&*()\-_=+[\]{};':"\\|,.<>/?]/.test(pwd);
   };
 
-  /** Handle unlock failure — sets error and lockout state */
+  /** Handle unlock failure — sets error and lockout state (v4: exponential backoff) */
   const handleUnlockFailure = (result) => {
     if (result.locked && result.remaining) {
       const secs = Math.ceil(Number(result.remaining));
       setLockoutSeconds(secs);
       const mm = String(Math.floor(secs / 60)).padStart(2, '0');
       const ss = String(secs % 60).padStart(2, '0');
-      setError(`Troppi tentativi falliti. Riprova tra ${mm}:${ss}`);
+      const attemptsInfo = result.attempts && result.maxAttempts
+        ? ` (${result.attempts}/${result.maxAttempts})`
+        : '';
+      setError(`Troppi tentativi falliti${attemptsInfo}. Riprova tra ${mm}:${ss}`);
     } else {
       setError(result.error || 'Password errata');
     }
