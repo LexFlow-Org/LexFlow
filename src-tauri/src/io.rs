@@ -6,34 +6,40 @@ use std::io::Read;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Centralized atomic write with fsync — replaces 5+ duplicated patterns.
-/// SECURITY FIX (Gemini Audit Chunk 05): random tmp name to prevent TOCTOU symlink attacks.
-/// Also performs directory fsync after rename for crash-safe persistence.
+/// Uses u64 random for tmp name (larger namespace) + cleanup on rename failure.
 pub(crate) fn atomic_write_with_sync(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
+    // FIX: u64 for larger collision-resistant namespace (was u32)
     let tmp_name = format!(
         ".{}.tmp.{}",
         path.file_name().unwrap_or_default().to_string_lossy(),
-        rand::random::<u32>()
+        rand::random::<u64>()
     );
-    let tmp = path.with_file_name(tmp_name);
+    let tmp = path.with_file_name(&tmp_name);
     secure_write(&tmp, data).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
-    // SECURITY FIX (Gemini Audit Chunk 05): fsync directory to persist rename across crashes
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        // FIX: cleanup orphan tmp on rename failure
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    // fsync directory to persist rename across crashes (ext4/f2fs)
     if let Some(parent) = path.parent() {
         if let Ok(dir) = std::fs::File::open(parent) {
             let _ = dir.sync_all();
         }
     }
-    // SECURITY FIX (Gemini Audit Chunk 01): mark dot-files as Hidden on Windows after rename
     #[cfg(target_os = "windows")]
     set_hidden_on_windows(path);
     Ok(())
 }
 
+/// Mark dot-prefixed files as Hidden on Windows.
+/// Uses absolute path to attrib.exe to prevent PATH manipulation.
 #[cfg(target_os = "windows")]
 pub(crate) fn set_hidden_on_windows(path: &std::path::Path) {
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
         if name.starts_with('.') {
-            let _ = std::process::Command::new("attrib")
+            // FIX: absolute path prevents PATH manipulation attack
+            let _ = std::process::Command::new(r"C:\Windows\System32\attrib.exe")
                 .arg("+H")
                 .arg(path)
                 .output();
@@ -58,18 +64,17 @@ pub(crate) fn secure_write(path: &std::path::Path, data: &[u8]) -> std::io::Resu
     Ok(())
 }
 
-/// SECURITY FIX (Gemini Audit Chunk 10): safe bounded read — anti-TOCTOU + anti-OOM.
+/// Safe bounded read — anti-TOCTOU + anti-OOM. Single metadata call.
 pub(crate) fn safe_bounded_read(path: &std::path::Path, max_bytes: u64) -> Result<Vec<u8>, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    if let Ok(meta) = file.metadata() {
-        if meta.len() > max_bytes {
-            return Err(format!(
-                "File troppo grande ({} bytes) — OOM limit superato",
-                meta.len()
-            ));
-        }
-    }
+    // FIX: single metadata call, reuse result
     let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    if file_len > max_bytes {
+        return Err(format!(
+            "File troppo grande ({} bytes) — OOM limit superato",
+            file_len
+        ));
+    }
     let mut buffer = Vec::with_capacity(file_len.min(max_bytes) as usize);
     file.take(max_bytes)
         .read_to_end(&mut buffer)
@@ -77,7 +82,7 @@ pub(crate) fn safe_bounded_read(path: &std::path::Path, max_bytes: u64) -> Resul
     Ok(buffer)
 }
 
-/// SECURITY FIX (Audit Chunk 12): safe timestamp — prevents panic on pre-1970 clocks.
+/// Safe timestamp — prevents panic on pre-1970 clocks.
 pub(crate) fn safe_now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

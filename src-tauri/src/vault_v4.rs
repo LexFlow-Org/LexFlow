@@ -4,13 +4,17 @@
 //
 //  Format: VAULT_V4_MAGIC + JSON { version:4, kdf, wrapped_dek, ... }
 //  KEK = Argon2id(password, salt, adaptive params)
-//  DEK = random 256-bit, wrapped with AES-256-GCM(KEK)
-//  Each record: AES-256-GCM(DEK, record_data)
-//  Index: AES-256-GCM(DEK, [{id, field, title, tags, updated_at}...])
+//  DEK = random 256-bit, wrapped with AES-256-GCM-SIV(KEK)
+//  Each record: AES-256-GCM-SIV(DEK, record_data) — nonce-misuse resistant
+//  Index: AES-256-GCM-SIV(DEK, [{id, field, title, tags, updated_at}...])
+//
+//  SECURITY: AES-GCM-SIV is nonce-misuse resistant. If a nonce is accidentally
+//  reused, only indistinguishability of identical plaintexts is lost — confidentiality
+//  of all data is preserved. With standard AES-GCM, nonce reuse is catastrophic.
 
-use aes_gcm::{
+use aes_gcm_siv::{
     aead::{Aead, KeyInit, Payload},
-    Aes256Gcm, Key, Nonce,
+    Aes256GcmSiv, Key, Nonce,
 };
 use argon2::{Algorithm, Argon2, Params, Version};
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
@@ -25,7 +29,7 @@ use zeroize::Zeroizing;
 pub(crate) const VAULT_V4_MAGIC: &[u8] = b"LEXFLOW_V4";
 const AES_KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
-const MAX_RECORD_VERSIONS: usize = 5;
+pub(crate) const MAX_RECORD_VERSIONS: usize = 5;
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -38,6 +42,13 @@ pub(crate) struct VaultV4 {
     pub dek_alg: String,
     pub header_mac: String,
     pub rotation: RotationMeta,
+    /// Recovery key: second DEK wrapper (optional, set via generate_recovery_key)
+    #[serde(default)]
+    pub wrapped_dek_recovery: Option<String>,
+    #[serde(default)]
+    pub recovery_iv: Option<String>,
+    #[serde(default)]
+    pub recovery_salt: Option<String>,
     pub index: EncryptedBlock,
     pub records: BTreeMap<String, RecordEntry>,
 }
@@ -189,8 +200,15 @@ pub(crate) fn derive_kek(password: &str, params: &KdfParams) -> Result<Zeroizing
     if params.m < 8192 {
         return Err(format!("KDF m_cost too low ({}), minimum 8192", params.m));
     }
-    if params.t < 2 {
-        return Err(format!("KDF t_cost too low ({}), minimum 2", params.t));
+    if params.t < 2 || params.t > 100 {
+        return Err(format!("KDF t_cost invalid ({}), must be 2-100", params.t));
+    }
+    if params.m > 524288 {
+        // 512MB ceiling — prevents memory bomb
+        return Err(format!(
+            "KDF m_cost too high ({}), maximum 524288",
+            params.m
+        ));
     }
     if params.p < 1 || params.p > 16 {
         return Err(format!("KDF p_cost invalid ({}), must be 1-16", params.p));
@@ -239,7 +257,7 @@ pub(crate) fn generate_dek() -> Zeroizing<Vec<u8>> {
 
 /// Wrap DEK with KEK using AES-256-GCM. Returns (wrapped_dek_base64, iv_base64).
 pub(crate) fn wrap_dek(kek: &[u8], dek: &[u8]) -> Result<(String, String), String> {
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(kek));
+    let cipher = Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(kek));
     let mut nonce_bytes = [0u8; NONCE_LEN];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut nonce_bytes);
     let ciphertext = cipher
@@ -269,7 +287,7 @@ pub(crate) fn unwrap_dek(
     if iv.len() != NONCE_LEN {
         return Err("DEK IV length mismatch".into());
     }
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(kek));
+    let cipher = Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(kek));
     let plaintext = cipher
         .decrypt(
             Nonce::from_slice(&iv),
@@ -335,7 +353,7 @@ pub(crate) fn encrypt_record(dek: &[u8], plaintext: &[u8]) -> Result<EncryptedBl
     let to_encrypt =
         zstd::encode_all(plaintext, 3).map_err(|e| format!("Compression failed: {}", e))?;
 
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(dek));
+    let cipher = Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(dek));
     let mut nonce_bytes = [0u8; NONCE_LEN];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut nonce_bytes);
     let ciphertext_with_tag = cipher
@@ -376,7 +394,7 @@ pub(crate) fn decrypt_record(dek: &[u8], block: &EncryptedBlock) -> Result<Vec<u
     // Reconstruct ciphertext+tag for AES-GCM
     let mut ct_with_tag = data;
     ct_with_tag.extend_from_slice(&tag);
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(dek));
+    let cipher = Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(dek));
     let decrypted = cipher
         .decrypt(
             Nonce::from_slice(&iv),
@@ -488,7 +506,8 @@ pub(crate) fn rotate_dek(vault: &mut VaultV4, kek: &[u8]) -> Result<Zeroizing<Ve
                 data: version.data.clone(),
                 compressed: version.compressed,
             };
-            let plaintext = decrypt_record(&old_dek, &block)?;
+            // FIX: wrap decrypted plaintext in Zeroizing to zero on drop
+            let plaintext = Zeroizing::new(decrypt_record(&old_dek, &block)?);
             let new_block = encrypt_record(&new_dek, &plaintext)?;
             version.iv = new_block.iv;
             version.tag = new_block.tag;
@@ -568,8 +587,11 @@ pub(crate) fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<
         kdf,
         wrapped_dek,
         dek_iv,
-        dek_alg: "aes-256-gcm".to_string(),
+        dek_alg: "aes-256-gcm-siv".to_string(),
         header_mac: String::new(),
+        wrapped_dek_recovery: None,
+        recovery_iv: None,
+        recovery_salt: None,
         rotation: RotationMeta {
             created: chrono::Utc::now().to_rfc3339(),
             interval_days: 90,
@@ -654,6 +676,11 @@ pub(crate) fn migrate_v2_to_v4(
                     .unwrap_or("")
                     .to_string();
                 if id.is_empty() {
+                    // FIX: log warning instead of silent skip
+                    eprintln!(
+                        "[LexFlow] WARNING: v2→v4 migration skipping {} record without id",
+                        field
+                    );
                     continue;
                 }
 
@@ -701,9 +728,11 @@ pub(crate) fn migrate_v2_to_v4(
     // 4. Encrypt index
     vault.index = encrypt_index(&dek, &index_entries)?;
 
-    // 5. Recompute header MAC (index changed)
-    let kek = derive_kek(password, &vault.kdf)?;
-    vault.header_mac = compute_header_mac(&kek, &vault);
+    // 5. Recompute header MAC (index changed) — reuse KEK via re-derivation
+    // NOTE: derive_kek is called again here because create_vault_v4 doesn't expose KEK.
+    // This is ~300ms extra but happens only once during v2→v4 migration.
+    let migration_kek = derive_kek(password, &vault.kdf)?;
+    vault.header_mac = compute_header_mac(&migration_kek, &vault);
 
     Ok((vault, dek))
 }
@@ -776,107 +805,117 @@ fn extract_record_tags(item: &serde_json::Value, field: &str) -> Vec<String> {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Tests
+//  Recovery Key
 // ═══════════════════════════════════════════════════════════
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Generate a human-readable recovery key and wrap the DEK with it.
+/// Returns the display string (e.g., "KBQW-E3TF-MZXG-K3DP") to show to user ONCE.
+pub(crate) fn generate_recovery_key(vault: &mut VaultV4, dek: &[u8]) -> Result<String, String> {
+    // Generate 16 random bytes for recovery key
+    let mut recovery_bytes = [0u8; 16];
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut recovery_bytes);
 
-    #[test]
-    fn test_dek_wrap_unwrap_roundtrip() {
-        let kek = Zeroizing::new(vec![0xAA; 32]);
-        let dek = generate_dek();
-        let (wrapped, iv) = wrap_dek(&kek, &dek).unwrap();
-        let recovered = unwrap_dek(&kek, &wrapped, &iv).unwrap();
-        assert_eq!(*dek, *recovered);
+    // Format as base32 groups: XXXX-XXXX-XXXX-XXXX
+    let encoded = base32_encode(&recovery_bytes);
+    let display = encoded
+        .as_bytes()
+        .chunks(4)
+        .map(|c| std::str::from_utf8(c).unwrap_or("????"))
+        .collect::<Vec<_>>()
+        .join("-");
+
+    // Derive recovery KEK from recovery bytes
+    let mut recovery_salt = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut recovery_salt);
+
+    let recovery_kek = derive_kek_raw(
+        &hex::encode(recovery_bytes), // use hex of bytes as "password"
+        &recovery_salt,
+        16384, // lower params for recovery (it's a 128-bit random key, not a password)
+        3,
+        1,
+    )?;
+
+    // Wrap DEK with recovery KEK
+    let (wrapped, iv) = wrap_dek(&recovery_kek, dek)?;
+
+    vault.wrapped_dek_recovery = Some(wrapped);
+    vault.recovery_iv = Some(iv);
+    vault.recovery_salt = Some(B64.encode(recovery_salt));
+
+    Ok(display)
+}
+
+/// Attempt to unlock vault using recovery key.
+pub(crate) fn open_vault_with_recovery(
+    recovery_display: &str,
+    data: &[u8],
+) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
+    let vault = deserialize_vault(data)?;
+    if vault.version != 4 {
+        return Err("Unsupported vault version".into());
     }
 
-    #[test]
-    fn test_record_encrypt_decrypt_roundtrip() {
-        let dek = generate_dek();
-        let plaintext = b"Hello, LexFlow v4!";
-        let block = encrypt_record(&dek, plaintext).unwrap();
-        let decrypted = decrypt_record(&dek, &block).unwrap();
-        assert_eq!(&decrypted, plaintext);
-    }
+    let wrapped = vault
+        .wrapped_dek_recovery
+        .as_ref()
+        .ok_or("No recovery key configured for this vault")?;
+    let iv = vault.recovery_iv.as_ref().ok_or("Missing recovery IV")?;
+    let salt_b64 = vault
+        .recovery_salt
+        .as_ref()
+        .ok_or("Missing recovery salt")?;
 
-    #[test]
-    fn test_index_encrypt_decrypt_roundtrip() {
-        let dek = generate_dek();
-        let entries = vec![IndexEntry {
-            id: "p_001".into(),
-            field: "practices".into(),
-            title: "Rossi vs Bianchi".into(),
-            tags: vec!["practices".into(), "status:active".into()],
-            updated_at: "2025-01-01T00:00:00Z".into(),
-        }];
-        let block = encrypt_index(&dek, &entries).unwrap();
-        let recovered = decrypt_index(&dek, &block).unwrap();
-        assert_eq!(recovered.len(), 1);
-        assert_eq!(recovered[0].title, "Rossi vs Bianchi");
-    }
+    // Decode recovery key from display format
+    let clean: String = recovery_display
+        .chars()
+        .filter(|c| *c != '-' && *c != ' ')
+        .collect();
+    let recovery_bytes = base32_decode(&clean).ok_or("Invalid recovery key format")?;
 
-    #[test]
-    fn test_header_mac_tamper_detection() {
-        let (vault, _dek) = create_vault_v4("TestPassword123!").unwrap();
-        let kek = derive_kek("TestPassword123!", &vault.kdf).unwrap();
-        // Valid MAC should verify
-        assert!(verify_header_mac(&kek, &vault).is_ok());
-        // Tamper with wrapped_dek
-        let mut tampered = vault.clone();
-        tampered.wrapped_dek = "TAMPERED".to_string();
-        assert!(verify_header_mac(&kek, &tampered).is_err());
-    }
+    let recovery_salt = B64.decode(salt_b64).map_err(|_| "Invalid recovery salt")?;
 
-    #[test]
-    fn test_record_versioning_cap() {
-        let dek = generate_dek();
-        let mut entry = RecordEntry {
-            versions: vec![],
-            current: 0,
-        };
-        // Write 7 versions — should cap at 5
-        for i in 1..=7 {
-            let data = format!("version {}", i);
-            append_record_version(&mut entry, &dek, data.as_bytes()).unwrap();
+    let recovery_kek = derive_kek_raw(&hex::encode(&recovery_bytes), &recovery_salt, 16384, 3, 1)?;
+
+    let dek = unwrap_dek(&recovery_kek, wrapped, iv)?;
+    Ok((vault, dek))
+}
+
+/// Simple base32 encode (RFC 4648, no padding)
+pub(crate) fn base32_encode(data: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut result = String::new();
+    let mut buffer: u64 = 0;
+    let mut bits = 0;
+    for &byte in data {
+        buffer = (buffer << 8) | byte as u64;
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            result.push(ALPHABET[((buffer >> bits) & 0x1F) as usize] as char);
         }
-        assert_eq!(entry.versions.len(), MAX_RECORD_VERSIONS);
-        assert_eq!(entry.current, 7);
-        // Oldest version should be v3 (v1 and v2 dropped)
-        assert_eq!(entry.versions[0].v, 3);
     }
+    if bits > 0 {
+        buffer <<= 5 - bits;
+        result.push(ALPHABET[(buffer & 0x1F) as usize] as char);
+    }
+    result
+}
 
-    #[test]
-    fn test_vault_serialize_deserialize_roundtrip() {
-        let (vault, _dek) = create_vault_v4("TestPassword123!").unwrap();
-        let serialized = serialize_vault(&vault).unwrap();
-        let deserialized = deserialize_vault(&serialized).unwrap();
-        assert_eq!(deserialized.version, 4);
-        assert_eq!(deserialized.kdf.alg, "argon2id");
+/// Simple base32 decode (RFC 4648)
+pub(crate) fn base32_decode(s: &str) -> Option<Vec<u8>> {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut result = Vec::new();
+    let mut buffer: u64 = 0;
+    let mut bits = 0;
+    for c in s.to_uppercase().chars() {
+        let val = ALPHABET.iter().position(|&b| b == c as u8)? as u64;
+        buffer = (buffer << 5) | val;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            result.push((buffer >> bits) as u8);
+        }
     }
-
-    #[test]
-    fn test_create_and_open_vault() {
-        let password = "MySecurePassword123!";
-        let (vault, dek1) = create_vault_v4(password).unwrap();
-        let serialized = serialize_vault(&vault).unwrap();
-        let (_vault2, dek2) = open_vault_v4(password, &serialized).unwrap();
-        assert_eq!(*dek1, *dek2);
-    }
-
-    #[test]
-    fn test_wrong_password_fails() {
-        let (vault, _dek) = create_vault_v4("CorrectPassword123!").unwrap();
-        let serialized = serialize_vault(&vault).unwrap();
-        let result = open_vault_v4("WrongPassword123!", &serialized);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_detect_vault_version() {
-        assert_eq!(detect_vault_version(b"LEXFLOW_V4{\"version\":4}"), 4);
-        assert_eq!(detect_vault_version(b"LEXFLOW_V2_SECURE\x00\x00"), 2);
-        assert_eq!(detect_vault_version(b"UNKNOWN"), 0);
-    }
+    Some(result)
 }

@@ -9,7 +9,25 @@ use std::time::Instant;
 use tauri::State;
 use zeroize::{Zeroize, Zeroizing};
 
+/// Wraps a cryptographic key with Zeroizing + mlock (prevents swap to disk).
+/// On drop: munlock + zeroize automatically.
 pub struct SecureKey(pub(crate) Zeroizing<Vec<u8>>);
+
+impl SecureKey {
+    pub(crate) fn new(key: Zeroizing<Vec<u8>>) -> Self {
+        // mlock the buffer to prevent it from being swapped to disk
+        crate::security::mlock_buffer(key.as_ptr(), key.len());
+        Self(key)
+    }
+}
+
+impl Drop for SecureKey {
+    fn drop(&mut self) {
+        // munlock before Zeroizing zeros the memory
+        crate::security::munlock_buffer(self.0.as_ptr(), self.0.len());
+        // Zeroizing handles the actual zeroing on its own Drop
+    }
+}
 
 pub struct AppState {
     pub data_dir: Mutex<PathBuf>,

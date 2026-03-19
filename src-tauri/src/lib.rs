@@ -15,11 +15,14 @@ mod license;
 mod lockout;
 mod notifications;
 mod platform;
+mod search;
+mod security;
 mod settings;
 mod setup;
 mod state;
 mod vault;
 mod vault_v4;
+mod vault_v4_tests;
 mod window;
 
 use state::AppState;
@@ -28,6 +31,9 @@ use std::fs;
 use tauri::Manager;
 
 pub fn run() {
+    // ── SECURITY: disable core dumps (prevents DEK/plaintext in crash dumps)
+    security::disable_core_dumps();
+
     // ── Panic Logger ────────────────────────────────────────────
     #[cfg(not(target_os = "android"))]
     {
@@ -165,6 +171,8 @@ pub fn run() {
             vault::change_password,
             vault::verify_vault_password,
             vault::get_vault_health,
+            vault::generate_recovery_key,
+            vault::unlock_with_recovery,
             audit::get_audit_log,
             // Data
             vault::load_practices,
@@ -175,6 +183,9 @@ pub fn run() {
             // Index-only reads (v4 perf)
             vault::get_vault_index,
             vault::load_record_detail,
+            // Search (trigram + BM25)
+            search::search_vault,
+            search::rebuild_search_index,
             // Conflict Check
             vault::check_conflict,
             // Time Tracking

@@ -19,6 +19,57 @@ use std::time::{Duration, Instant, SystemTime};
 use tauri::{AppHandle, Emitter, Manager};
 
 // ═══════════════════════════════════════════════════════════
+//  STARTUP CLEANUP
+// ═══════════════════════════════════════════════════════════
+
+/// Clean up orphan .tmp files left by crashed atomic writes.
+/// If foo.tmp exists but foo doesn't → rename as recovery.
+/// If both exist → delete .tmp (it's an incomplete write).
+pub(crate) fn cleanup_orphan_tmp_files(vault_dir: &std::path::Path) {
+    let entries = match fs::read_dir(vault_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.contains(".tmp.") {
+            continue;
+        }
+        let tmp_path = entry.path();
+        // Extract the original filename by removing .tmp.XXXXX suffix
+        // Format: .filename.tmp.12345 → filename
+        let original_name = name
+            .trim_start_matches('.')
+            .split(".tmp.")
+            .next()
+            .unwrap_or("");
+        if original_name.is_empty() {
+            continue;
+        }
+        let original_path = vault_dir.join(original_name);
+
+        if original_path.exists() {
+            // Original exists — .tmp is an incomplete write, safe to delete
+            eprintln!(
+                "[LexFlow] Cleanup: removing orphan tmp {:?} (original exists)",
+                name
+            );
+            let _ = fs::remove_file(&tmp_path);
+        } else {
+            // Original missing — .tmp might be the only copy, attempt recovery
+            eprintln!(
+                "[LexFlow] Cleanup: recovering orphan tmp {:?} → {:?}",
+                name, original_name
+            );
+            if fs::rename(&tmp_path, &original_path).is_err() {
+                eprintln!("[LexFlow] WARNING: failed to recover {:?}, deleting", name);
+                let _ = fs::remove_file(&tmp_path);
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
 //  APP RUNNER
 // ═══════════════════════════════════════════════════════════
 
@@ -655,6 +706,9 @@ pub(crate) fn setup_desktop(
     app: &mut tauri::App,
     data_dir_for_scheduler: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // SECURITY: cleanup orphan .tmp files from previous crashes
+    cleanup_orphan_tmp_files(data_dir_for_scheduler);
+
     crate::notifications::sync_notifications(app.handle(), data_dir_for_scheduler);
 
     // ── WebView cache invalidation on version change ────────────

@@ -50,12 +50,13 @@ pub(crate) fn lockout_load(data_dir: &std::path::Path) -> (u32, Option<SystemTim
     }
     let data_part = format!("{}:{}", parts[0], parts[1]);
     let stored_hmac = parts[2];
+    // FIX: reuse key instead of deriving twice
+    let verify_key = get_local_encryption_key();
     let hmac_valid = hex::decode(stored_hmac)
         .ok()
         .map(|stored_bytes| {
-            let key = get_local_encryption_key();
-            let mut verify_mac =
-                <Hmac<Sha256> as Mac>::new_from_slice(&key).expect("HMAC can take key of any size");
+            let mut verify_mac = <Hmac<Sha256> as Mac>::new_from_slice(&verify_key)
+                .expect("HMAC can take key of any size");
             verify_mac.update(b"LOCKOUT-INTEGRITY:");
             verify_mac.update(data_part.as_bytes());
             verify_mac.verify_slice(&stored_bytes).is_ok()
@@ -86,7 +87,13 @@ pub(crate) fn lockout_save(
     let data_part = format!("{}:{}", attempts, secs);
     let hmac = lockout_hmac(&data_part);
     let content = format!("{}:{}", data_part, hmac);
-    let _ = atomic_write_with_sync(&data_dir.join(LOCKOUT_FILE), content.as_bytes());
+    // FIX: log write error instead of silently ignoring
+    if let Err(e) = atomic_write_with_sync(&data_dir.join(LOCKOUT_FILE), content.as_bytes()) {
+        eprintln!(
+            "[SECURITY] WARNING: lockout file write failed: {}. In-memory lockout still active.",
+            e
+        );
+    }
 }
 
 pub(crate) fn lockout_clear(data_dir: &std::path::Path) {

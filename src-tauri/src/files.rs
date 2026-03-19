@@ -471,8 +471,8 @@ pub(crate) async fn generate_typst_pdf(
             }
             CommandEvent::Terminated(payload) => {
                 if payload.code != Some(0) {
-                    let _ = std::fs::remove_file(&file_typst);
-                    let _ = std::fs::remove_file(&file_pdf);
+                    let _ = crate::security::secure_delete_file(&file_typst);
+                    let _ = crate::security::secure_delete_file(&file_pdf);
                     return Err(format!(
                         "Typst compilation failed (exit {}): {}",
                         payload.code.unwrap_or(-1),
@@ -486,8 +486,8 @@ pub(crate) async fn generate_typst_pdf(
 
     let pdf_bytes =
         std::fs::read(&file_pdf).map_err(|e| format!("Cannot read generated PDF: {}", e))?;
-    let _ = std::fs::remove_file(&file_typst);
-    let _ = std::fs::remove_file(&file_pdf);
+    let _ = crate::security::secure_delete_file(&file_typst);
+    let _ = crate::security::secure_delete_file(&file_pdf);
 
     Ok(pdf_bytes)
 }

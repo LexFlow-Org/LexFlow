@@ -67,6 +67,10 @@ export const getVaultHealth = () => safeInvoke('get_vault_health');
 export const getVaultIndex = () => safeInvoke('get_vault_index');
 export const loadRecordDetail = (recordId) => safeInvoke('load_record_detail', { recordId });
 
+// Full-text search (v4 — trigram fuzzy + BM25 ranking)
+export const searchVault = (query, limit = 50) => safeInvoke('search_vault', { query, limit });
+export const rebuildSearchIndex = () => safeInvoke('rebuild_search_index');
+
 // Data
 export const loadPractices = () => safeInvoke('load_practices');
 export const savePractices = (list) => safeInvoke('save_practices', { list });
@@ -159,6 +163,22 @@ export const pingActivity = () => safeInvoke('ping_activity');
 export const setAutolockMinutes = (minutes) =>
   safeInvoke('set_autolock_minutes', { minutes });
 export const getAutolockMinutes = () => safeInvoke('get_autolock_minutes');
+
+// Recovery key
+export const generateRecoveryKey = () => safeInvoke('generate_recovery_key');
+export const unlockWithRecovery = (recoveryKey) => safeInvoke('unlock_with_recovery', { recoveryKey });
+
+// SECURITY: Clipboard with auto-clear after 30 seconds
+let clipboardTimer = null;
+export const secureCopy = (text) => {
+  navigator.clipboard.writeText(text).catch(() => {});
+  if (clipboardTimer) clearTimeout(clipboardTimer);
+  clipboardTimer = setTimeout(() => {
+    navigator.clipboard.writeText('').catch(() => {});
+    clipboardTimer = null;
+  }, 30000); // 30 seconds
+  return true;
+};
 
 // Listeners (return unsubscribe fn)
 export const onBlur = (cb) => {

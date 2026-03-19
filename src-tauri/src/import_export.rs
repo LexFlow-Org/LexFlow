@@ -165,7 +165,7 @@ pub(crate) async fn import_vault(
         atomic_write_with_sync(&dir.join(VAULT_FILE), &serialized)?;
 
         *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
-            Some(SecureKey(Zeroizing::new(dek.to_vec())));
+            Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
         *state
             .vault_version
             .lock()

@@ -100,7 +100,7 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
 
     match auth_result {
         Ok(k) => {
-            *(state.vault_key.lock().unwrap_or_else(|e| e.into_inner())) = Some(SecureKey(k));
+            *(state.vault_key.lock().unwrap_or_else(|e| e.into_inner())) = Some(SecureKey::new(k));
             clear_lockout(state, &sec_dir);
             *(state
                 .last_activity

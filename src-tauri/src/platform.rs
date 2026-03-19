@@ -60,16 +60,24 @@ pub(crate) fn init_machine_id() -> Result<String, String> {
         )
     })?;
     let id_path = security_dir.join(MACHINE_ID_FILE);
+    // FIX: bounded read — machine-id should be exactly 64 hex chars
     if let Ok(existing) = fs::read_to_string(&id_path) {
         let trimmed = existing.trim().to_string();
-        if !trimmed.is_empty() {
+        if !trimmed.is_empty() && trimmed.len() <= 128 {
             return Ok(trimmed);
         }
     }
     let mut id_bytes = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut id_bytes);
     let machine_id = hex::encode(id_bytes);
-    let _ = secure_write(&id_path, machine_id.as_bytes());
+    // FIX: propagate write error — if this fails, local encrypted files won't survive restart
+    secure_write(&id_path, machine_id.as_bytes()).map_err(|e| {
+        format!(
+            "CRITICAL: impossibile salvare machine-id su {:?}: {}. \
+            Tutti i file cifrati locali saranno inaccessibili al prossimo avvio.",
+            id_path, e
+        )
+    })?;
     Ok(machine_id)
 }
 
@@ -196,7 +204,10 @@ pub(crate) static ANDROID_DEVICE_ID_CACHE: std::sync::OnceLock<String> = std::sy
 
 #[cfg(target_os = "android")]
 pub(crate) fn init_android_device_id() -> Result<String, String> {
+    // FIX: env var override restricted to debug builds only
+    #[cfg(debug_assertions)]
     if let Ok(id) = std::env::var("LEXFLOW_DEVICE_ID") {
+        eprintln!("[LexFlow] DEBUG: using LEXFLOW_DEVICE_ID env override");
         return Ok(id);
     }
     let candidate_dirs = [
@@ -225,7 +236,9 @@ pub(crate) fn init_android_device_id() -> Result<String, String> {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Impossibile creare la directory per device_id: {}", e))?;
     }
-    fs::write(&id_path, &id_hex).map_err(|e| format!("Impossibile salvare device_id: {}", e))?;
+    // FIX: use secure_write with 0o600 permissions instead of bare fs::write
+    crate::io::secure_write(&id_path, id_hex.as_bytes())
+        .map_err(|e| format!("Impossibile salvare device_id: {}", e))?;
     Ok(id_hex)
 }
 

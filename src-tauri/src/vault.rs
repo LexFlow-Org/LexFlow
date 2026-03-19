@@ -51,7 +51,9 @@ pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, Stri
         if !path.exists() {
             return Ok(json!({"practices":[], "agenda":[]}));
         }
-        let decrypted = decrypt_data(&key, &fs::read(path).map_err(|e| e.to_string())?)?;
+        // FIX: bounded read (500MB cap) instead of unbounded fs::read
+        let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
+        let decrypted = decrypt_data(&key, &raw)?;
         serde_json::from_slice(&decrypted).map_err(|e| e.to_string())?
     };
 
@@ -73,25 +75,33 @@ fn read_vault_v4(state: &State<AppState>) -> Result<Value, String> {
     if !path.exists() {
         return Ok(json!({"practices":[], "agenda":[]}));
     }
-    let raw = fs::read(&path).map_err(|e| e.to_string())?;
+    // FIX: bounded read (500MB cap)
+    let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
     let vault = vault_v4::deserialize_vault(&raw)?;
 
-    // Decrypt index to know which records exist
     let index = vault_v4::decrypt_index(&dek, &vault.index)?;
 
-    // Group records by field
     let mut result =
         json!({"practices":[], "agenda":[], "contacts":[], "timeLogs":[], "invoices":[]});
     for idx_entry in &index {
         if let Some(record_entry) = vault.records.get(&idx_entry.id) {
             match vault_v4::read_current_version(record_entry, &dek) {
                 Ok(plaintext) => {
-                    if let Ok(val) = serde_json::from_slice::<Value>(&plaintext) {
-                        if let Some(arr) = result
-                            .get_mut(&idx_entry.field)
-                            .and_then(|v| v.as_array_mut())
-                        {
-                            arr.push(val);
+                    match serde_json::from_slice::<Value>(&plaintext) {
+                        Ok(val) => {
+                            if let Some(arr) = result
+                                .get_mut(&idx_entry.field)
+                                .and_then(|v| v.as_array_mut())
+                            {
+                                arr.push(val);
+                            }
+                        }
+                        Err(e) => {
+                            // FIX: log malformed JSON instead of silent skip
+                            eprintln!(
+                                "[LexFlow] WARNING: record {} has malformed JSON: {}. Skipping.",
+                                idx_entry.id, e
+                            );
                         }
                     }
                 }
@@ -287,7 +297,7 @@ fn init_new_vault(
     let tag = make_verify_tag(&k);
     secure_write(&dir.join(VAULT_VERIFY_FILE), &tag)
         .map_err(|e| json!({"success": false, "error": format!("Errore init vault: {}", e)}))?;
-    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(k));
+    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey::new(k));
     let _ = write_vault_internal(state, &json!({"practices":[], "agenda":[]}));
     Ok(())
 }
@@ -316,7 +326,7 @@ fn init_new_vault_v4(
 
     // Store DEK in state
     *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
-        Some(SecureKey(Zeroizing::new(dek.to_vec())));
+        Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
     *state
         .vault_version
         .lock()
@@ -539,7 +549,7 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
                     }
 
                     *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
-                        Some(SecureKey(Zeroizing::new(dek.to_vec())));
+                        Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
                     *state
                         .vault_version
                         .lock()
@@ -637,7 +647,7 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
                     );
 
                     *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
-                        Some(SecureKey(Zeroizing::new(dek.to_vec())));
+                        Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
                     *state
                         .vault_version
                         .lock()
@@ -666,7 +676,8 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
             }
 
             // v2 fallback unlock (migration failed or not attempted)
-            *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey(v2_key));
+            *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(SecureKey::new(v2_key));
             *state
                 .vault_version
                 .lock()
@@ -860,7 +871,7 @@ pub(crate) fn change_password(
     reencrypt_audit_log(&dir, &current_key, &new_key);
 
     *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) =
-        Some(SecureKey(Zeroizing::new(new_key.to_vec())));
+        Some(SecureKey::new(Zeroizing::new(new_key.to_vec())));
 
     update_bio_password_if_needed(&state, &new_password);
 
@@ -1275,6 +1286,74 @@ pub(crate) fn check_conflict(state: State<AppState>, name: String) -> Result<Val
         .collect();
 
     Ok(json!({"practiceMatches": results, "contactMatches": contact_matches}))
+}
+
+// ─── Recovery Key (v4) ──────────────────────────────────────
+
+/// Generate a recovery key for the vault. Returns the display string to show ONCE.
+#[tauri::command]
+pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, String> {
+    let version = get_vault_version(&state);
+    if version != 4 {
+        return Err("Recovery key requires vault v4".into());
+    }
+    let dek = get_vault_dek(&state)?;
+    let dir = state
+        .data_dir
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let path = dir.join(VAULT_FILE);
+    let raw = fs::read(&path).map_err(|e| e.to_string())?;
+    let mut vault = vault_v4::deserialize_vault(&raw)?;
+
+    let display_key = vault_v4::generate_recovery_key(&mut vault, &dek)?;
+
+    // Recovery fields are NOT in header MAC scope — they're optional add-ons
+    // protected by their own AES-GCM-SIV authentication (wrap_dek).
+    let serialized = vault_v4::serialize_vault(&vault)?;
+    crate::io::atomic_write_with_sync(&path, &serialized)?;
+    invalidate_vault_cache(&state);
+
+    Ok(json!({"recoveryKey": display_key}))
+}
+
+/// Unlock vault using recovery key (when password is forgotten).
+#[tauri::command]
+pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String) -> Value {
+    let dir = state
+        .data_dir
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let vault_path = dir.join(VAULT_FILE);
+
+    if !vault_path.exists() {
+        return json!({"success": false, "error": "Nessun vault trovato"});
+    }
+
+    let raw = match fs::read(&vault_path) {
+        Ok(r) => r,
+        Err(e) => return json!({"success": false, "error": format!("Errore lettura: {}", e)}),
+    };
+
+    match vault_v4::open_vault_with_recovery(&recovery_key, &raw) {
+        Ok((_vault, dek)) => {
+            *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
+            *state
+                .vault_version
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = 4;
+            *state
+                .last_activity
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Instant::now();
+            let _ = append_audit_log(&state, "Sblocco Vault via recovery key");
+            json!({"success": true})
+        }
+        Err(e) => json!({"success": false, "error": e}),
+    }
 }
 
 // ─── Vault Health (v4) ──────────────────────────────────────
