@@ -842,11 +842,11 @@ pub(crate) fn setup_desktop(
     let ah = app.handle().clone();
     std::thread::spawn(move || autolock_loop(ah));
 
-    // Windows: disable native decorations (we use custom WindowControls).
-    // Config keeps decorations:true for macOS overlay titlebar compatibility.
-    #[cfg(target_os = "windows")]
+    // macOS: apply overlay titlebar for seamless look (traffic lights stay visible)
+    #[cfg(target_os = "macos")]
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.set_decorations(false);
+        use tauri::TitleBarStyle;
+        let _ = w.set_title_bar_style(TitleBarStyle::Overlay);
     }
 
     // Show main window

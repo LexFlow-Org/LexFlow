@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "LexFlow",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "identifier": "com.pietrolongo.lexflow",
   "build": {
     "frontendDist": "../client/dist",
@@ -24,8 +24,6 @@
         "minWidth": 1100,
         "minHeight": 700,
         "decorations": true,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
         "resizable": true,
         "fullscreen": false,
         "transparent": false,
