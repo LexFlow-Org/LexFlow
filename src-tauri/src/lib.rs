@@ -30,6 +30,11 @@ use std::fs;
 #[allow(unused_imports)] // needed for get_webview_window in run() event handler
 use tauri::Manager;
 
+#[cfg(mobile)]
+mod mobile {
+    tauri::mobile_entry_point!(super::run);
+}
+
 pub fn run() {
     // ── SECURITY: disable core dumps (prevents DEK/plaintext in crash dumps)
     security::disable_core_dumps();

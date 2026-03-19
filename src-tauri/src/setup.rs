@@ -25,6 +25,7 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Clean up orphan .tmp files left by crashed atomic writes.
 /// If foo.tmp exists but foo doesn't → rename as recovery.
 /// If both exist → delete .tmp (it's an incomplete write).
+#[allow(dead_code)] // Called from setup_desktop; unused on Android
 pub(crate) fn cleanup_orphan_tmp_files(vault_dir: &std::path::Path) {
     let entries = match fs::read_dir(vault_dir) {
         Ok(e) => e,
