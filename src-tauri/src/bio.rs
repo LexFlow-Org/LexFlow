@@ -3,8 +3,11 @@
 // ═══════════════════════════════════════════════════════════
 
 use crate::state::{zeroize_password, AppState};
-use serde_json::{json, Value};
+use serde_json::Value;
 use tauri::State;
+
+#[cfg(not(target_os = "android"))]
+use serde_json::json;
 
 // Desktop-only imports (bio_unlock_vault, save_bio, clear_bio, bio_login)
 #[cfg(not(target_os = "android"))]
