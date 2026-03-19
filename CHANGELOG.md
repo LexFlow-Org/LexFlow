@@ -492,3 +492,4 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 - Script npm standardizzati
 - .gitignore aggiornato
 
+# v2.0.2
