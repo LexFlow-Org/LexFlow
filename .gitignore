@@ -67,3 +67,5 @@ __pycache__/
 scripts/.lexflow-registry-*.bak.enc
 agents/
 scripts/.lexflow-issued-keys 2.enc
+lexflow-crypto/target/
+lexflow-crypto/target/
