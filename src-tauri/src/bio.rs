@@ -23,7 +23,7 @@ use crate::vault::authenticate_vault_password;
 use std::fs;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::time::Duration;
-#[cfg(not(target_os = "android"))]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::time::Instant;
 
 #[tauri::command]
@@ -123,6 +123,7 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
 
 #[tauri::command]
 pub(crate) fn bio_login(_state: State<AppState>) -> Result<Value, String> {
+    #[cfg(not(target_os = "android"))]
     {
         let sec_dir = _state
             .security_dir

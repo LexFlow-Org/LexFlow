@@ -143,7 +143,7 @@ pub(crate) fn benchmark_argon2_params() -> KdfParams {
         for p in 1..=max_p {
             // Quick single probe first
             let start = std::time::Instant::now();
-            let _ = derive_kek_raw(&"x", &test_salt, m, 3, p);
+            let _ = derive_kek_raw("x", &test_salt, m, 3, p);
             let probe_ms = start.elapsed().as_millis();
 
             // Skip if way too slow (> 2x target) — higher m/p will be worse
@@ -156,7 +156,7 @@ pub(crate) fn benchmark_argon2_params() -> KdfParams {
                 let mut durations = vec![probe_ms];
                 for _ in 0..2 {
                     let start = std::time::Instant::now();
-                    let _ = derive_kek_raw(&"x", &test_salt, m, 3, p);
+                    let _ = derive_kek_raw("x", &test_salt, m, 3, p);
                     durations.push(start.elapsed().as_millis());
                 }
                 durations.sort();
