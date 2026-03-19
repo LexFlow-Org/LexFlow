@@ -268,7 +268,10 @@
     color-scheme: light;
   }
 
-  /* ── Body Reset ── */
+  /* ── HTML/Body Reset ── */
+  html {
+    background: var(--bg);
+  }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'Inter', sans-serif;
     background: var(--bg);

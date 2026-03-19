@@ -163,7 +163,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
       <div className="h-20 flex items-center px-8 mb-6">
         <div className="flex items-center gap-4">
           <div className="relative">
-            <img src={logo} alt="LexFlow" className="w-10 h-10 object-contain relative z-10" />
+            <img src={logo} alt="LexFlow" className="w-14 h-14 object-contain relative z-10" />
           </div>
           <div className="flex flex-col">
             <span className="text-2xl font-black tracking-tighter text-text leading-none">LexFlow</span>
@@ -347,7 +347,7 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
                 className="flex flex-col items-center mb-5"
               >
                 <div className="relative mb-2.5">
-                  <img src={logo} alt="LexFlow" className="w-12 h-12 object-contain relative z-[1]" />
+                  <img src={logo} alt="LexFlow" className="w-16 h-16 object-contain relative z-[1]" />
                 </div>
                 <h2 className="curtain-brand-title">LexFlow</h2>
                 <p className="curtain-brand-sub">Law Suite</p>
