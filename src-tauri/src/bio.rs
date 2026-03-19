@@ -23,7 +23,7 @@ use crate::vault::authenticate_vault_password;
 use std::fs;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::time::Duration;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(not(target_os = "android"))]
 use std::time::Instant;
 
 #[tauri::command]
