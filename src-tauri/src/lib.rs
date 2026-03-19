@@ -31,8 +31,9 @@ use std::fs;
 use tauri::Manager;
 
 #[cfg(mobile)]
-mod mobile {
-    tauri::mobile_entry_point!(super::run);
+#[tauri::mobile_entry_point]
+pub fn mobile_entry() {
+    run();
 }
 
 pub fn run() {
