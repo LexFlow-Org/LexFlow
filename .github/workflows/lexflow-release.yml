@@ -579,7 +579,6 @@ jobs:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           npx tauri android init
-          python3 scripts/generate-icons.py
           # Copy custom Android icons + adaptive icon XML into the generated project.
           # tauri android init only copies PNGs from icons/android/mipmap-*/,
           # but adaptive icons also need XML in mipmap-anydpi-v26/ and values/.
