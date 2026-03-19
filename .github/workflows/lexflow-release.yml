@@ -580,14 +580,20 @@ jobs:
         run: |
           npx tauri android init
           # Copy custom Android icons + adaptive icon XML into the generated project.
-          # tauri android init only copies PNGs from icons/android/mipmap-*/,
-          # but adaptive icons also need XML in mipmap-anydpi-v26/ and values/.
           ANDROID_RES="src-tauri/gen/android/app/src/main/res"
-          for dir in src-tauri/icons/android/mipmap-* src-tauri/icons/android/values; do
-            folder_name=$(basename "$dir")
-            mkdir -p "$ANDROID_RES/$folder_name"
-            cp -f "$dir"/* "$ANDROID_RES/$folder_name/" 2>/dev/null || true
-            echo "Copied $folder_name → $ANDROID_RES/$folder_name/"
+          for dir in src-tauri/icons/android/mipmap-mdpi \
+                     src-tauri/icons/android/mipmap-hdpi \
+                     src-tauri/icons/android/mipmap-xhdpi \
+                     src-tauri/icons/android/mipmap-xxhdpi \
+                     src-tauri/icons/android/mipmap-xxxhdpi \
+                     src-tauri/icons/android/mipmap-anydpi-v26 \
+                     src-tauri/icons/android/values; do
+            if [ -d "$dir" ]; then
+              folder_name=$(basename "$dir")
+              mkdir -p "$ANDROID_RES/$folder_name"
+              cp -f "$dir"/* "$ANDROID_RES/$folder_name/" 2>/dev/null || true
+              echo "Copied $folder_name"
+            fi
           done
           npx tauri android build --config src-tauri/tauri.android.conf.json
 
