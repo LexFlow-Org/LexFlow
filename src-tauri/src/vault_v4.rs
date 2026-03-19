@@ -301,7 +301,9 @@ pub(crate) fn unwrap_dek(
 }
 
 /// Compute HMAC-SHA256(KEK, canonical_header) for tamper detection.
-/// The canonical header is a deterministic JSON of version+kdf+wrapped_dek+dek_iv+dek_alg+rotation.
+/// The canonical header covers immutable security fields only.
+/// NOTE: `rotation` is excluded because `rotation.writes` changes on every save
+/// and the KEK is not available at write-time (only DEK is stored after unlock).
 pub(crate) fn compute_header_mac(kek: &[u8], vault: &VaultV4) -> String {
     let canonical = serde_json::json!({
         "version": vault.version,
@@ -309,7 +311,6 @@ pub(crate) fn compute_header_mac(kek: &[u8], vault: &VaultV4) -> String {
         "wrapped_dek": vault.wrapped_dek,
         "dek_iv": vault.dek_iv,
         "dek_alg": vault.dek_alg,
-        "rotation": vault.rotation,
     });
     // BTreeMap in serde_json ensures deterministic key ordering
     let canonical_bytes =
@@ -331,7 +332,6 @@ pub(crate) fn verify_header_mac(kek: &[u8], vault: &VaultV4) -> Result<(), Strin
         "wrapped_dek": vault.wrapped_dek,
         "dek_iv": vault.dek_iv,
         "dek_alg": vault.dek_alg,
-        "rotation": vault.rotation,
     });
     let mut mac =
         <Hmac<Sha256> as Mac>::new_from_slice(kek).expect("HMAC can take key of any size");
