@@ -770,7 +770,7 @@ mod tests {
 
     #[test]
     fn test_license_verification_full_cycle() {
-        let valid_token = "LXFW.eyJjIjoicGlldHJvX3Rlc3QiLCJlIjoxODAzOTE4MTIxMzczLCJpZCI6IjQzMWQxYzU5LThjZWQtNDNiMy04MTRmLTk4YjhlYzUyNzJmZiJ9.CjPgp0RCKAHd7fNY3dFrYKS7dGuktI0SyLrk_E6Te70J1K2HJpI9u1O2epkUcNsWFgggAvOd8yCqLVFqrCvtDg";
+        let valid_token = "LXFW.eyJjIjoicGlldHJvX3Rlc3QiLCJlIjoxODAzOTE4MTIxMzczLCJpZCI6IjQzMWQxYzU5LThjZWQtNDNiMy04MTRmLTk4YjhlYzUyNzJmZiJ9.d1q--j--MD269-SrzBPPo7noSn2abQMG1C9iWlLOM1dorE-UJXQxVLUXFg5VTEt8e_0FcheOuMlLkrX3OY9_AA";
 
         let token_expiry_ms: u64 = 1_803_918_121_373;
         let now_ms = safe_now_ms();
