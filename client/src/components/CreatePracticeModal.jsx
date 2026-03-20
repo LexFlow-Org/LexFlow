@@ -13,6 +13,7 @@ const MATERIA_CSS = {
   lavoro: 'materia-lavoro',
   amm: 'materia-amm',
   stra: 'materia-stra',
+  soc: 'materia-soc',
 };
 
 export default function CreatePracticeModal({ onClose, onSave }) {
@@ -138,7 +139,8 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                 { id: 'penale', label: 'Penale' },
                 { id: 'lavoro', label: 'Lavoro' },
                 { id: 'amm', label: 'Amministrativo' },
-                { id: 'stra', label: 'Stragiudiziale' }
+                { id: 'stra', label: 'Stragiudiziale' },
+                { id: 'soc', label: 'Societario' }
               ].map((m) => (
                 <button
                   key={m.id}

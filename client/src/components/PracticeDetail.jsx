@@ -943,7 +943,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 <div>
                   <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Materia</span>
                   <span className="text-text font-medium capitalize">{
-                    {civile:'Civile', penale:'Penale', lavoro:'Lavoro', amm:'Amministrativo', stra:'Stragiudiziale'}[practice.type] || practice.type
+                    {civile:'Civile', penale:'Penale', lavoro:'Lavoro', amm:'Amministrativo', stra:'Stragiudiziale', soc:'Societario'}[practice.type] || practice.type
                   }</span>
                 </div>
                 <div>

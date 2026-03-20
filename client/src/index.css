@@ -64,6 +64,7 @@
   --color-materia-lavoro: var(--materia-lavoro);
   --color-materia-amm: var(--materia-amm);
   --color-materia-stra: var(--materia-stra);
+  --color-materia-soc: var(--materia-soc);
   --color-contact-judge: var(--contact-judge);
   --color-contact-consultant: var(--contact-consultant);
 
@@ -139,6 +140,7 @@
     --materia-lavoro:    #fb923c;
     --materia-amm:       #34d399;
     --materia-stra:      #fbbf24;
+    --materia-soc:       #a78bfa;
 
     /* Contatti (tipo contatto) */
     --contact-judge:      #a78bfc;
@@ -231,6 +233,7 @@
     --materia-lavoro:    #fb923c;
     --materia-amm:       #34d399;
     --materia-stra:      #fbbf24;
+    --materia-soc:       #a78bfa;
 
     /* Contatti — IDENTICI al dark */
     --contact-judge:      #a78bfc;
@@ -845,6 +848,7 @@
   .materia-lavoro   { background: color-mix(in srgb, var(--materia-lavoro) 10%, transparent); color: var(--materia-lavoro); border-color: color-mix(in srgb, var(--materia-lavoro) 50%, transparent); box-shadow: 0 0 15px color-mix(in srgb, var(--materia-lavoro) 15%, transparent); }
   .materia-amm      { background: color-mix(in srgb, var(--materia-amm) 10%, transparent);    color: var(--materia-amm);    border-color: color-mix(in srgb, var(--materia-amm) 50%, transparent);    box-shadow: 0 0 15px color-mix(in srgb, var(--materia-amm) 15%, transparent); }
   .materia-stra     { background: color-mix(in srgb, var(--materia-stra) 10%, transparent);   color: var(--materia-stra);   border-color: color-mix(in srgb, var(--materia-stra) 50%, transparent);   box-shadow: 0 0 15px color-mix(in srgb, var(--materia-stra) 15%, transparent); }
+  .materia-soc      { background: color-mix(in srgb, var(--materia-soc) 10%, transparent);    color: var(--materia-soc);    border-color: color-mix(in srgb, var(--materia-soc) 50%, transparent);    box-shadow: 0 0 15px color-mix(in srgb, var(--materia-soc) 15%, transparent); }
 
   /* ═══ TOAST ICON COLORS ═══ */
   .toast-icon-success { color: var(--success); flex-shrink: 0; }

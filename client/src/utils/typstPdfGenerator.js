@@ -12,6 +12,8 @@ const TYPE_LABELS = {
   penale: 'Penale',
   amm: 'Amministrativo',
   stra: 'Stragiudiziale',
+  lavoro: 'Lavoro',
+  soc: 'Societario',
 };
 
 const STATUS_LABELS = {
@@ -24,6 +26,8 @@ const FIELD_LABELS = {
   penale:  { counterparty: 'Parte Offesa',    court: 'Tribunale',   code: 'N. R.G.N.R.' },
   amm:     { counterparty: 'Amministrazione', court: 'TAR / CdS',  code: 'N. Ricorso' },
   stra:    { counterparty: 'Controparte',     court: 'Sede',        code: 'Rif. Pratica' },
+  lavoro:  { counterparty: 'Controparte',     court: 'Tribunale',   code: 'N. R.G.' },
+  soc:     { counterparty: 'Controparte',     court: 'Camera Comm.', code: 'N. REA / P.IVA' },
 };
 
 /** Safe date formatter — returns fallback on invalid dates */

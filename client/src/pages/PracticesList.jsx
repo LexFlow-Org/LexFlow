@@ -18,6 +18,7 @@ const SUBJECT_STYLES = {
   lavoro: { color: 'text-materia-lavoro', bg: 'bg-materia-lavoro/10', border: 'border-materia-lavoro/20', label: 'Lavoro', stripe: 'bg-materia-lavoro', dot: 'bg-materia-lavoro' },
   amm: { color: 'text-materia-amm', bg: 'bg-materia-amm/10', border: 'border-materia-amm/20', label: 'Amministrativo', stripe: 'bg-materia-amm', dot: 'bg-materia-amm' },
   stra: { color: 'text-materia-stra', bg: 'bg-materia-stra/10', border: 'border-materia-stra/20', label: 'Stragiudiziale', stripe: 'bg-materia-stra', dot: 'bg-materia-stra' },
+  soc: { color: 'text-materia-soc', bg: 'bg-materia-soc/10', border: 'border-materia-soc/20', label: 'Societario', stripe: 'bg-materia-soc', dot: 'bg-materia-soc' },
   default: { color: 'text-text-dim', bg: 'bg-surface', border: 'border-border', label: 'Altro', stripe: 'bg-text-dim', dot: 'bg-text-dim' }
 };
 
@@ -95,6 +96,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
     { id: 'lavoro', label: 'Lavoro' },
     { id: 'amm', label: 'Amministrativo' },
     { id: 'stra', label: 'Stragiudiziale' },
+    { id: 'soc', label: 'Societario' },
   ];
 
   const stats = useMemo(() => ({
