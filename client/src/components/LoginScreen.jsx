@@ -180,8 +180,8 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
 
   // ─── Auto-trigger biometria quando l'utente torna sulla finestra (autolock) ──
   useEffect(() => {
-    // Solo se: autoLocked + biometria disponibile e salvata + pochi tentativi falliti
-    if (!autoLocked || !bioAvailable || !bioSaved || bioFailed >= MAX_BIO_ATTEMPTS) return;
+    // Solo se: biometria disponibile e salvata + pochi tentativi falliti
+    if (!bioAvailable || !bioSaved || bioFailed >= MAX_BIO_ATTEMPTS) return;
     if (isNew) return;
 
     const triggerBio = () => {

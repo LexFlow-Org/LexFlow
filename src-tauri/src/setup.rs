@@ -879,6 +879,8 @@ pub(crate) fn setup_window_events(app: &tauri::App) {
                 if w_clone.is_fullscreen().unwrap_or(false) {
                     let _ = w_clone.set_fullscreen(false);
                 }
+                // Trigger autolock before hiding — vault locks when user closes window
+                let _ = w_clone.emit("lf-lock", ());
                 let _ = w_clone.hide();
             }
             _ => {}

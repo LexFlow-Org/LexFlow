@@ -200,7 +200,7 @@ export default function App() {
 
   const handleManualLock = async () => {
     if (api.lockVault) await api.lockVault();
-    handleLockLocal(false); // lock manuale: bio auto-trigger abilitato
+    handleLockLocal(true); // lock manuale: auto-trigger biometria al re-unlock
   };
 
   // --- 4. LOGICA DATI & SINCRONIZZAZIONE ---
