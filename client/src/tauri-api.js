@@ -75,6 +75,10 @@ export const rebuildSearchIndex = () => safeInvoke('rebuild_search_index');
 // Audit log
 export const getAuditLog = () => safeInvoke('get_audit_log');
 
+// Backup
+export const triggerBackup = () => safeInvoke('trigger_backup');
+export const getBackupList = () => safeInvoke('get_backup_list');
+
 // CSV Export
 export const exportTimeLogsCsv = () => safeInvoke('export_time_logs_csv');
 export const exportInvoicesCsv = () => safeInvoke('export_invoices_csv');

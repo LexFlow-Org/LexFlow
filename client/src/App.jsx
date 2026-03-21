@@ -30,6 +30,8 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
+const ReportPage = lazy(() => import('./pages/ReportPage'));
+const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 
 // PERF: preload all lazy pages after initial render to eliminate navigation delay.
 // Chunks download in background so page switches are instant.
@@ -574,6 +576,8 @@ export default function App() {
                 <ContactsPage practices={practices} onSelectPractice={handleSelectPractice} />
               } />
               <Route path="/audit" element={<AuditLogPage />} />
+              <Route path="/report" element={<ReportPage />} />
+              <Route path="/attivita" element={<ActivityPage />} />
             </Routes>
             </Suspense>
           </div>

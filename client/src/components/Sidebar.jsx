@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Briefcase, CalendarClock,
   CalendarDays, Settings, Lock, ShieldCheck, X, Menu,
-  Clock, Users, Sun, Moon, Shield, Search
+  Clock, Users, Sun, Moon, Shield, Search, BarChart3, Activity
 } from 'lucide-react';
 import logo from '../assets/logo.svg';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -50,6 +50,8 @@ const sections = [
     title: 'Amministrazione',
     items: [
       { path: '/ore',       label: 'Gestione Ore', icon: Clock },
+      { path: '/report',    label: 'Report', icon: BarChart3 },
+      { path: '/attivita',  label: 'Attività', icon: Activity },
     ],
   },
   {

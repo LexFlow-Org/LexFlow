@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════
 
 mod audit;
+mod backup;
 mod bio;
 mod constants;
 mod crypto;
@@ -213,6 +214,9 @@ pub fn run() {
             // CSV Export
             csv_export::export_time_logs_csv,
             csv_export::export_invoices_csv,
+            // Backup
+            backup::trigger_backup,
+            backup::get_backup_list,
             vault::save_invoices,
             // Contacts
             vault::load_contacts,

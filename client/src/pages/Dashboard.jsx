@@ -291,6 +291,36 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
           </div>
         </button>
       </div>
+
+      {/* ═══ FASCICOLI MODIFICATI DI RECENTE ═══ */}
+      {practices && practices.length > 0 && (
+        <div className="glass-card p-5">
+          <h3 className="text-[10px] font-black uppercase tracking-[2px] text-text-muted mb-3">Fascicoli Recenti</h3>
+          <div className="space-y-2">
+            {practices
+              .filter(p => p.status === 'active')
+              .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+              .slice(0, 5)
+              .map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => onSelectPractice?.(p.id)}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-left group"
+                >
+                  <div className={`w-2 h-2 rounded-full ${catDotClass(p.type)}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[var(--text)] truncate font-medium">{p.client || 'Senza cliente'}</p>
+                    <p className="text-xs text-[var(--text-dim)] truncate">{p.object || ''}</p>
+                  </div>
+                  <span className="text-[9px] text-[var(--text-dim)] font-mono shrink-0">
+                    {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) : ''}
+                  </span>
+                </button>
+              ))
+            }
+          </div>
+        </div>
+      )}
     </div>
   );
 }
