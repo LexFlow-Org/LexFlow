@@ -41,12 +41,12 @@ const PracticeRow = memo(function PracticeRow({ practice: p, onSelect }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-1 min-w-0">
           <div className="space-y-1 overflow-hidden">
-            <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Cliente</div>
+            <div className="text-3xs font-black text-text-dim uppercase tracking-widest opacity-50">Cliente</div>
             <div className="text-lg tracking-tight font-bold text-text truncate">{p?.client || 'N/D'}</div>
           </div>
 
           <div className="space-y-1 overflow-hidden">
-            <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Materia</div>
+            <div className="text-3xs font-black text-text-dim uppercase tracking-widest opacity-50">Materia</div>
             <div className="flex items-center gap-2">
               <div className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
               <div className={`text-xs font-bold uppercase tracking-wider ${style.color}`}>{style.label}</div>
@@ -54,12 +54,12 @@ const PracticeRow = memo(function PracticeRow({ practice: p, onSelect }) {
           </div>
 
           <div className="space-y-1 overflow-hidden">
-            <div className="text-[9px] font-black text-text-dim uppercase tracking-widest opacity-50">Riferimento</div>
+            <div className="text-3xs font-black text-text-dim uppercase tracking-widest opacity-50">Riferimento</div>
             <div className="text-xs font-mono text-text-muted tracking-widest bg-surface px-2 py-0.5 rounded-lg">{p?.code || '---'}</div>
           </div>
 
           <div className="hidden lg:flex flex-col justify-center items-end pr-4">
-            <div className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-success-soft text-success border-success-border' : 'bg-surface text-text-dim border-border'}`}>
+            <div className={`text-3xs px-3 py-1 rounded-full font-black uppercase tracking-widest border ${p?.status === 'active' ? 'bg-success-soft text-success border-success-border' : 'bg-surface text-text-dim border-border'}`}>
               <span className="flex items-center gap-1.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${p?.status === 'active' ? 'bg-success' : 'bg-text-dim'}`} />
                 {p?.status === 'active' ? 'Attivo' : 'Archiviato'}
@@ -126,7 +126,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-1">
           <h1 className="text-4xl font-black text-text tracking-tight">Fascicoli</h1>
-          <p className="text-text-dim text-sm uppercase tracking-[2px] font-medium opacity-60">Gestione Archivio Digitale</p>
+          <p className="text-text-dim text-sm uppercase tracking-label font-medium opacity-60">Gestione Archivio Digitale</p>
         </div>
         <button 
           onClick={() => typeof onNewPractice === 'function' && onNewPractice()} 
@@ -153,7 +153,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           </div>
           <div>
             <div className="text-2xl font-black text-text leading-none mb-1">{stats.total}</div>
-            <div className="text-xs text-text-dim uppercase tracking-[2px] font-bold">Totali</div>
+            <div className="text-xs text-text-dim uppercase tracking-label font-bold">Totali</div>
           </div>
         </button>
 
@@ -171,7 +171,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           </div>
           <div>
             <div className="text-2xl font-black text-text leading-none mb-1">{stats.active}</div>
-            <div className="text-xs text-text-dim uppercase tracking-[2px] font-bold">Attivi</div>
+            <div className="text-xs text-text-dim uppercase tracking-label font-bold">Attivi</div>
           </div>
         </button>
 
@@ -189,7 +189,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           </div>
           <div>
             <div className="text-2xl font-black text-text leading-none mb-1">{stats.closed}</div>
-            <div className="text-xs text-text-dim uppercase tracking-[2px] font-bold">Chiusi</div>
+            <div className="text-xs text-text-dim uppercase tracking-label font-bold">Chiusi</div>
           </div>
         </button>
       </div>
@@ -212,7 +212,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <Filter size={14} className="text-text-dim opacity-50" />
             
             <select 
-              className="bg-transparent border-none text-xs font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-colors p-0"
+              className="bg-transparent border-none text-xs font-black uppercase tracking-label text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-colors p-0"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
@@ -224,7 +224,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <div className="w-[1px] h-4 bg-border" />
 
             <select 
-              className="bg-transparent border-none text-xs font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-colors p-0"
+              className="bg-transparent border-none text-xs font-black uppercase tracking-label text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-colors p-0"
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
             >

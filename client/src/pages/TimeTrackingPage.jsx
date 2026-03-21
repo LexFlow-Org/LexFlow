@@ -304,7 +304,7 @@ export default function TimeTrackingPage({ practices }) {
             <div className="glass-card p-5 mb-4 border border-primary/20 bg-primary/5 space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse" />
-                <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">Timer in corso</span>
+                <span className="text-2xs font-black text-text-dim uppercase tracking-label">Timer in corso</span>
               </div>
               <div className="flex items-center gap-3">
                 <Briefcase size={14} className="text-text-dim flex-shrink-0" />
@@ -329,7 +329,7 @@ export default function TimeTrackingPage({ practices }) {
             <div className="glass-card p-5 mb-4 space-y-4">
               <div className="flex items-center gap-3">
                 <Play size={18} className="text-primary flex-shrink-0" />
-                <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">Avvia Timer</span>
+                <span className="text-2xs font-black text-text-dim uppercase tracking-label">Avvia Timer</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <PracticeCombobox
@@ -340,7 +340,7 @@ export default function TimeTrackingPage({ practices }) {
                   id="timer-practice"
                 />
                 <div>
-                  <label htmlFor="timer-desc" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Attività</label>
+                  <label htmlFor="timer-desc" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Attività</label>
                   <input
                     id="timer-desc"
                     type="text"
@@ -374,7 +374,7 @@ export default function TimeTrackingPage({ practices }) {
             <div className="flex items-center gap-3">
               <div className="glass-card px-4 py-2 text-center min-w-[90px]">
                 <span className="text-lg font-bold text-primary tabular-nums">{fmtDuration(totalWeekMin)}</span>
-                <span className="text-[10px] text-text-dim block">Totale Settimana</span>
+                <span className="text-2xs text-text-dim block">Totale Settimana</span>
               </div>
               <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest">
                 <Plus size={18} /> Manuale
@@ -400,9 +400,9 @@ export default function TimeTrackingPage({ practices }) {
                   disabled={isFuture}
                   className={`glass-card p-3 text-center transition-colors cursor-pointer ${isToday ? 'border-primary/30 bg-primary/5' : ''} ${isSelected ? 'ring-2 ring-primary border-primary/40 bg-primary/10' : ''} ${isFuture ? 'opacity-40 cursor-not-allowed' : 'hover:border-primary/20 hover:bg-primary/[0.03]'}`}
                 >
-                  <div className="text-[10px] text-text-dim font-bold">{DAYS_IT[d.getDay()]}</div>
+                  <div className="text-2xs text-text-dim font-bold">{DAYS_IT[d.getDay()]}</div>
                   <div className={`text-sm font-bold ${isToday ? 'text-primary' : 'text-text'}`}>{d.getDate()}</div>
-                  <div className="text-[10px] text-text-dim mt-1">{fmtDuration(dayMin)}</div>
+                  <div className="text-2xs text-text-dim mt-1">{fmtDuration(dayMin)}</div>
                   <div className="w-full bg-surface rounded-full h-1 mt-1.5">
                     <div className="bg-primary h-1 rounded-full transition-colors" style={{ width: `${Math.min((dayMin / 480) * 100, 100)}%` }} />
                   </div>
@@ -431,9 +431,9 @@ export default function TimeTrackingPage({ practices }) {
               return (
                 <>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">{sectionLabel}</span>
+                    <span className="text-2xs font-black text-text-dim uppercase tracking-label">{sectionLabel}</span>
                     {selectedDay && (
-                      <button onClick={() => setSelectedDay(null)} className="text-[10px] text-primary hover:underline font-bold cursor-pointer">Mostra tutta la settimana</button>
+                      <button onClick={() => setSelectedDay(null)} className="text-2xs text-primary hover:underline font-bold cursor-pointer">Mostra tutta la settimana</button>
                     )}
                   </div>
                   {displayLogs.length === 0 ? (
@@ -449,7 +449,7 @@ export default function TimeTrackingPage({ practices }) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-text truncate">{log.description || 'Senza descrizione'}</p>
-                          <p className="text-[10px] text-text-dim">{getPracticeName(log.practiceId)} {'·'} {new Date(log.date).toLocaleDateString('it-IT')}</p>
+                          <p className="text-2xs text-text-dim">{getPracticeName(log.practiceId)} {'·'} {new Date(log.date).toLocaleDateString('it-IT')}</p>
                         </div>
                         <span className="text-sm font-mono font-bold text-primary tabular-nums">{fmtDuration(log.minutes)}</span>
                         <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -472,17 +472,17 @@ export default function TimeTrackingPage({ practices }) {
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="glass-card p-4 text-center">
               <span className="text-2xl font-bold text-text">{invoices.length}</span>
-              <span className="text-[10px] text-text-dim block mt-1">Parcelle</span>
+              <span className="text-2xs text-text-dim block mt-1">Parcelle</span>
             </div>
             <div className="glass-card p-4 text-center">
               <span className="text-2xl font-bold text-text-muted">{invoices.filter(i => i.status === 'sent').length}</span>
-              <span className="text-[10px] text-text-dim block mt-1">Inviate</span>
+              <span className="text-2xs text-text-dim block mt-1">Inviate</span>
             </div>
             <div className="glass-card p-4 text-center">
               <span className="text-2xl font-bold text-primary">
                 {'\u20AC'} {invoices.filter(i => i.status === 'paid').reduce((s, i) => s + (calcTotals(i.items || []).total), 0).toFixed(0)}
               </span>
-              <span className="text-[10px] text-text-dim block mt-1">Incassato</span>
+              <span className="text-2xs text-text-dim block mt-1">Incassato</span>
             </div>
           </div>
 
@@ -509,11 +509,11 @@ export default function TimeTrackingPage({ practices }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-bold text-text truncate">{inv.clientName || 'Cliente'}</p>
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${STATUS_COLORS[inv.status] || STATUS_COLORS.draft}`}>
+                        <span className={`text-3xs font-bold px-2 py-0.5 rounded-full border ${STATUS_COLORS[inv.status] || STATUS_COLORS.draft}`}>
                           {STATUS_LABELS[inv.status] || 'Bozza'}
                         </span>
                       </div>
-                      <p className="text-[10px] text-text-dim">{inv.practiceName || 'Fascicolo'} {'·'} N.{inv.number || '—'} {'·'} {inv.date || ''}</p>
+                      <p className="text-2xs text-text-dim">{inv.practiceName || 'Fascicolo'} {'·'} N.{inv.number || '—'} {'·'} {inv.date || ''}</p>
                     </div>
                     <span className="text-sm font-bold text-primary tabular-nums">{'\u20AC'} {totals.total.toFixed(2)}</span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -596,21 +596,21 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
           <div className="grid grid-cols-2 gap-4">
             <PracticeCombobox id="manual-log-practice" label="Fascicolo" value={practiceId} onChange={setPracticeId} practices={practices} />
             <div>
-              <label htmlFor="manual-log-date" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Data</label>
+              <label htmlFor="manual-log-date" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Data</label>
               <input id="manual-log-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="input-field w-full py-3" />
             </div>
           </div>
           <div>
-            <label htmlFor="manual-log-description" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Descrizione</label>
+            <label htmlFor="manual-log-description" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Descrizione</label>
             <input id="manual-log-description" value={description} onChange={e => setDescription(e.target.value)} className="input-field w-full py-3" placeholder="Attività svolta..." />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="manual-log-hours" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Ore</label>
+              <label htmlFor="manual-log-hours" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Ore</label>
               <input id="manual-log-hours" type="number" min="0" value={hours} onChange={e => setHours(e.target.value)} className="input-field w-full py-3" placeholder="0" />
             </div>
             <div>
-              <label htmlFor="manual-log-mins" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Minuti</label>
+              <label htmlFor="manual-log-mins" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Minuti</label>
               <input id="manual-log-mins" type="number" min="0" max="59" value={mins} onChange={e => setMins(e.target.value)} className="input-field w-full py-3" placeholder="0" />
             </div>
           </div>
@@ -710,15 +710,15 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
         <form onSubmit={handleSave} className="px-8 py-6 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label htmlFor="inv-number" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Numero</label>
+              <label htmlFor="inv-number" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Numero</label>
               <input id="inv-number" value={number} onChange={e => setNumber(e.target.value)} className="input-field w-full py-3" />
             </div>
             <div>
-              <label htmlFor="inv-date" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Data</label>
+              <label htmlFor="inv-date" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Data</label>
               <input id="inv-date" type="date" value={invDate} onChange={e => setInvDate(e.target.value)} className="input-field w-full py-3" />
             </div>
             <div>
-              <label htmlFor="inv-status" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Stato</label>
+              <label htmlFor="inv-status" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Stato</label>
               <select id="inv-status" value={status} onChange={e => setStatus(e.target.value)} className="input-field w-full py-3">
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
@@ -727,15 +727,15 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
           <div className="grid grid-cols-2 gap-4">
             <PracticeCombobox id="inv-practice" label="Fascicolo" value={practiceId} onChange={setPracticeId} practices={practices} placeholder="Cerca fascicolo..." />
             <div>
-              <label htmlFor="inv-client" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">Cliente</label>
+              <label htmlFor="inv-client" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Cliente</label>
               <input id="inv-client" value={clientName} onChange={e => setClientName(e.target.value)} className="input-field w-full py-3" placeholder="Nome cliente..." />
             </div>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px]">Voci</span>
+            <span className="text-2xs font-black text-text-dim uppercase tracking-label">Voci</span>
             <div className="flex gap-2">
-              <button type="button" onClick={autoFillFromLogs} className="text-[10px] text-primary hover:underline font-bold">Auto-compila da ore</button>
-              <button type="button" onClick={addItem} className="text-[10px] text-text-muted hover:text-text font-bold flex items-center gap-1"><Plus size={12} /> Aggiungi</button>
+              <button type="button" onClick={autoFillFromLogs} className="text-2xs text-primary hover:underline font-bold">Auto-compila da ore</button>
+              <button type="button" onClick={addItem} className="text-2xs text-text-muted hover:text-text font-bold flex items-center gap-1"><Plus size={12} /> Aggiungi</button>
             </div>
           </div>
           {items.map((it, idx) => (
@@ -748,11 +748,11 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
               </div>
               <div className="grid grid-cols-4 gap-3">
                 <div>
-                  <label htmlFor={`inv-item-qty-${idx}`} className="text-[9px] text-text-dim block mb-1">Qt&agrave;</label>
+                  <label htmlFor={`inv-item-qty-${idx}`} className="text-3xs text-text-dim block mb-1">Qt&agrave;</label>
                   <input id={`inv-item-qty-${idx}`} type="number" step="0.1" min="0" value={it.qty} onChange={e => updateItem(idx, 'qty', Number.parseFloat(e.target.value) || 0)} className="input-field w-full py-2 text-sm" />
                 </div>
                 <div>
-                  <label htmlFor={`inv-item-unit-${idx}`} className="text-[9px] text-text-dim block mb-1">Unit&agrave;</label>
+                  <label htmlFor={`inv-item-unit-${idx}`} className="text-3xs text-text-dim block mb-1">Unit&agrave;</label>
                   <select id={`inv-item-unit-${idx}`} value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="input-field w-full py-2 text-sm">
                     <option value="h">Ore</option>
                     <option value="u">Unit&agrave;</option>
@@ -760,11 +760,11 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
                   </select>
                 </div>
                 <div>
-                  <label htmlFor={`inv-item-price-${idx}`} className="text-[9px] text-text-dim block mb-1">Prezzo &euro;</label>
+                  <label htmlFor={`inv-item-price-${idx}`} className="text-3xs text-text-dim block mb-1">Prezzo &euro;</label>
                   <input id={`inv-item-price-${idx}`} type="number" step="0.01" min="0" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number.parseFloat(e.target.value) || 0)} className="input-field w-full py-2 text-sm" />
                 </div>
                 <div>
-                  <span className="text-[9px] text-text-dim block mb-1">Totale</span>
+                  <span className="text-3xs text-text-dim block mb-1">Totale</span>
                   <div className="input-field w-full py-2 text-sm text-primary font-bold bg-surface">&euro; {(it.total || 0).toFixed(2)}</div>
                 </div>
               </div>

@@ -47,7 +47,7 @@ const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate 
             <span className="text-xs text-text-dim">Agenda</span>
           )}
           {TYPE_LABELS[d.type] && (
-            <span className="text-[10px] text-text-dim uppercase tracking-wider font-semibold">
+            <span className="text-2xs text-text-dim uppercase tracking-wider font-semibold">
               {TYPE_LABELS[d.type]}
             </span>
           )}
@@ -93,7 +93,7 @@ function DeadlineSection({ title, items, onSelectPractice, onNavigate }) {
   return (
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
-        <h3 className="text-[10px] font-black uppercase tracking-[2px] text-text">{title} ({items.length})</h3>
+        <h3 className="text-2xs font-black uppercase tracking-label text-text">{title} ({items.length})</h3>
       </div>
       <div className="space-y-2">
         {items.map((d) => <DeadlineRow key={`${d.date}_${d.label}_${d.practiceId || d.id}`} d={d} onSelectPractice={onSelectPractice} onNavigate={onNavigate} />)}
@@ -212,7 +212,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
             </div>
             Scadenze
           </h1>
-          <p className="text-text-dim text-xs mt-1.5 uppercase tracking-[2px] font-bold">{allDeadlines.length} scadenz{allDeadlines.length === 1 ? 'a' : 'e'} totali</p>
+          <p className="text-text-dim text-xs mt-1.5 uppercase tracking-label font-bold">{allDeadlines.length} scadenz{allDeadlines.length === 1 ? 'a' : 'e'} totali</p>
         </div>
       </div>
 
@@ -220,7 +220,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {/* In Scadenza Oggi */}
         <div className="glass-card p-5 border border-border">
-          <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">In Scadenza Oggi</p>
+          <p className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-2">In Scadenza Oggi</p>
           <p className="text-3xl font-black text-text">{todayDeadlines.length}</p>
           <p className="text-xs text-text-muted mt-1 truncate">
             {todayDeadlines.length === 0 ? 'Nessuna scadenza' : todayDeadlines.map(d => d.label).join(', ')}
@@ -229,7 +229,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
 
         {/* In Ritardo */}
         <div className="glass-card p-5 border border-border">
-          <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">In Ritardo</p>
+          <p className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-2">In Ritardo</p>
           <p className="text-3xl font-black text-text">{pastDeadlines.length}</p>
           <p className="text-xs text-text-muted mt-1 truncate">
             {pastDeadlines.length === 0
@@ -244,7 +244,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
 
         {/* Prossimi 30 giorni */}
         <div className="glass-card p-5 border border-border">
-          <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">Prossimi 30 Giorni</p>
+          <p className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-2">Prossimi 30 Giorni</p>
           <p className="text-3xl font-black text-text">{next30.length}</p>
           <p className="text-xs text-text-muted mt-1 truncate">
             {next30.length === 0 ? 'Calendario libero' : `${next30.length} in arrivo`}
@@ -254,9 +254,9 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         {/* Orari Briefing — EDITABILE */}
         <div className={`glass-card p-4 transition-opacity duration-300 ${settings?.notifyEnabled === false ? 'opacity-40' : ''}`}>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Orari Briefing</p>
+            <p className="text-2xs font-bold text-text-dim uppercase tracking-wider">Orari Briefing</p>
             {briefingDirty && settings?.notifyEnabled !== false && (
-              <button onClick={handleBriefingSave} className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary-hover transition-colors">
+              <button onClick={handleBriefingSave} className="flex items-center gap-1 text-2xs font-bold text-primary hover:text-primary-hover transition-colors">
                 <Check size={12} /> Salva
               </button>
             )}

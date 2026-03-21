@@ -127,7 +127,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
             autoComplete="off"
             spellCheck={false}
           />
-          <kbd className="hidden sm:inline text-[10px] text-[var(--text-dim)] bg-[var(--bg)]
+          <kbd className="hidden sm:inline text-2xs text-[var(--text-dim)] bg-[var(--bg)]
                          px-1.5 py-0.5 rounded border border-[var(--border)] font-mono">
             ESC
           </kbd>
@@ -172,7 +172,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
                         </div>
                       )}
                     </div>
-                    <span className={`text-[10px] uppercase tracking-wider ${colorClass} shrink-0`}>
+                    <span className={`text-2xs uppercase tracking-wider ${colorClass} shrink-0`}>
                       {label}
                     </span>
                     {isSelected && <ArrowRight size={14} className="text-[var(--text-dim)] shrink-0" />}

@@ -48,7 +48,7 @@ export default function ActivityPage() {
                   <div className="w-5 h-5 rounded-full bg-[var(--bg-card)] border-2 border-[var(--primary)] z-10 shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-[var(--text)]">{event}</p>
-                    <p className="text-[10px] text-[var(--text-dim)] font-mono mt-0.5 flex items-center gap-1">
+                    <p className="text-2xs text-[var(--text-dim)] font-mono mt-0.5 flex items-center gap-1">
                       <Clock size={10} /> {displayTs}
                     </p>
                   </div>

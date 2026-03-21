@@ -116,7 +116,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
               {bioConfigured === true && (bioAttempted ? 'Autenticazione non riuscita. Riprova o usa la password.' : 'Autenticazione biometrica in corso...')}
             </p>
             {bioConfigured === false && (
-              <p className="text-[10px] text-warning mt-2 font-semibold">Biometria non configurata — usa la password</p>
+              <p className="text-2xs text-warning mt-2 font-semibold">Biometria non configurata — usa la password</p>
             )}
           </div>
           {/* Biometric retry + fallback (only when bio IS configured) */}
@@ -136,7 +136,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
           {/* Password form */}
           {showPasswordFallback && (
             <form onSubmit={handlePasswordFallback} className="space-y-3 text-left">
-              <label htmlFor="pd-bio-pwd" className="text-[10px] font-bold text-text-dim uppercase tracking-[2px] ml-1 block">Master Password</label>
+              <label htmlFor="pd-bio-pwd" className="text-2xs font-bold text-text-dim uppercase tracking-label ml-1 block">Master Password</label>
               <input
                 id="pd-bio-pwd"
                 type="password"
@@ -147,7 +147,7 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
                 autoFocus
               />
               {practicePasswordError && (
-                <p className="text-danger text-[11px] font-semibold">{practicePasswordError}</p>
+                <p className="text-danger text-xs-p font-semibold">{practicePasswordError}</p>
               )}
               <button type="submit" className="btn-primary w-full py-3 text-sm">
                 <Lock size={16} /> Sblocca Fascicolo
@@ -577,7 +577,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               <Icon size={14} />
               {label}
               {count > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                <span className={`text-2xs px-1.5 py-0.5 rounded-full ${
                   activeTab === id ? 'bg-primary-soft text-primary' : 'bg-surface text-text-dim'
                 }`}>
                   {count}
@@ -597,7 +597,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             {/* Header Diario con Export */}
             {practice.diary && practice.diary.length > 0 && (
               <div className="flex items-center justify-between mb-5">
-                <span className="text-xs font-bold text-text-dim uppercase tracking-[2px]">
+                <span className="text-xs font-bold text-text-dim uppercase tracking-label">
                   {practice.diary.length} {practice.diary.length === 1 ? 'annotazione' : 'annotazioni'}
                 </span>
                 <button
@@ -624,7 +624,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   </div>
                   <div className="flex-1 rounded-2xl bg-surface border border-border p-4 hover:bg-card hover:border-border transition-colors">
                     <div className="flex justify-between items-start mb-2.5">
-                      <span className="text-[11px] font-semibold text-primary/90 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/15">
+                      <span className="text-xs-p font-semibold text-primary/90 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/15">
                         {new Date(note.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(note.date).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}
                       </span>
                       <button onClick={() => confirmDeleteNote(idx)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-danger-soft text-text-dim hover:text-danger transition-colors">
@@ -678,7 +678,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </div>
                 <div>
                   <p className="text-base font-bold text-text">Carica Documento</p>
-                  <p className="text-[10px] text-text-dim uppercase tracking-wider mt-1">Aggiungi file al vault crittografato</p>
+                  <p className="text-2xs text-text-dim uppercase tracking-wider mt-1">Aggiungi file al vault crittografato</p>
                 </div>
               </button>
 
@@ -692,14 +692,14 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </div>
                 <div>
                   <p className="text-base font-bold text-text">Collega Cartella</p>
-                  <p className="text-[10px] text-text-dim uppercase tracking-wider mt-1">Associa una cartella locale al fascicolo</p>
+                  <p className="text-2xs text-text-dim uppercase tracking-wider mt-1">Associa una cartella locale al fascicolo</p>
                 </div>
               </button>
             </div>
 
             {/* Lista allegati crittografati */}
             <div>
-              <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px] mb-4">Documenti Allegati</h3>
+              <h3 className="text-2xs font-black text-text-dim uppercase tracking-label mb-4">Documenti Allegati</h3>
               {(!practice.attachments || practice.attachments.length === 0) ? (
                 <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-border">
                   <FileText size={28} className="text-text-dim/40 mb-3" />
@@ -720,7 +720,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <FileText size={16} className="text-text-muted flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-text truncate">{att.name}</p>
-                        <p className="text-[10px] text-text-dim">
+                        <p className="text-2xs text-text-dim">
                           {att.addedAt ? formatDateIT(att.addedAt, '') : ''}
                         </p>
                       </div>
@@ -738,7 +738,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
             {/* ═══ CARTELLE COLLEGATE ═══ */}
             <div className="mt-6">
-              <h3 className="text-[10px] font-black text-text-dim uppercase tracking-[2px] mb-4">Cartelle Collegate</h3>
+              <h3 className="text-2xs font-black text-text-dim uppercase tracking-label mb-4">Cartelle Collegate</h3>
               {folders.length === 0 ? (
                 <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-border">
                   <FolderOpen size={28} className="text-text-dim/40 mb-3" />
@@ -759,7 +759,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <FolderOpen size={16} className="text-warning flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-text truncate">{fld.name}</p>
-                        <p className="text-[10px] text-text-dim">
+                        <p className="text-2xs text-text-dim">
                           {fld.addedAt ? formatDateIT(fld.addedAt, '') : ''}
                         </p>
                       </div>
@@ -810,7 +810,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               </div>
               {/* Preavviso specifico – allineato con Agenda */}
               <div className="space-y-1.5">
-                <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1 block">Preavviso Notifica</span>
+                <span className="text-2xs font-black text-text-dim uppercase tracking-label ml-1 block">Preavviso Notifica</span>
                 <div className="flex flex-wrap gap-1.5 items-center">
                   {[
                     { value: null, label: 'Standard' },
@@ -826,7 +826,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       key={String(opt.value)}
                       type="button"
                       onClick={() => setNewDeadlineRemind(opt.value)}
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors border ${
+                      className={`px-3 py-1.5 rounded-xl text-2xs font-bold uppercase tracking-wider transition-colors border ${
                         newDeadlineRemind === opt.value
                           ? 'bg-primary text-black border-primary'
                           : 'bg-surface text-text-dim border-border hover:bg-card hover:text-text'
@@ -843,7 +843,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   }`}>
                     <button type="button"
                       onClick={() => setNewDeadlineRemind('custom')}
-                      className={`px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                      className={`px-2.5 py-1.5 text-2xs font-bold uppercase tracking-wider transition-colors ${
                         newDeadlineRemind === 'custom' ? 'text-primary' : 'text-text-dim hover:text-text'
                       }`}>
                       Alle
@@ -853,11 +853,11 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       value={newDeadlineCustomTime}
                       onFocus={() => setNewDeadlineRemind('custom')}
                       onChange={e => { setNewDeadlineCustomTime(e.target.value); setNewDeadlineRemind('custom'); }}
-                      className="bg-transparent border-none outline-none text-[10px] font-mono text-white w-[52px] py-1 pr-2 focus:ring-0"
+                      className="bg-transparent border-none outline-none text-2xs font-mono text-white w-[52px] py-1 pr-2 focus:ring-0"
                     />
                   </div>
                 </div>
-                <p className="text-[9px] text-text-dim mt-0.5">«Standard» usa il preavviso globale. «Alle» invia la notifica all&apos;orario preciso scelto.</p>
+                <p className="text-3xs text-text-dim mt-0.5">«Standard» usa il preavviso globale. «Alle» invia la notifica all&apos;orario preciso scelto.</p>
               </div>
             </form>
 
@@ -919,7 +919,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                           <span className="text-xs text-text-dim font-mono">ore {d.time}</span>
                         )}
                         {d.remindMinutes != null && (
-                          <span className="text-[10px] font-semibold text-text-muted bg-card border border-border px-1.5 py-0.5 rounded-lg flex items-center gap-1">
+                          <span className="text-2xs font-semibold text-text-muted bg-card border border-border px-1.5 py-0.5 rounded-lg flex items-center gap-1">
                             <BellRing size={10} /> {d.remindMinutes === 'custom'
                               ? `alle ${d.customRemindTime || '—'}`
                               : d.remindMinutes >= 1440
@@ -946,25 +946,25 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2 flex items-center gap-2"><FileText size={14} className="text-text-muted" /> Dati Generali</h3>
               <div className="grid grid-cols-2 gap-y-5 gap-x-8 text-sm">
                 <div>
-                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Materia</span>
+                  <span className="block text-2xs font-bold text-text-dim uppercase tracking-wider mb-1">Materia</span>
                   <span className="text-text font-medium capitalize">{
                     {civile:'Civile', penale:'Penale', lavoro:'Lavoro', amm:'Amministrativo', stra:'Stragiudiziale', soc:'Societario'}[practice.type] || practice.type
                   }</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Autorità</span>
+                  <span className="block text-2xs font-bold text-text-dim uppercase tracking-wider mb-1">Autorità</span>
                   <span className="text-text font-medium">{practice.court || '—'}</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Sede</span>
+                  <span className="block text-2xs font-bold text-text-dim uppercase tracking-wider mb-1">Sede</span>
                   <span className="text-text font-medium">{practice.courtLocation || '—'}</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Riferimento</span>
+                  <span className="block text-2xs font-bold text-text-dim uppercase tracking-wider mb-1">Riferimento</span>
                   <span className="text-text font-medium font-mono">{practice.code ? `RG ${practice.code}` : '—'}</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Apertura</span>
+                  <span className="block text-2xs font-bold text-text-dim uppercase tracking-wider mb-1">Apertura</span>
                   <span className="text-text font-medium">
                     {practice.createdAt ? new Date(practice.createdAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'}
                   </span>
@@ -979,11 +979,11 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               </h3>
               <div className="space-y-4 text-sm">
                 <div>
-                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Cliente / Assistito</span>
+                  <span className="block text-2xs font-bold text-text-dim uppercase tracking-wider mb-1">Cliente / Assistito</span>
                   <span className="text-text font-medium">{practice.client || '—'}</span>
                 </div>
                 <div>
-                  <span className="block text-[10px] font-bold text-text-dim uppercase tracking-wider mb-1">Controparte</span>
+                  <span className="block text-2xs font-bold text-text-dim uppercase tracking-wider mb-1">Controparte</span>
                   <span className="text-text font-medium">{practice.counterparty || '—'}</span>
                 </div>
               </div>
@@ -1019,7 +1019,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </div>
                 <div>
                   <h3 id="export-pwd-title" className="text-text font-bold text-sm">Verifica Identità</h3>
-                  <p className="text-text-dim text-[10px]">Inserisci la Master Password per esportare</p>
+                  <p className="text-text-dim text-2xs">Inserisci la Master Password per esportare</p>
                 </div>
               </div>
               <button onClick={() => setShowExportPwdModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim hover:text-text transition-colors group">

@@ -375,7 +375,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
           {isNew ? (
             <div className="text-center mt-3 space-y-2">
               <div className="px-3 py-1 bg-primary/10 border border-primary/20 rounded-full inline-block">
-                <span className="text-[10px] font-bold text-primary uppercase tracking-[2px]">Configurazione Iniziale</span>
+                <span className="text-2xs font-bold text-primary uppercase tracking-label">Configurazione Iniziale</span>
               </div>
               <p className="text-text-muted text-sm max-w-[280px]">Proteggi il tuo studio con una cifratura di grado militare.</p>
             </div>
@@ -412,7 +412,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
             <div className="relative group">
-              <label htmlFor="login-master-pwd" className="text-[10px] font-bold text-text-dim uppercase tracking-[2px] ml-1 mb-2 block">Master Password</label>
+              <label htmlFor="login-master-pwd" className="text-2xs font-bold text-text-dim uppercase tracking-label ml-1 mb-2 block">Master Password</label>
               <div className="relative">
                 <KeyRound size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" />
                 <input 
@@ -433,7 +433,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
             {isNew && password && (
               <div className="space-y-2 px-1">
                 <div className="flex justify-between items-end">
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">Sicurezza</span>
+                  <span className="text-2xs font-bold uppercase tracking-widest opacity-50">Sicurezza</span>
                   <span className={`text-xs font-bold ${strength.text}`}>
                     {strength.label}
                   </span>
@@ -451,7 +451,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
 
             {isNew && (
               <div className="relative animate-fade-in">
-                <label htmlFor="login-confirm-pwd" className="text-[10px] font-bold text-text-dim uppercase tracking-[2px] ml-1 mb-2 block">Conferma Password</label>
+                <label htmlFor="login-confirm-pwd" className="text-2xs font-bold text-text-dim uppercase tracking-label ml-1 mb-2 block">Conferma Password</label>
                 <div className="relative">
                   <ShieldCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim" />
                   <input 
@@ -474,7 +474,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               ) : (
                 <ShieldAlert size={16} className="text-danger flex-shrink-0" />
               )}
-              <p className={`${lockoutSeconds > 0 ? 'text-warning' : 'text-danger'} text-[11px] font-semibold leading-tight`}>{error}</p>
+              <p className={`${lockoutSeconds > 0 ? 'text-warning' : 'text-danger'} text-xs-p font-semibold leading-tight`}>{error}</p>
             </div>
           )}
 
@@ -511,18 +511,18 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
             <button 
               type="button" 
               onClick={() => { setShowResetModal(true); setResetPassword(''); setResetError(''); }}
-              className="text-text-dim hover:text-danger text-[10px] font-bold uppercase tracking-widest transition-colors"
+              className="text-text-dim hover:text-danger text-2xs font-bold uppercase tracking-widest transition-colors"
             >
               Password dimenticata? Reset Vault
             </button>
           )}
 
           <div className="flex items-center gap-4 opacity-60">
-            <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-muted uppercase tracking-widest">
+            <div className="flex items-center gap-1.5 text-3xs font-bold text-text-muted uppercase tracking-widest">
               AES-256 GCM
             </div>
             <div className="w-1 h-1 bg-text-muted rounded-full" />
-            <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-muted uppercase tracking-widest">
+            <div className="flex items-center gap-1.5 text-3xs font-bold text-text-muted uppercase tracking-widest">
               Zero-Knowledge
             </div>
           </div>
@@ -572,7 +572,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               </div>
               {resetError && (
                 <div className="bg-danger-soft border border-danger-border p-2 rounded-lg">
-                  <p className="text-danger text-[11px] font-semibold">{resetError}</p>
+                  <p className="text-danger text-xs-p font-semibold">{resetError}</p>
                 </div>
               )}
             </div>

@@ -112,7 +112,7 @@ function FactoryResetModal({ onClose }) {
               {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-          {error && <p className="text-danger text-[11px] font-semibold">{error}</p>}
+          {error && <p className="text-danger text-xs-p font-semibold">{error}</p>}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
@@ -204,7 +204,7 @@ function ExportBackupModal({ onClose }) {
                 onKeyDown={e => { if (e.key === 'Enter') doExport(); }} />
             </div>
           </div>
-          {error && <p className="text-danger text-[11px] font-semibold">{error}</p>}
+          {error && <p className="text-danger text-xs-p font-semibold">{error}</p>}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
@@ -288,7 +288,7 @@ function ImportBackupModal({ onClose }) {
               {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-          {error && <p className="text-danger text-[11px] font-semibold">{error}</p>}
+          {error && <p className="text-danger text-xs-p font-semibold">{error}</p>}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
@@ -462,7 +462,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
                 {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            {error && <p className="text-danger text-[11px] font-semibold">{error}</p>}
+            {error && <p className="text-danger text-xs-p font-semibold">{error}</p>}
           </div>
           <div className="modal-footer">
             <button onClick={onClose} className="btn-cancel">Annulla</button>
@@ -667,7 +667,7 @@ export default function SettingsPage({ onLock }) {
           <div className="grid gap-5 sm:grid-cols-2">
             {lawyerName && (
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Titolo e Nome</label>
+              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Titolo e Nome</label>
               <div className="flex items-center gap-2">
                 <select
                   value={lawyerTitle}
@@ -694,14 +694,14 @@ export default function SettingsPage({ onLock }) {
             )}
             {studioName && (
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
+              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
               <div className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
                 {studioName}
               </div>
             </div>
             )}
           </div>
-          <p className="text-[10px] text-text-dim">Il titolo e lo studio vengono utilizzati nell&apos;intestazione dei report PDF e in tutta l&apos;app.</p>
+          <p className="text-2xs text-text-dim">Il titolo e lo studio vengono utilizzati nell&apos;intestazione dei report PDF e in tutta l&apos;app.</p>
         </section>
         )}
 
@@ -737,7 +737,7 @@ export default function SettingsPage({ onLock }) {
 
             {notifyEnabled && (
               <div className="pt-4 border-t border-border">
-                <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
+                <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
                 <div className="flex flex-wrap gap-2">
                   {PREAVVISO_OPTIONS.map(opt => (
                     <button
@@ -762,7 +762,7 @@ export default function SettingsPage({ onLock }) {
 
             {!notifyEnabled && (
               <div className="pt-4 border-t border-border">
-                <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
+                <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
                 <div className="flex flex-wrap gap-2 opacity-40 pointer-events-none">
                   {PREAVVISO_OPTIONS.map(opt => (
                     <div
@@ -794,7 +794,7 @@ export default function SettingsPage({ onLock }) {
               <div className="flex items-center gap-2">
                 {privacyEnabled ? <Eye size={16} className="text-primary" /> : <EyeOff size={16} className="text-text-dim" />}
                 <span className="font-medium text-text">Privacy Blur</span>
-                <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/20">CONSIGLIATO</span>
+                <span className="text-2xs bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/20">CONSIGLIATO</span>
               </div>
               <p className="text-xs text-text-muted max-w-md">
                 Sfoca automaticamente il contenuto dell'app quando perdi il focus.
@@ -814,7 +814,7 @@ export default function SettingsPage({ onLock }) {
               <div className="flex items-center gap-2">
                 {screenshotProtection ? <Camera size={16} className="text-primary" /> : <CameraOff size={16} className="text-text-dim" />}
                 <span className="font-medium text-text">Blocco Screenshot</span>
-                <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/20">SICUREZZA</span>
+                <span className="text-2xs bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/20">SICUREZZA</span>
               </div>
               <p className="text-xs text-text-muted max-w-md">
                 Impedisce la cattura dello schermo (screenshot, registrazioni, condivisione schermo).
@@ -885,7 +885,7 @@ export default function SettingsPage({ onLock }) {
               </div>
               <div className="flex flex-col items-start">
                 <span className="text-sm font-bold text-text">Biometria</span>
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                <span className={`text-2xs font-bold uppercase tracking-wider ${
                   {
                     active: 'text-success',
                     available: 'text-warning',
@@ -983,7 +983,7 @@ export default function SettingsPage({ onLock }) {
 
         {/* Cambio Password */}
         <div className="space-y-3">
-          <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Cambia Password Master</label>
+          <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Cambia Password Master</label>
           <div className="grid gap-3 sm:grid-cols-2">
             <input type="password" placeholder="Password attuale"
               value={changePwdCurrent} onChange={e => setChangePwdCurrent(e.target.value)}
@@ -1018,7 +1018,7 @@ export default function SettingsPage({ onLock }) {
 
         {/* Recovery Key */}
         <div className="space-y-3">
-          <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Chiave di Emergenza</label>
+          <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Chiave di Emergenza</label>
           <p className="text-xs text-text-dim">Genera una chiave di recupero per sbloccare il vault se dimentichi la password. Conservala in un luogo sicuro.</p>
           {recoveryKey ? (
             <div className="bg-surface border border-primary-soft rounded-xl p-4 space-y-2">
@@ -1049,9 +1049,9 @@ export default function SettingsPage({ onLock }) {
         {/* Vault Health — auto-loaded, auto-refreshed */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Stato del Vault</label>
+            <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Stato del Vault</label>
             {vaultHealth && (
-              <span className="text-[9px] text-emerald-400 flex items-center gap-1">
+              <span className="text-3xs text-emerald-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Live
               </span>
@@ -1091,7 +1091,7 @@ export default function SettingsPage({ onLock }) {
           className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-colors duration-300 group"
         >
           <Lock size={18} className="transition-transform group-hover:-rotate-12" />
-          <span className="font-black text-[11px] uppercase tracking-widest">Factory Reset Vault</span>
+          <span className="font-black text-xs-p uppercase tracking-widest">Factory Reset Vault</span>
         </button>
       </div>
 

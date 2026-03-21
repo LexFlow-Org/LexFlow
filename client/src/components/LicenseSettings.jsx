@@ -54,7 +54,7 @@ export default function LicenseSettings() {
           <span className="text-text-muted">v2.4 Burned-Key (Ed25519 + AES-256-GCM)</span>
         </div>
       </div>
-      <div className="mt-4 text-[10px] text-text-dim text-right italic">
+      <div className="mt-4 text-2xs text-text-dim text-right italic">
         Verifica crittografica locale eseguita con successo
       </div>
     </div>

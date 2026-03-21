@@ -190,12 +190,12 @@ export default function ContactsPage({ practices, onSelectPractice }) {
         {/* Type filter pills — scrollable on mobile */}
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
           <button onClick={() => setFilterType('all')}
-            className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border ${filterType === 'all' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-surface text-text-dim border-border hover:bg-card'}`}>
+            className={`px-3 py-2 rounded-lg text-2xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors border ${filterType === 'all' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-surface text-text-dim border-border hover:bg-card'}`}>
             Tutti ({typeCounts.all})
           </button>
           {CONTACT_TYPES.map(t => (
             <button key={t.id} onClick={() => setFilterType(t.id)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border ${filterType === t.id ? t.color : 'bg-surface text-text-dim border-border hover:bg-card'}`}>
+              className={`px-3 py-2 rounded-lg text-2xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors border ${filterType === t.id ? t.color : 'bg-surface text-text-dim border-border hover:bg-card'}`}>
               {t.label} ({typeCounts[t.id] || 0})
             </button>
           ))}
@@ -247,7 +247,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-xs font-bold uppercase tracking-wider text-text-dim">{typeInfo.label}</span>
                         {linkedCount > 0 && (
-                          <span className="text-[9px] text-text-muted">&bull; {linkedCount} fascicoli</span>
+                          <span className="text-3xs text-text-muted">&bull; {linkedCount} fascicoli</span>
                         )}
                       </div>
                     </div>
@@ -415,7 +415,7 @@ function ContactModal({ initial, onSave, onClose }) {
         <div className="px-8 py-5 space-y-4 overflow-y-auto custom-scrollbar flex-1">
           {/* Type pills */}
           <div className="space-y-3">
-            <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Tipo</span>
+            <span className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Tipo</span>
             <div className="flex flex-wrap gap-2.5">
               {CONTACT_TYPES.map(t => (
                 <button key={t.id} onClick={() => updateField('type', t.id)}
@@ -428,7 +428,7 @@ function ContactModal({ initial, onSave, onClose }) {
 
           {/* Name */}
           <div className="space-y-2">
-            <label htmlFor="ct-name" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Nome / Ragione Sociale *</label>
+            <label htmlFor="ct-name" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Nome / Ragione Sociale *</label>
             <input id="ct-name" value={form.name} onChange={e => updateField('name', e.target.value)}
               placeholder="Nome completo o ragione sociale"
               className="input-field w-full bg-surface border-border focus:border-primary/50 text-lg font-semibold" autoFocus />
@@ -437,13 +437,13 @@ function ContactModal({ initial, onSave, onClose }) {
           {/* CF + P.IVA */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label htmlFor="ct-cf" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Codice Fiscale</label>
+              <label htmlFor="ct-cf" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Codice Fiscale</label>
               <input id="ct-cf" value={form.fiscalCode || ''} onChange={e => updateField('fiscalCode', e.target.value.toUpperCase())}
                 placeholder="RSSMRA80A01H501Z" maxLength={16}
                 className="input-field w-full bg-surface border-border font-mono focus:border-primary/50" />
             </div>
             <div className="space-y-2">
-              <label htmlFor="ct-vat" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">P.IVA</label>
+              <label htmlFor="ct-vat" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">P.IVA</label>
               <input id="ct-vat" value={form.vatNumber || ''} onChange={e => updateField('vatNumber', e.target.value)}
                 placeholder="01234567890" maxLength={11}
                 className="input-field w-full bg-surface border-border font-mono focus:border-primary/50" />
@@ -453,13 +453,13 @@ function ContactModal({ initial, onSave, onClose }) {
           {/* Phone + Email */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label htmlFor="ct-phone" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Telefono</label>
+              <label htmlFor="ct-phone" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Telefono</label>
               <input id="ct-phone" value={form.phone || ''} onChange={e => updateField('phone', e.target.value)}
                 placeholder="+39 333 1234567" type="tel"
                 className="input-field w-full bg-surface border-border focus:border-primary/50" />
             </div>
             <div className="space-y-2">
-              <label htmlFor="ct-email" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Email</label>
+              <label htmlFor="ct-email" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Email</label>
               <input id="ct-email" value={form.email || ''} onChange={e => updateField('email', e.target.value)}
                 placeholder="email@esempio.it" type="email"
                 className="input-field w-full bg-surface border-border focus:border-primary/50" />
@@ -468,7 +468,7 @@ function ContactModal({ initial, onSave, onClose }) {
 
           {/* PEC */}
           <div className="space-y-2">
-            <label htmlFor="ct-pec" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">PEC</label>
+            <label htmlFor="ct-pec" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">PEC</label>
             <input id="ct-pec" value={form.pec || ''} onChange={e => updateField('pec', e.target.value)}
               placeholder="nome@pec-avvocati.it" type="email"
               className="input-field w-full bg-surface border-border focus:border-primary/50" />
@@ -476,7 +476,7 @@ function ContactModal({ initial, onSave, onClose }) {
 
           {/* Address */}
           <div className="space-y-2">
-            <label htmlFor="ct-address" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Indirizzo</label>
+            <label htmlFor="ct-address" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Indirizzo</label>
             <input id="ct-address" value={form.address || ''} onChange={e => updateField('address', e.target.value)}
               placeholder="Via Roma 1, 00100 Roma (RM)"
               className="input-field w-full bg-surface border-border focus:border-primary/50" />
@@ -485,7 +485,7 @@ function ContactModal({ initial, onSave, onClose }) {
           {/* Conditional fields based on type */}
           {(form.type === 'opposing_counsel' || form.type === 'consultant') && (
             <div className="space-y-2">
-              <label htmlFor="ct-bar" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Ordine / Albo</label>
+              <label htmlFor="ct-bar" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Ordine / Albo</label>
               <input id="ct-bar" value={form.barAssociation || ''} onChange={e => updateField('barAssociation', e.target.value)}
                 placeholder="Ordine Avvocati di Roma"
                 className="input-field w-full bg-surface border-border focus:border-primary/50" />
@@ -494,7 +494,7 @@ function ContactModal({ initial, onSave, onClose }) {
 
           {form.type === 'judge' && (
             <div className="space-y-2">
-              <label htmlFor="ct-court" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Tribunale / Sezione</label>
+              <label htmlFor="ct-court" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Tribunale / Sezione</label>
               <input id="ct-court" value={form.court || ''} onChange={e => updateField('court', e.target.value)}
                 placeholder="Tribunale di Milano, Sez. III"
                 className="input-field w-full bg-surface border-border focus:border-primary/50" />
@@ -503,7 +503,7 @@ function ContactModal({ initial, onSave, onClose }) {
 
           {/* Notes */}
           <div className="space-y-2">
-            <label htmlFor="ct-notes" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Note</label>
+            <label htmlFor="ct-notes" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Note</label>
             <textarea id="ct-notes" value={form.notes || ''} onChange={e => updateField('notes', e.target.value)}
               placeholder="Annotazioni libere..." rows={2}
               className="input-field w-full bg-surface border-border min-h-[80px] resize-none focus:border-primary/50" />
@@ -552,7 +552,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
           </div>
           <div>
             <h3 className="text-lg font-bold text-text tracking-tight">{c.name}</h3>
-            <span className={`text-[9px] font-black uppercase tracking-[2px] ${typeInfo.color.split(' ')[0]}`}>
+            <span className={`text-3xs font-black uppercase tracking-label ${typeInfo.color.split(' ')[0]}`}>
               {typeInfo.label}
             </span>
           </div>
@@ -574,7 +574,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface border border-border">
               <Phone size={14} className="text-text-muted flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Telefono</p>
+                <p className="text-2xs font-bold text-text-dim uppercase tracking-widest">Telefono</p>
                 <span className="text-text text-xs font-medium">{c.phone}</span>
               </div>
             </div>
@@ -583,7 +583,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface border border-border">
               <Mail size={14} className="text-text-muted flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Email</p>
+                <p className="text-2xs font-bold text-text-dim uppercase tracking-widest">Email</p>
                 <span className="text-text text-xs font-medium truncate block">{c.email}</span>
               </div>
             </div>
@@ -592,7 +592,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface border border-border">
               <Mail size={14} className="text-warning flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">PEC</p>
+                <p className="text-2xs font-bold text-text-dim uppercase tracking-widest">PEC</p>
                 <span className="text-text text-xs font-medium truncate block">{c.pec}</span>
               </div>
             </div>
@@ -601,7 +601,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface border border-border">
               <MapPin size={14} className="text-text-muted flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Indirizzo</p>
+                <p className="text-2xs font-bold text-text-dim uppercase tracking-widest">Indirizzo</p>
                 <span className="text-text text-xs font-medium truncate block">{c.address}</span>
               </div>
             </div>
@@ -610,7 +610,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface border border-border">
               <Hash size={14} className="text-text-muted flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Codice Fiscale</p>
+                <p className="text-2xs font-bold text-text-dim uppercase tracking-widest">Codice Fiscale</p>
                 <span className="text-text text-xs font-mono font-medium">{c.fiscalCode}</span>
               </div>
             </div>
@@ -619,7 +619,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface border border-border">
               <Building size={14} className="text-text-muted flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">P.IVA</p>
+                <p className="text-2xs font-bold text-text-dim uppercase tracking-widest">P.IVA</p>
                 <span className="text-text text-xs font-mono font-medium">{c.vatNumber}</span>
               </div>
             </div>
@@ -628,7 +628,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface border border-border">
               <Scale size={14} className="text-text-muted flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Ordine / Albo</p>
+                <p className="text-2xs font-bold text-text-dim uppercase tracking-widest">Ordine / Albo</p>
                 <span className="text-text text-xs font-medium">{c.barAssociation}</span>
               </div>
             </div>
@@ -637,7 +637,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface border border-border">
               <Gavel size={14} className="text-text-muted flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Tribunale</p>
+                <p className="text-2xs font-bold text-text-dim uppercase tracking-widest">Tribunale</p>
                 <span className="text-text text-xs font-medium">{c.court}</span>
               </div>
             </div>
@@ -653,7 +653,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
       {/* Related Contacts (cross-practice relationships) */}
       {relatedContacts.length > 0 && (
         <div className="space-y-2 pt-1">
-          <h4 className="text-[9px] font-black text-text-dim uppercase tracking-[2px]">Soggetti Collegati</h4>
+          <h4 className="text-3xs font-black text-text-dim uppercase tracking-label">Soggetti Collegati</h4>
           <div className="space-y-1">
             {relatedContacts.map(({ role, contact: rc }) => {
               const rcType = TYPE_MAP[rc.type] || TYPE_MAP.other;
@@ -665,7 +665,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-text text-sm font-medium truncate">{rc.name}</p>
-                    <p className="text-[9px] text-text-dim">{role}</p>
+                    <p className="text-3xs text-text-dim">{role}</p>
                   </div>
                 </div>
               );
@@ -677,14 +677,14 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
       {/* Linked Practices */}
       {linkedPractices.length > 0 && (
         <div className="space-y-2 pt-1">
-          <h4 className="text-[9px] font-black text-text-dim uppercase tracking-[2px]">Fascicoli ({linkedPractices.length})</h4>
+          <h4 className="text-3xs font-black text-text-dim uppercase tracking-label">Fascicoli ({linkedPractices.length})</h4>
           <div className="space-y-1">
             {linkedPractices.map(p => (
               <button type="button" key={p.id} onClick={() => onSelectPractice?.(p.id)}
                 className="flex items-center gap-2.5 px-3 py-2 bg-surface hover:bg-card border border-border rounded-lg transition-colors group text-left w-full">
                 <Briefcase size={13} className="text-text-dim flex-shrink-0" />
                 <p className="text-text text-sm truncate flex-1 group-hover:text-primary transition-colors">{p.client} — {p.object}</p>
-                <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${p.status === 'active' ? 'bg-success-soft text-success' : 'bg-surface text-text-dim'}`}>
+                <span className={`text-xxs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${p.status === 'active' ? 'bg-success-soft text-success' : 'bg-surface text-text-dim'}`}>
                   {p.status === 'active' ? 'Attivo' : 'Chiuso'}
                 </span>
               </button>

@@ -9,11 +9,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { NavLink, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+// framer-motion removed — using CSS animations for Liquid Curtain
 import {
   LayoutDashboard, Briefcase, CalendarClock,
   CalendarDays, Settings, Lock, ShieldCheck, X, Menu,
-  Clock, Users, Sun, Moon, Shield, Search, BarChart3, Activity
+  Clock, Users, Sun, Moon, Shield, BarChart3, Activity
 } from 'lucide-react';
 import logo from '../assets/logo.svg';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -63,58 +63,7 @@ const sections = [
   },
 ];
 
-// ══════════════════════════════════════════════════════════════════════════
-//  LIQUID CURTAIN variants
-// ══════════════════════════════════════════════════════════════════════════
-const curtainVariants = {
-  hidden: {
-    y: '-100%',
-    borderBottomLeftRadius: '100% 50%',
-    borderBottomRightRadius: '100% 50%',
-    opacity: 1,
-  },
-  visible: {
-    y: '0%',
-    borderBottomLeftRadius: '0% 0%',
-    borderBottomRightRadius: '0% 0%',
-    opacity: 1,
-    transition: { duration: 1.8, ease: [0.22, 1, 0.36, 1] },
-  },
-  exit: {
-    y: '-100%',
-    borderBottomLeftRadius: '100% 50%',
-    borderBottomRightRadius: '100% 50%',
-    transition: { duration: 0.8, ease: [0.4, 0, 0.2, 1] },
-  },
-};
-
-const contentVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1, y: 0,
-    transition: { delay: 1.4, duration: 1, ease: [0.22, 1, 0.36, 1] },
-  },
-  exit: {
-    opacity: 0, scale: 0.98,
-    transition: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
-  },
-};
-
-const contentContainerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
-  },
-};
-
-const itemVariants = {
-  hidden:  { opacity: 0, y: 20, scale: 0.95 },
-  visible: {
-    opacity: 1, y: 0, scale: 1,
-    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
-  },
-};
+// Liquid Curtain animations now handled via CSS @keyframes (see index.css)
 
 // ══════════════════════════════════════════════════════════════════════════
 //  DESKTOP SIDEBAR
@@ -172,7 +121,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
           </div>
           <div className="flex flex-col">
             <span className="text-2xl font-black tracking-tighter text-text leading-none">LexFlow</span>
-            <span className="text-[9px] font-extrabold text-primary uppercase tracking-[3px] mt-1 sidebar-brand">Law Suite</span>
+            <span className="text-3xs font-extrabold text-primary uppercase tracking-title mt-1 sidebar-brand">Law Suite</span>
           </div>
         </div>
       </div>
@@ -182,7 +131,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
         {sections.map((section, sIdx) => (
           <div key={section.title || 'main'} className={`space-y-1 ${sIdx > 0 && section.title ? 'pt-2' : ''}`}>
             {section.title && (
-              <div className="px-4 mb-2 mt-1 text-xs font-black text-text-dim/60 uppercase tracking-[3px]">
+              <div className="px-4 mb-2 mt-1 text-xs font-black text-text-dim/60 uppercase tracking-title">
                 {section.title}
               </div>
             )}
@@ -209,17 +158,17 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
           className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-colors duration-300 group"
         >
           <Lock size={18} className="transition-transform group-hover:-rotate-12" />
-          <span className="font-black text-[11px] uppercase tracking-widest">Blocca Vault</span>
+          <span className="font-black text-xs-p uppercase tracking-widest">Blocca Vault</span>
         </button>
         <div className="flex items-center justify-between px-1 mt-4">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-            <span className="text-[10px] font-bold uppercase tracking-tight text-text-dim/80">v{version}</span>
+            <span className="text-2xs font-bold uppercase tracking-tight text-text-dim/80">v{version}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border bg-bg-surface">
               <ShieldCheck size={11} className="text-primary" />
-              <span className="text-[8px] font-black uppercase tracking-widest text-text-dim/70">AES-256 GCM</span>
+              <span className="text-xxs font-black uppercase tracking-widest text-text-dim/70">AES-256 GCM</span>
             </div>
           </div>
         </div>
@@ -289,88 +238,63 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
     handleClose();
     setTimeout(onLock, 350);
   }, [handleClose, onLock]);
+  const animClass = isClosing ? 'curtain-exit' : 'curtain-enter';
+
   return (
-    <AnimatePresence mode="wait">
-      {isOpen && !isClosing && (
+    <>
+      {(isOpen || isClosing) && (
         <>
-          {/* ── CURTAIN — tenda dall'alto ── */}
-          <motion.div
-            key="lexflow-curtain"
-            className="curtain-bg z-[100]"
-            variants={curtainVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
+          {/* ── CURTAIN — tenda dall'alto (CSS animation) ── */}
+          <div
+            className={`curtain-bg z-[100] ${animClass}`}
             aria-hidden="true"
+            onAnimationEnd={() => { if (isClosing) setIsClosing(false); }}
           />
 
-          {/* ── PULSANTE X — appare dopo 0.6s ── */}
-          <motion.div
-            key="lexflow-close"
-            className="fixed top-4 right-4 z-[110]"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ delay: 0.6, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <motion.button
+          {/* ── PULSANTE X ── */}
+          <div className={`fixed top-4 right-4 z-[110] ${animClass}-delayed`}>
+            <button
               onClick={handleClose}
               aria-label="Chiudi menu"
-              whileHover={{ rotate: 90 }}
-              transition={{ duration: 0.3 }}
-              className="curtain-close-btn"
+              className="curtain-close-btn hover:rotate-90 transition-transform duration-300"
             >
               <X size={22} />
-            </motion.button>
-          </motion.div>
+            </button>
+          </div>
 
-          {/* ── CONTENUTO — fade-in dopo la curtain ── */}
-          <motion.div
-            key="lexflow-content"
-            className="fixed inset-0 z-[101] h-dvh w-full overflow-y-auto"
+          {/* ── CONTENUTO ── */}
+          <div
+            className={`fixed inset-0 z-[101] h-dvh w-full overflow-y-auto ${animClass}-content`}
             style={{ WebkitOverflowScrolling: 'touch' }}
-            variants={contentVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
           >
-            {/* Glow ambientale primario */}
             <div className="curtain-glow" />
 
-            {/* Cascade container — stagger 0.08s */}
-            <motion.div
-              variants={contentContainerVariants}
-              initial="hidden"
-              animate="visible"
+            <div
               className="curtain-container"
               role="navigation"
               aria-label="Menu principale"
             >
               {/* ── Header logo ── */}
-              <motion.div
-                variants={itemVariants}
-                className="flex flex-col items-center mb-5"
-              >
+              <div className="flex flex-col items-center mb-5 curtain-stagger-item" style={{ animationDelay: '0ms' }}>
                 <div className="relative mb-2.5">
                   <img src={logo} alt="LexFlow" className="w-16 h-16 object-contain relative z-[1]" />
                 </div>
                 <h2 className="curtain-brand-title">LexFlow</h2>
                 <p className="curtain-brand-sub">Law Suite</p>
-              </motion.div>
+              </div>
 
-              {/* ── Linea separatrice ── */}
-              <motion.div variants={itemVariants} className="curtain-divider" />
+              <div className="curtain-divider curtain-stagger-item" style={{ animationDelay: '80ms' }} />
 
-              {/* ── Nav items — cascade ── */}
-              {navItemsMobile.map((item) => {
+              {/* ── Nav items — staggered ── */}
+              {navItemsMobile.map((item, idx) => {
                 const isActive =
                   location.pathname === item.path ||
                   (item.path === '/' && location.pathname === '');
                 return (
-                  <motion.div
+                  <div
                     key={item.path}
-                    variants={itemVariants}
-                    className="w-full max-w-80 py-0.5"
+                    className="w-full max-w-80 py-0.5 curtain-stagger-item"
+                    style={{ animationDelay: `${160 + idx * 80}ms` }}
                   >
                     <NavLink
                       to={item.path}
@@ -387,34 +311,27 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
                         <span className="underline-bar" />
                       </span>
                     </NavLink>
-                  </motion.div>
+                  </div>
                 );
               })}
 
-              {/* ── Separatore ── */}
-              <motion.div variants={itemVariants} className="curtain-divider-subtle" />
+              <div className="curtain-divider-subtle curtain-stagger-item" style={{ animationDelay: `${160 + navItemsMobile.length * 80}ms` }} />
 
-              {/* ── Blocca Vault ── */}
-              <motion.div variants={itemVariants} className="w-full max-w-80">
+              <div className="w-full max-w-80 curtain-stagger-item" style={{ animationDelay: `${240 + navItemsMobile.length * 80}ms` }}>
                 <button onClick={handleLock} className="curtain-lock-btn">
                   <Lock size={16} />
                   Blocca Vault
                 </button>
-              </motion.div>
+              </div>
 
-              {/* ── Toggle Tema ── */}
-              <motion.div variants={itemVariants} className="w-full max-w-80 mt-2">
+              <div className="w-full max-w-80 mt-2 curtain-stagger-item" style={{ animationDelay: `${320 + navItemsMobile.length * 80}ms` }}>
                 <button onClick={onToggleTheme} className="curtain-theme-btn">
                   {isLight ? <Moon size={16} /> : <Sun size={16} />}
                   {isLight ? 'Tema Scuro' : 'Tema Chiaro'}
                 </button>
-              </motion.div>
+              </div>
 
-              {/* ── Footer versione + badge ── */}
-              <motion.div
-                variants={itemVariants}
-                className="mt-4 text-center flex flex-col gap-1.5 items-center"
-              >
+              <div className="mt-4 text-center flex flex-col gap-1.5 items-center curtain-stagger-item" style={{ animationDelay: `${400 + navItemsMobile.length * 80}ms` }}>
                 <div className="curtain-badge">
                   <ShieldCheck size={12} className="text-primary" />
                   <span className="curtain-badge-text">AES-256 GCM Secure</span>
@@ -423,12 +340,12 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
                   <div className="curtain-status-dot" />
                   <span className="curtain-version">v{version}</span>
                 </div>
-              </motion.div>
-            </motion.div>
-          </motion.div>
+              </div>
+            </div>
+          </div>
         </>
       )}
-    </AnimatePresence>
+    </>
   );
 }
 

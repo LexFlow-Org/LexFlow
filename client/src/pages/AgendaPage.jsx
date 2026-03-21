@@ -407,7 +407,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
 
           {/* Titolo */}
           <div className="space-y-2">
-            <label htmlFor="em-title" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Titolo</label>
+            <label htmlFor="em-title" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Titolo</label>
             <input id="em-title" className="input-field w-full bg-surface border-border focus:border-primary/50 text-lg font-semibold" 
               placeholder="Es. Udienza Tribunale..." value={title} onChange={e => setTitle(e.target.value)} required autoFocus />
           </div>
@@ -415,11 +415,11 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
           {/* Data + Ora — Design pulito con selettore compatto */}
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <label htmlFor="em-date" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Data</label>
+              <label htmlFor="em-date" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Data</label>
               <input id="em-date" type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors" value={evDate} onChange={e => setEvDate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label htmlFor="em-start" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Inizio</label>
+              <label htmlFor="em-start" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Inizio</label>
               <input id="em-start" type="time" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors" value={timeStart} onChange={e => {
                 handleTimeStartChange(e.target.value);
                 const [h,m] = e.target.value.split(':').map(Number);
@@ -427,14 +427,14 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
               }} />
             </div>
             <div className="space-y-2">
-              <label htmlFor="em-end" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Fine</label>
+              <label htmlFor="em-end" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Fine</label>
               <input id="em-end" type="time" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors" value={timeEnd} onChange={e => setTimeEnd(e.target.value)} />
             </div>
           </div>
 
           {/* Categoria */}
           <div className="space-y-3">
-            <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1 block">Categoria</span>
+            <span className="text-2xs font-black text-text-dim uppercase tracking-label ml-1 block">Categoria</span>
             <div className="flex flex-wrap gap-2.5">
               {Object.entries(CAT_LABELS).map(([key, label]) => (
                 <button key={key} type="button"
@@ -451,18 +451,18 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
 
           {/* Note */}
           <div className="space-y-2">
-            <label htmlFor="em-notes" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Note</label>
+            <label htmlFor="em-notes" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Note</label>
             <textarea id="em-notes" className="input-field w-full bg-surface border-border min-h-[80px] resize-none" placeholder="Note aggiuntive..." rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
 
           {/* Preavviso personalizzato per evento */}
           <div className="space-y-3">
-            <span className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1 block">Preavviso Notifica</span>
+            <span className="text-2xs font-black text-text-dim uppercase tracking-label ml-1 block">Preavviso Notifica</span>
             <div className="flex flex-wrap gap-1.5 items-center">
               {REMIND_OPTIONS.map(opt => (
                 <button key={String(opt.value)} type="button"
                   onClick={() => { setRemindMinutes(opt.value); }}
-                  className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors border ${
+                  className={`px-3 py-2 rounded-xl text-2xs font-bold uppercase tracking-wider transition-colors border ${
                     remindMinutes === opt.value
                       ? 'bg-primary text-black border-primary'
                       : 'bg-surface text-text-dim border-border hover:bg-card hover:text-text'
@@ -478,7 +478,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
               }`}>
                 <button type="button"
                   onClick={() => setRemindMinutes('custom')}
-                  className={`px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                  className={`px-2.5 py-2 text-2xs font-bold uppercase tracking-wider transition-colors ${
                     remindMinutes === 'custom' ? 'text-primary' : 'text-text-dim hover:text-text'
                   }`}>
                   Alle
@@ -488,17 +488,17 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
                   value={customRemindTime}
                   onFocus={() => setRemindMinutes('custom')}
                   onChange={e => { setCustomRemindTime(e.target.value); setRemindMinutes('custom'); }}
-                  className="bg-transparent border-none outline-none text-[10px] font-mono text-white w-[52px] py-1.5 pr-2 focus:ring-0"
+                  className="bg-transparent border-none outline-none text-2xs font-mono text-white w-[52px] py-1.5 pr-2 focus:ring-0"
                 />
               </div>
             </div>
-            <p className="text-[9px] text-text-dim mt-1">«Standard» usa il preavviso globale. «Alle» invia la notifica all&apos;orario preciso scelto.</p>
+            <p className="text-3xs text-text-dim mt-1">«Standard» usa il preavviso globale. «Alle» invia la notifica all&apos;orario preciso scelto.</p>
           </div>
 
           {/* Collegamento a fascicolo */}
           {linkablePractices.length > 0 && (
             <div className="space-y-2">
-              <label htmlFor="em-practice" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1 block">Collega a Fascicolo</label>
+              <label htmlFor="em-practice" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1 block">Collega a Fascicolo</label>
               <select
                 id="em-practice"
                 value={practiceId}
@@ -587,7 +587,7 @@ function StatsCard({ events }) {
             </div>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-text-muted font-bold mb-1">Produttività Oggi</p>
+            <p className="text-2xs uppercase tracking-wider text-text-muted font-bold mb-1">Produttività Oggi</p>
             <p className="text-lg font-bold text-text">{todayDone} <span className="text-sm font-normal text-text-dim">/ {todayEvts.length} compiti</span></p>
           </div>
         </div>
@@ -595,13 +595,13 @@ function StatsCard({ events }) {
 
       {sortedCats.length > 0 && (
         <div className="glass-card p-4">
-          <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-3">Questa Settimana</p>
+          <p className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3">Questa Settimana</p>
           <div className="space-y-3">
             {sortedCats.map(([cat, count]) => {
               const pct = weekEvts.length > 0 ? (count / weekEvts.length) * 100 : 0;
               return (
                 <div key={cat}>
-                  <div className="flex justify-between text-[10px] mb-1">
+                  <div className="flex justify-between text-2xs mb-1">
                     <span className="text-text-muted flex items-center gap-1.5">
                       <span className={`w-1.5 h-1.5 rounded-full ${catDotClass(cat)}`}/>
                       {CAT_LABELS[cat]}
@@ -652,7 +652,7 @@ function UpcomingPanel({ events, onEdit, onToggle }) {
                 <div className={`w-1.5 h-8 rounded-full flex-shrink-0 ${catBarClass(ev.category)}`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-text truncate">{ev.title}</p>
-                  <p className="text-[10px] text-danger">{formatRelDay(ev.date)}</p>
+                  <p className="text-2xs text-danger">{formatRelDay(ev.date)}</p>
                 </div>
               </button>
             ))}
@@ -674,7 +674,7 @@ function UpcomingPanel({ events, onEdit, onToggle }) {
                 <p className="text-xs font-medium text-text group-hover:text-white transition-colors truncate">{ev.title}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                     <span className={`w-1.5 h-1.5 rounded-full ${catDotClass(ev.category)}`} />
-                    <p className="text-[10px] text-text-dim">{formatRelDay(ev.date)} · {ev.timeStart}</p>
+                    <p className="text-2xs text-text-dim">{formatRelDay(ev.date)} · {ev.timeStart}</p>
                 </div>
               </div>
             </button>
@@ -751,7 +751,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                 </div>
                 <div className="relative" style={{height: HOURS.length * 60 + 20}}>
                   {HOURS.map((h, i) => (
-                    <div key={h} className="absolute left-0 w-12 text-right text-[11px] font-medium text-text-dim pt-1.5" style={{top: i * 60}}>
+                    <div key={h} className="absolute left-0 w-12 text-right text-xs-p font-medium text-text-dim pt-1.5" style={{top: i * 60}}>
                       {String(h).padStart(2,'0')}:00
                     </div>
                   ))}
@@ -760,7 +760,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                     const top = (nowMin / 60) * 60;
                     return (
                         <div className="absolute left-14 right-0 z-30 flex items-center" style={{top}}>
-                           <div className="text-[9px] font-bold text-primary w-10 text-right pr-2 -ml-12">{fmtTime(now.getHours(), now.getMinutes())}</div>
+                           <div className="text-3xs font-bold text-primary w-10 text-right pr-2 -ml-12">{fmtTime(now.getHours(), now.getMinutes())}</div>
                            <div className="flex-1 border-t border-primary relative">
                              <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-primary" />
                            </div>
@@ -848,11 +848,11 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                                         {ev.practiceId && <FolderOpen size={12} className="text-white/80 flex-shrink-0" />}
                                     </div>
                                     {height >= 45 && (
-                                        <p className="text-[10px] font-bold uppercase tracking-wide mt-0.5 truncate text-white/85 ev-text">{ev.notes || ev.category.toUpperCase()}</p>
+                                        <p className="text-2xs font-bold uppercase tracking-wide mt-0.5 truncate text-white/85 ev-text">{ev.notes || ev.category.toUpperCase()}</p>
                                     )}
                                   </div>
                                </div>
-                               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 text-white/85 ev-badge">{ev.timeStart}</span>
+                               <span className="text-2xs font-mono px-1.5 py-0.5 rounded flex-shrink-0 text-white/85 ev-badge">{ev.timeStart}</span>
                           </div>
                           {/* Drag handle per ridimensionare (bottom edge) */}
                           <button
@@ -933,7 +933,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
             const isToday = str === todayStr;
             return (
               <div key={str} className={`text-center py-3 ${isToday ? 'bg-primary/5' : ''}`}>
-                <div className="text-[10px] font-bold text-text-dim mb-1">{DAYS_SHORT[date.getDay()]}</div>
+                <div className="text-2xs font-bold text-text-dim mb-1">{DAYS_SHORT[date.getDay()]}</div>
                 <div className={`text-sm font-bold w-7 h-7 mx-auto flex items-center justify-center rounded-full ${isToday ? 'bg-primary text-black' : 'text-text'}`}>
                     {date.getDate()}
                 </div>
@@ -945,7 +945,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
           <div className="grid grid-cols-[50px_repeat(7,1fr)] relative" style={{height: HOURS.length * 60}}>
             <div className="relative border-r border-border bg-surface">
               {HOURS.map(h => (
-                <div key={h} className="absolute w-full text-right pr-2 text-[10px] text-text-dim font-medium" style={{top: h*60 + 5}}>
+                <div key={h} className="absolute w-full text-right pr-2 text-2xs text-text-dim font-medium" style={{top: h*60 + 5}}>
                   {String(h).padStart(2,'0')}
                 </div>
               ))}
@@ -998,7 +998,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
                           }}
                         />
                         <div className="font-extrabold truncate leading-tight flex items-center gap-1 relative z-[1] pointer-events-none ev-text">{ev.title}{ev.remindMinutes != null && <BellRing size={8} className="text-white/80 flex-shrink-0" />}</div>
-                        {height >= 30 && <div className="text-[9px] font-bold uppercase tracking-wide relative z-[1] pointer-events-none text-white/85 ev-text">{CAT_LABELS[ev.category] || ev.category?.toUpperCase()}</div>}
+                        {height >= 30 && <div className="text-3xs font-bold uppercase tracking-wide relative z-[1] pointer-events-none text-white/85 ev-text">{CAT_LABELS[ev.category] || ev.category?.toUpperCase()}</div>}
                         {/* Resize handle bottom */}
                         <button type="button" aria-label="Ridimensiona fine"
                           className="resize-handle absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize z-10"
@@ -1054,7 +1054,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
       <div className="glass-card flex-1 flex flex-col overflow-hidden p-0">
         <div className="grid grid-cols-7 border-b border-border bg-surface">
           {['LUN','MAR','MER','GIO','VEN','SAB','DOM'].map((d, i) => (
-            <div key={d} className={`text-center py-2 text-[10px] font-bold ${i>=5 ? 'text-primary' : 'text-text-dim'}`}>{d}</div>
+            <div key={d} className={`text-center py-2 text-2xs font-bold ${i>=5 ? 'text-primary' : 'text-text-dim'}`}>{d}</div>
           ))}
         </div>
         <div className="grid grid-cols-7 grid-rows-6 flex-1">
@@ -1066,18 +1066,18 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
                 className={`border-b border-r border-border p-1 relative cursor-pointer hover:bg-surface transition group text-left ${outside ? 'opacity-30' : ''} ${isToday ? 'bg-primary/[0.05]' : ''}`}>
                 <button type="button" className="absolute inset-0 z-0 cursor-pointer" aria-label={`Aggiungi evento il ${str}`}
                   onClick={() => onAdd(str)} />
-                <div className={`text-[10px] font-bold mb-1 ml-1 w-5 h-5 flex items-center justify-center rounded-full relative z-[1] pointer-events-none ${isToday ? 'bg-primary text-black' : 'text-text-muted'}`}>
+                <div className={`text-2xs font-bold mb-1 ml-1 w-5 h-5 flex items-center justify-center rounded-full relative z-[1] pointer-events-none ${isToday ? 'bg-primary text-black' : 'text-text-muted'}`}>
                   {date.getDate()}
                 </div>
                 <div className="space-y-0.5 overflow-y-auto max-h-[80px] no-scrollbar relative z-[1]">
                   {dayEvts.slice(0, 4).map(ev => (
                     <button type="button" key={ev.id} onClick={e => {e.stopPropagation(); onEdit(ev);}}
-                      className={`agenda-event text-[9px] font-bold px-1.5 py-1 rounded-sm truncate border-l-[2px] transition-colors hover:scale-[1.02] hover:z-10 block w-full text-left cursor-pointer ev-text-strong ${evBgClass(ev.category)}`}
+                      className={`agenda-event text-3xs font-bold px-1.5 py-1 rounded-sm truncate border-l-[2px] transition-colors hover:scale-[1.02] hover:z-10 block w-full text-left cursor-pointer ev-text-strong ${evBgClass(ev.category)}`}
                       title={`${ev.title} — ${CAT_LABELS[ev.category] || ev.category}`}>
                       {ev.title}
                     </button>
                   ))}
-                  {dayEvts.length > 4 && <div className="text-[8px] text-center text-text-dim pointer-events-none">+{dayEvts.length - 4} altri</div>}
+                  {dayEvts.length > 4 && <div className="text-xxs text-center text-text-dim pointer-events-none">+{dayEvts.length - 4} altri</div>}
                 </div>
               </div>
             );
@@ -1161,7 +1161,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
           <div className="flex items-center justify-between py-2">
             <div>
               <p className="text-sm text-white font-medium">Attiva Notifiche Desktop</p>
-              <p className="text-[10px] text-text-dim">Ricevi promemoria prima degli impegni</p>
+              <p className="text-2xs text-text-dim">Ricevi promemoria prima degli impegni</p>
             </div>
             <button
               onClick={() => setNotifyEnabled(!notifyEnabled)}
@@ -1179,7 +1179,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
           <div className={`space-y-5 transition-opacity duration-300 ${notifyEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none select-none'}`}>
           {/* Preavviso Standard — Pill selector */}
           <div>
-            <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2.5 block">Preavviso Standard</span>
+            <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-2.5 block">Preavviso Standard</span>
             <div className="flex flex-wrap gap-1.5">
               {PREAVVISO_OPTIONS.map(opt => (
                 <button
@@ -1200,7 +1200,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
 
           {/* Orari Briefing — Design pill coerente con preavviso evento */}
           <div>
-            <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-3 block">Orari Briefing</span>
+            <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Orari Briefing</span>
             <div className="space-y-2">
               {[
                 { label: 'Mattina', value: briefingMattina, onChange: setBriefingMattina },
@@ -1210,7 +1210,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
                 <div key={label} className="flex items-center justify-between bg-surface rounded-xl px-4 py-3 border border-border">
                   <span className="text-sm text-white font-medium">{label}</span>
                   <div className="inline-flex items-center rounded-lg border border-primary/30 bg-primary/10">
-                    <span className="px-2 py-1.5 text-[10px] font-semibold text-primary">Alle</span>
+                    <span className="px-2 py-1.5 text-2xs font-semibold text-primary">Alle</span>
                     <input type="time" className="bg-transparent border-none outline-none text-sm text-white font-mono w-[72px] py-1.5 pr-2.5 focus:ring-0" value={value} onChange={e => onChange(e.target.value)} />
                   </div>
                 </div>
@@ -1357,7 +1357,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
             <button 
               key={key} 
               onClick={() => toggleFilter(key)} 
-              className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border flex-shrink-0 ${
+              className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-2xs font-bold uppercase tracking-wider transition-colors border flex-shrink-0 ${
                 isActive 
                   ? `${CAT_PILL_STYLES[key]} scale-105` 
                   : 'border-border text-text-dim hover:bg-surface hover:text-white bg-surface'

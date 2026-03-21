@@ -114,7 +114,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
           {/* Practice Matches */}
           {practiceMatches.length > 0 && (
             <div className="space-y-3">
-              <h4 className="text-[11px] font-black text-text-dim uppercase tracking-[2px] flex items-center gap-2">
+              <h4 className="text-xs-p font-black text-text-dim uppercase tracking-label flex items-center gap-2">
                 <Briefcase size={14} /> Fascicoli Coinvolti ({practiceMatches.length})
               </h4>
               <div className="space-y-2">
@@ -132,7 +132,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 flex-wrap">
                             <span className="text-text font-bold text-sm truncate">{p.client || 'N/A'}</span>
-                            <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${STATUS_COLORS[status]}`}>
+                            <span className={`text-3xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${STATUS_COLORS[status]}`}>
                               {STATUS_LABELS[status]}
                             </span>
                           </div>
@@ -147,7 +147,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
                           {/* Matched fields pills */}
                           <div className="flex flex-wrap gap-1 max-w-[200px] justify-end">
                             {(m.matchedFields || []).map((f) => (
-                              <span key={f} className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning-border whitespace-nowrap">
+                              <span key={f} className="text-xxs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning-border whitespace-nowrap">
                                 {f.startsWith('ruolo:') ? ROLE_LABELS[f.split(':')[1]] || f.split(':')[1] : FIELD_LABELS[f] || f}
                               </span>
                             ))}
@@ -165,7 +165,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
           {/* Contact Matches */}
           {contactMatches.length > 0 && (
             <div className="space-y-3">
-              <h4 className="text-[11px] font-black text-text-dim uppercase tracking-[2px] flex items-center gap-2">
+              <h4 className="text-xs-p font-black text-text-dim uppercase tracking-label flex items-center gap-2">
                 <User size={14} /> Contatti Trovati ({contactMatches.length})
               </h4>
               <div className="space-y-2">
@@ -178,16 +178,16 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
                           <span className="text-text font-bold text-sm">{c.name}</span>
                           <div className="flex items-center gap-3 mt-1 flex-wrap">
                             {c.type && (
-                              <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
+                              <span className="text-3xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
                                 {ROLE_LABELS[c.type] || c.type}
                               </span>
                             )}
-                            {c.fiscalCode && <span className="text-text-muted text-[10px] font-mono">{c.fiscalCode}</span>}
-                            {c.vatNumber && <span className="text-text-muted text-[10px] font-mono">P.IVA {c.vatNumber}</span>}
+                            {c.fiscalCode && <span className="text-text-muted text-2xs font-mono">{c.fiscalCode}</span>}
+                            {c.vatNumber && <span className="text-text-muted text-2xs font-mono">P.IVA {c.vatNumber}</span>}
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0 ml-4">
-                          <span className="text-[10px] text-text-dim">
+                          <span className="text-2xs text-text-dim">
                             {cm.linkedPracticeIds?.length || 0} fascicoli collegati
                           </span>
                         </div>

@@ -85,7 +85,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
   return (
     <div ref={wrapRef} className="relative">
       {label && (
-        <label htmlFor={id} className="text-[10px] font-black text-text-dim uppercase tracking-[2px] block mb-2">
+        <label htmlFor={id} className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">
           {label}
         </label>
       )}

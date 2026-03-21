@@ -73,7 +73,7 @@ export default function ReportPage() {
             <s.icon size={18} className="text-[var(--primary)] shrink-0" />
             <div>
               <p className="text-xl font-black text-[var(--text)] tabular-nums">{s.value}</p>
-              <p className="text-[9px] text-[var(--text-dim)] font-bold uppercase tracking-wider">{s.label}</p>
+              <p className="text-3xs text-[var(--text-dim)] font-bold uppercase tracking-wider">{s.label}</p>
             </div>
           </div>
         ))}
@@ -81,16 +81,16 @@ export default function ReportPage() {
 
       {/* Hours bar chart (CSS-only) */}
       <div className="glass-card p-5">
-        <h3 className="text-[10px] font-black uppercase tracking-[2px] text-[var(--text-dim)] mb-4">Ore Lavorate — Questa Settimana</h3>
+        <h3 className="text-2xs font-black uppercase tracking-label text-[var(--text-dim)] mb-4">Ore Lavorate — Questa Settimana</h3>
         <div className="flex items-end gap-2 h-32">
           {stats.dayHours.map((h, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-[9px] text-[var(--text-dim)] font-mono">{h > 0 ? h.toFixed(1) : ''}</span>
+              <span className="text-3xs text-[var(--text-dim)] font-mono">{h > 0 ? h.toFixed(1) : ''}</span>
               <div
                 className="w-full rounded-t-md bg-[var(--primary)] transition-all duration-500"
                 style={{ height: `${(h / maxDayHours) * 100}%`, minHeight: h > 0 ? 4 : 0 }}
               />
-              <span className="text-[9px] text-[var(--text-dim)] font-medium">{dayLabels[i]}</span>
+              <span className="text-3xs text-[var(--text-dim)] font-medium">{dayLabels[i]}</span>
             </div>
           ))}
         </div>
@@ -98,7 +98,7 @@ export default function ReportPage() {
 
       {/* Type distribution */}
       <div className="glass-card p-5">
-        <h3 className="text-[10px] font-black uppercase tracking-[2px] text-[var(--text-dim)] mb-4">Distribuzione per Materia</h3>
+        <h3 className="text-2xs font-black uppercase tracking-label text-[var(--text-dim)] mb-4">Distribuzione per Materia</h3>
         <div className="space-y-2">
           {Object.entries(stats.typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
             <div key={type} className="flex items-center gap-3">

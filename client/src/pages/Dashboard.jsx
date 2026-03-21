@@ -66,7 +66,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
 
               {/* Orario evento */}
               {ev.timeStart && (
-                <span className="text-[11px] font-mono font-bold flex-shrink-0 tabular-nums text-white/60">
+                <span className="text-xs-p font-mono font-bold flex-shrink-0 tabular-nums text-white/60">
                   {ev.timeStart}
                 </span>
               )}
@@ -92,7 +92,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
 
               {/* Tipo impegno — all'estrema destra */}
               {ev.category && (
-                <span className={`text-[9px] font-bold uppercase tracking-wider flex-shrink-0 px-2.5 py-1 rounded-lg border ${catPillClass(ev.category)}`}
+                <span className={`text-3xs font-bold uppercase tracking-wider flex-shrink-0 px-2.5 py-1 rounded-lg border ${catPillClass(ev.category)}`}
                 >{ev.category}</span>
               )}
             </div>
@@ -107,7 +107,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
           {/* Text indicator */}
           <button
             onClick={() => scrollRef.current?.scrollBy({ top: 120, behavior: 'smooth' })}
-            className="w-full flex items-center justify-center gap-1.5 pt-2 pb-0.5 text-[10px] font-semibold text-white/50 hover:text-primary transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 pt-2 pb-0.5 text-2xs font-semibold text-white/50 hover:text-primary transition-colors"
           >
             <ChevronDown size={12} className="animate-bounce" />
             <span>
@@ -244,7 +244,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
         </div>
 
         <div className="relative z-10">
-          <p className="text-[10px] font-black uppercase tracking-[3px] mb-3 text-white/70">
+          <p className="text-2xs font-black uppercase tracking-title mb-3 text-white/70">
             {hero.label}
           </p>
           <h1 className="text-4xl font-black tracking-tight mb-1 text-white">{hero.greeting}</h1>
@@ -263,7 +263,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
           </div>
           <div>
             <p className="text-2xl font-black text-text tabular-nums">{stats.activeCount}</p>
-            <p className="text-[10px] text-text-muted font-bold uppercase tracking-wider">Fascicoli Attivi</p>
+            <p className="text-2xs text-text-muted font-bold uppercase tracking-wider">Fascicoli Attivi</p>
           </div>
         </button>
 
@@ -275,7 +275,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
             <div className="flex items-baseline gap-2">
               <p className="text-2xl font-black text-text tabular-nums">{stats.todayRemaining}</p>
             </div>
-            <p className="text-[10px] text-text-muted font-bold uppercase tracking-wider">
+            <p className="text-2xs text-text-muted font-bold uppercase tracking-wider">
               Impegni Rimanenti Oggi
             </p>
           </div>
@@ -287,7 +287,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
           </div>
           <div>
             <p className="text-2xl font-black text-text tabular-nums">{stats.deadlineCount}</p>
-            <p className="text-[10px] text-text-muted font-bold uppercase tracking-wider">Scadenze In Arrivo</p>
+            <p className="text-2xs text-text-muted font-bold uppercase tracking-wider">Scadenze In Arrivo</p>
           </div>
         </button>
       </div>
@@ -295,7 +295,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       {/* ═══ FASCICOLI MODIFICATI DI RECENTE ═══ */}
       {practices && practices.length > 0 && (
         <div className="glass-card p-5">
-          <h3 className="text-[10px] font-black uppercase tracking-[2px] text-text-muted mb-3">Fascicoli Recenti</h3>
+          <h3 className="text-2xs font-black uppercase tracking-label text-text-muted mb-3">Fascicoli Recenti</h3>
           <div className="space-y-2">
             {practices
               .filter(p => p.status === 'active')
@@ -312,7 +312,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
                     <p className="text-sm text-[var(--text)] truncate font-medium">{p.client || 'Senza cliente'}</p>
                     <p className="text-xs text-[var(--text-dim)] truncate">{p.object || ''}</p>
                   </div>
-                  <span className="text-[9px] text-[var(--text-dim)] font-mono shrink-0">
+                  <span className="text-3xs text-[var(--text-dim)] font-mono shrink-0">
                     {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) : ''}
                   </span>
                 </button>

@@ -115,7 +115,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
           
           {/* Cliente */}
           <div className="space-y-2">
-            <label htmlFor="cpm-client" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1 flex items-center gap-2">
+            <label htmlFor="cpm-client" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1 flex items-center gap-2">
               <User size={12} /> Cliente / Assistito <span className="text-primary">*</span>
             </label>
             <div className="relative group">
@@ -127,12 +127,12 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                 onChange={e => updateField('client', e.target.value)}
               />
             </div>
-            {errors.client && <p className="text-danger text-[10px] font-bold flex items-center gap-1 ml-1 mt-1 animate-pulse"><AlertCircle size={10}/> {errors.client}</p>}
+            {errors.client && <p className="text-danger text-2xs font-bold flex items-center gap-1 ml-1 mt-1 animate-pulse"><AlertCircle size={10}/> {errors.client}</p>}
           </div>
 
           {/* Materia con Pills Colorate */}
           <div className="space-y-3">
-            <label htmlFor="cpm-type" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Materia del Fascicolo</label>
+            <label htmlFor="cpm-type" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Materia del Fascicolo</label>
             <div className="flex flex-wrap gap-2.5">
               {[
                 { id: 'civile', label: 'Civile' },
@@ -160,7 +160,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
 
           {/* Oggetto */}
           <div className="space-y-2">
-            <label htmlFor="cpm-object" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Oggetto della Pratica *</label>
+            <label htmlFor="cpm-object" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Oggetto della Pratica *</label>
             <input
               id="cpm-object"
               className={`input-field w-full bg-surface border-border ${errors.object ? 'border-danger-border bg-danger-soft' : ''}`}
@@ -168,13 +168,13 @@ export default function CreatePracticeModal({ onClose, onSave }) {
               value={formData.object}
               onChange={e => updateField('object', e.target.value)}
             />
-            {errors.object && <p className="text-danger text-[10px] font-bold flex items-center gap-1 ml-1 animate-pulse"><AlertCircle size={10}/> {errors.object}</p>}
+            {errors.object && <p className="text-danger text-2xs font-bold flex items-center gap-1 ml-1 animate-pulse"><AlertCircle size={10}/> {errors.object}</p>}
           </div>
 
           {/* Grid Dati Tecnici */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
             <div className="space-y-2">
-              <label htmlFor="cpm-counterparty" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Controparte</label>
+              <label htmlFor="cpm-counterparty" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Controparte</label>
               <div className="relative group">
                 <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
                 <input
@@ -189,7 +189,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label htmlFor="cpm-court" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Autorità</label>
+                <label htmlFor="cpm-court" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Autorità</label>
                 <div className="relative group">
                   <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
                   <input
@@ -202,7 +202,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                 </div>
               </div>
               <div className="space-y-2">
-                <label htmlFor="cpm-courtLocation" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Sede</label>
+                <label htmlFor="cpm-courtLocation" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Sede</label>
                 <div className="relative group">
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
                   <input
@@ -217,7 +217,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label htmlFor="cpm-code" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Riferimento (RG / Rif. Interno)</label>
+              <label htmlFor="cpm-code" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Riferimento (RG / Rif. Interno)</label>
               <div className="relative group">
                 <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={16} />
                 <input
@@ -233,7 +233,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
 
           {/* Caricamento PDF (Nuova Sezione richiesta) */}
           <div className="space-y-3 pt-2">
-            <label htmlFor="cpm-docs" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1 flex items-center gap-2">
+            <label htmlFor="cpm-docs" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1 flex items-center gap-2">
               <FileText size={12} /> Documenti Allegati (PDF)
             </label>
             <button 
@@ -247,14 +247,14 @@ export default function CreatePracticeModal({ onClose, onSave }) {
               </div>
               <div className="text-center">
                 <p className="text-sm font-bold text-text">Carica documenti PDF</p>
-                <p className="text-[10px] text-text-dim mt-1 opacity-60 italic">I file verranno cifrati nel vault</p>
+                <p className="text-2xs text-text-dim mt-1 opacity-60 italic">I file verranno cifrati nel vault</p>
               </div>
               
               {/* Visualizzazione file pronti */}
               {formData.attachments.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-2 justify-center">
                   {formData.attachments.map((f) => (
-                    <span key={f.path} className="px-3 py-1 bg-primary text-[9px] font-bold rounded-lg text-black uppercase tracking-tighter inline-flex items-center gap-1.5">
+                    <span key={f.path} className="px-3 py-1 bg-primary text-3xs font-bold rounded-lg text-black uppercase tracking-tighter inline-flex items-center gap-1.5">
                       {f.name.length > 15 ? `${f.name.substring(0, 15)}…` : f.name}
                       <button
                         type="button"
@@ -273,7 +273,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
 
           {/* Note */}
           <div className="space-y-2">
-            <label htmlFor="cpm-notes" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Note / Strategia</label>
+            <label htmlFor="cpm-notes" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Note / Strategia</label>
             <textarea
               id="cpm-notes"
               className="input-field w-full min-h-[120px] py-4 px-5 resize-none bg-surface border-border focus:bg-card transition-colors"
