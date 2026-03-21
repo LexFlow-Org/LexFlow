@@ -358,9 +358,14 @@ pub(crate) fn unlock_vault_with_password(state: &State<AppState>, password: Stri
     unlock_vault_inner(state, password)
 }
 
+/// PERF: async command — Argon2 KDF runs on a blocking thread pool,
+/// keeping the Tauri main thread (and UI) responsive during unlock.
 #[tauri::command]
-pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
-    unlock_vault_inner(&state, password)
+pub(crate) async fn unlock_vault(
+    state: State<'_, AppState>,
+    password: String,
+) -> Result<Value, ()> {
+    Ok(unlock_vault_inner(&state, password))
 }
 
 fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {

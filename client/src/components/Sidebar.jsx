@@ -16,6 +16,7 @@ import {
   Clock, Users, Sun, Moon, Shield, BarChart3, Activity
 } from 'lucide-react';
 import logo from '../assets/logo.svg';
+import NotificationCenter from './NotificationCenter';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Nav items per il Liquid Curtain (mobile) ───────────────────────────────
@@ -140,8 +141,9 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
         ))}
       </nav>
 
-      {/* Toggle Tema — fuori dal nav per evitare clipping */}
-      <div className="flex justify-center px-4 py-3 flex-shrink-0">
+      {/* Toggle Tema + Notifiche */}
+      <div className="flex justify-center items-center gap-2 px-4 py-3 flex-shrink-0">
+        <NotificationCenter />
         <button
           onClick={onToggleTheme}
           className="w-10 h-10 flex items-center justify-center rounded-full text-primary hover:text-primary hover:bg-primary/10 transition-colors"
