@@ -60,7 +60,7 @@ export default function TimeTrackingPage({ practices }) {
   const [loading, setLoading] = useState(true);
   const [activeTimer, setActiveTimer] = useState(() => {
     try {
-      const saved = localStorage.getItem('lexflow_active_timer');
+      const saved = sessionStorage.getItem('lexflow_active_timer');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed?.startedAt) return parsed;
@@ -96,12 +96,12 @@ export default function TimeTrackingPage({ practices }) {
 
   useEffect(() => {
     if (activeTimer) {
-      localStorage.setItem('lexflow_active_timer', JSON.stringify(activeTimer));
+      sessionStorage.setItem('lexflow_active_timer', JSON.stringify(activeTimer));
       intervalRef.current = setInterval(() => {
         setElapsed(Math.floor((Date.now() - activeTimer.startedAt) / 1000));
       }, 1000);
     } else {
-      localStorage.removeItem('lexflow_active_timer');
+      sessionStorage.removeItem('lexflow_active_timer');
       clearInterval(intervalRef.current);
     }
     return () => clearInterval(intervalRef.current);

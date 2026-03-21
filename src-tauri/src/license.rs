@@ -21,10 +21,11 @@ use tauri::State;
 
 const LAST_CHECK_TS_FILE: &str = ".last-license-check";
 
+// ROTATED 2026-03-21: previous key compromised (was in public repo)
 pub(crate) const PUBLIC_KEY_BYTES: [u8; 32] = [
-    165u8, 168u8, 18u8, 242u8, 77u8, 185u8, 21u8, 57u8, 73u8, 63u8, 24u8, 223u8, 51u8, 205u8,
-    205u8, 147u8, 14u8, 52u8, 150u8, 216u8, 125u8, 219u8, 73u8, 154u8, 80u8, 107u8, 177u8, 59u8,
-    40u8, 183u8, 104u8, 171u8,
+    8u8, 212u8, 13u8, 234u8, 134u8, 217u8, 61u8, 166u8, 154u8, 206u8, 97u8, 69u8, 17u8, 176u8,
+    126u8, 188u8, 80u8, 41u8, 136u8, 9u8, 103u8, 166u8, 26u8, 158u8, 179u8, 252u8, 216u8, 211u8,
+    172u8, 245u8, 136u8, 157u8,
 ];
 
 // ─── Burned-key registry ────────────────────────────────────
