@@ -771,13 +771,14 @@ mod tests {
 
     #[test]
     fn test_license_verification_full_cycle() {
-        let valid_token = "LXFW.eyJjIjoicGlldHJvX3Rlc3QiLCJlIjoxODAzOTE4MTIxMzczLCJpZCI6IjQzMWQxYzU5LThjZWQtNDNiMy04MTRmLTk4YjhlYzUyNzJmZiJ9.d1q--j--MD269-SrzBPPo7noSn2abQMG1C9iWlLOM1dorE-UJXQxVLUXFg5VTEt8e_0FcheOuMlLkrX3OY9_AA";
+        // Token signed with rotated key (2026-03-21), expires 2028-01-01
+        let valid_token = "LXFW.eyJjIjoicGlldHJvX3Rlc3QiLCJlIjoxODMwMjk3NjAwMDAwLCJpZCI6InRlc3Qta2V5LXYyNTAtcm90YXRlZCJ9.2N_rAt-VEZnXYpOkWdmkYf3DYWbqYSpiGnUXD2sqsGFafwmDv0_B_IoNcZrPcYon7OsSEdPo8bm4WNqg4jnlDQ";
 
-        let token_expiry_ms: u64 = 1_803_918_121_373;
+        let token_expiry_ms: u64 = 1_830_297_600_000;
         let now_ms = safe_now_ms();
         if now_ms > token_expiry_ms {
             eprintln!(
-                "⚠️  TEST SKIPPED: The hardcoded test token expired on 2027-02-12.\n\
+                "⚠️  TEST SKIPPED: The hardcoded test token expired on 2028-01-01.\n\
                  Generate a new token with: python3 generate_license_v2.py generate\n\
                  Then update this test with the new token."
             );
