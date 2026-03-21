@@ -25,7 +25,7 @@ export default function NotificationCenter() {
           setNotifications(prev => [notif, ...prev].slice(0, 50));
           setUnreadCount(prev => prev + 1);
         });
-      } catch (_) { /* not in Tauri context */ }
+      } catch { /* not in Tauri context */ }
     };
     setupListener();
     return () => { if (unlisten) unlisten(); };

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Bell, BellOff } from 'lucide-react';
 import Toggle from '../../components/Toggle';
 

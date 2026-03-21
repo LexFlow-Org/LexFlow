@@ -514,7 +514,7 @@ export default function SettingsPage({ onLock }) {
       try {
         const h = await api.getVaultHealth();
         if (h) setVaultHealth(h);
-      } catch (_) {}
+      } catch { /* vault health non-critical */ }
     };
     loadHealth();
     const interval = setInterval(loadHealth, 30000);

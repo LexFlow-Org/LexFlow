@@ -101,6 +101,7 @@
     --bg: #1c1d26;
     --bg-card: #24252e;
     --bg-card-hover: #2e2f3a;
+    --bg-hover: #2e2f3a;
     --bg-input: #282932;
     --bg-surface: #272834;
 
@@ -198,6 +199,7 @@
     --bg: #d0d1d5;
     --bg-card: #dfe0e3;
     --bg-card-hover: #d8d9dc;
+    --bg-hover: #d8d9dc;
     --bg-input: #dfe0e3;
     --bg-surface: #dfe0e3;
 

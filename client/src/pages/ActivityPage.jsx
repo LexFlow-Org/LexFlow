@@ -11,7 +11,7 @@ export default function ActivityPage() {
     try {
       const data = await api.getAuditLog();
       setLog(Array.isArray(data) ? data.reverse() : []);
-    } catch (_) { setLog([]); }
+    } catch { setLog([]); }
     finally { setLoading(false); }
   };
 

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/incompatible-library */
 import { useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 

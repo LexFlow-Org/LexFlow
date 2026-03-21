@@ -263,7 +263,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
   // --- Helpers ---
   // PERF: debounce saves to avoid encrypting+writing on every keystroke
-  const { debounced: debouncedUpdate, flush: flushUpdate } = useDebouncedCallback(
+  const { debounced: debouncedUpdate } = useDebouncedCallback(
     (updated) => onUpdate(updated), 500
   );
   const update = (changes) => debouncedUpdate({ ...practice, ...changes });

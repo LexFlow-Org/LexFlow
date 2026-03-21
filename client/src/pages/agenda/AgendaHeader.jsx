@@ -4,8 +4,7 @@ const VIEW_LABELS = { today: 'Oggi', week: 'Settimana', month: 'Mese' };
 const CATEGORIES = ['udienza', 'scadenza', 'riunione', 'personale', 'altro'];
 
 export default function AgendaHeader({
-  view, onViewChange, categoryFilter, onCategoryChange,
-  onNewEvent, dateLabel
+  view, onViewChange, categoryFilter, onCategoryChange, onNewEvent,
 }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">

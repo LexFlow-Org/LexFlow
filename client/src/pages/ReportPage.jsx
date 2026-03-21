@@ -2,20 +2,15 @@ import { useState, useEffect, useMemo } from 'react';
 import { BarChart3, TrendingUp, Clock, FileText } from 'lucide-react';
 import * as api from '../tauri-api';
 
-export default function ReportPage() {
-  const [practices, setPractices] = useState([]);
+export default function ReportPage({ practices = [] }) {
   const [timeLogs, setTimeLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      api.loadPractices().catch(() => []),
-      api.loadTimeLogs?.().catch(() => []),
-    ]).then(([p, t]) => {
-      setPractices(p || []);
+    api.loadTimeLogs?.().then(t => {
       setTimeLogs(t || []);
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
   }, []);
 
   const stats = useMemo(() => {

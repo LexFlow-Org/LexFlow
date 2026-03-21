@@ -209,10 +209,10 @@ export default function App() {
     };
   }, [privacyEnabled, handleLockLocal]);
 
-  const handleManualLock = async () => {
+  const handleManualLock = useCallback(async () => {
     if (api.lockVault) await api.lockVault();
     handleLockLocal(true); // lock manuale: auto-trigger biometria al re-unlock
-  };
+  }, [handleLockLocal]);
 
   // --- KEYBOARD SHORTCUTS (cross-platform: ⌘ on Mac, Ctrl on Windows/Linux) ---
   useEffect(() => {
@@ -487,10 +487,13 @@ export default function App() {
             else setCmdPaletteOpen(false);
           }}
           onNavigate={(result) => {
-            if (result.field === 'practices') navigate(`/practices/${result.id}`);
+            if (result.field === 'practices') {
+              setSelectedId(result.id?.replace('practices_', ''));
+              navigate('/pratiche');
+            }
             else if (result.field === 'agenda') navigate('/agenda');
-            else if (result.field === 'contacts') navigate('/contacts');
-            else if (result.field === 'timeLogs') navigate('/time-tracking');
+            else if (result.field === 'contacts') navigate('/contatti');
+            else if (result.field === 'timeLogs') navigate('/ore');
           }}
         />
         <main className="flex-1 h-screen overflow-hidden relative flex flex-col bg-background pt-[env(titlebar-area-height,0px)]">
@@ -586,7 +589,7 @@ export default function App() {
                 <ContactsPage practices={practices} onSelectPractice={handleSelectPractice} />
               } />
               <Route path="/audit" element={<AuditLogPage />} />
-              <Route path="/report" element={<ReportPage />} />
+              <Route path="/report" element={<ReportPage practices={practices} />} />
               <Route path="/attivita" element={<ActivityPage />} />
             </Routes>
             </Suspense>
