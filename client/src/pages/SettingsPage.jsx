@@ -28,6 +28,7 @@ import toast from 'react-hot-toast';
 import LicenseSettings from '../components/LicenseSettings';
 import ModalOverlay from '../components/ModalOverlay';
 import * as api from '../tauri-api';
+import Toggle from '../components/Toggle';
 
 const PREAVVISO_OPTIONS = [
   { value: 0, label: 'Al momento' },
@@ -723,16 +724,7 @@ export default function SettingsPage({ onLock }) {
                   Ricevi notifiche desktop per udienze, scadenze e impegni in agenda.
                 </p>
               </div>
-              <button 
-                onClick={() => {
-                  const val = !notifyEnabled;
-                  setNotifyEnabled(val);
-                  saveNotifySettings({ notifyEnabled: val });
-                }}
-                className={`w-12 h-6 rounded-full transition-colors relative ${notifyEnabled ? 'bg-primary' : 'bg-card border border-border'}`}
-              >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${notifyEnabled ? 'left-7' : 'left-1'}`} />
-              </button>
+              <Toggle checked={notifyEnabled} onChange={(val) => { setNotifyEnabled(val); saveNotifySettings({ notifyEnabled: val }); }} />
             </div>
 
             {notifyEnabled && (
@@ -800,12 +792,7 @@ export default function SettingsPage({ onLock }) {
                 Sfoca automaticamente il contenuto dell'app quando perdi il focus.
               </p>
             </div>
-            <button 
-              onClick={handlePrivacyToggle}
-              className={`w-12 h-6 rounded-full transition-colors relative ${privacyEnabled ? 'bg-primary' : 'bg-card border border-border'}`}
-            >
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${privacyEnabled ? 'left-7' : 'left-1'}`} />
-            </button>
+            <Toggle checked={privacyEnabled} onChange={handlePrivacyToggle} />
           </div>
 
           {/* Anti-Screenshot */}
@@ -820,12 +807,7 @@ export default function SettingsPage({ onLock }) {
                 Impedisce la cattura dello schermo (screenshot, registrazioni, condivisione schermo).
               </p>
             </div>
-            <button 
-              onClick={handleScreenshotToggle}
-              className={`w-12 h-6 rounded-full transition-colors relative ${screenshotProtection ? 'bg-primary' : 'bg-card border border-border'}`}
-            >
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${screenshotProtection ? 'left-7' : 'left-1'}`} />
-            </button>
+            <Toggle checked={screenshotProtection} onChange={handleScreenshotToggle} />
           </div>
 
           {/* Auto-Lock Timer */}

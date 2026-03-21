@@ -1,3 +1,69 @@
+# Changelog
+
+## [2.5.0] — 2026-03-21
+
+### Security
+- **CRITICAL**: Ed25519 key rotation — previous private key was exposed in public repo. Git history purged with git-filter-repo. All licenses must be re-signed.
+- Removed legacy AAD fallback from crypto.rs (was security risk)
+- DEK rotation now active (was dead code) — auto-rotates at unlock when >90 days or >10k writes
+- Rate limiting added to change_password and verify_vault_password
+- Timer data moved from localStorage to sessionStorage (was leaking practice data outside vault)
+- Bio unlock now uses full v4 flow (was v2-only, failing silently on v4 vaults)
+- 3 `.unwrap()` → `.expect()` with descriptive messages
+
+### Architecture
+- **v2 vault format removed** — all legacy code deleted (~400 lines). v4 only.
+- lib.rs split into 22 Rust modules (was 6097 lines monolithic)
+- AES-256-GCM-SIV (nonce-misuse resistant) replaces AES-GCM
+- Envelope encryption KEK/DEK with per-record encryption
+- framer-motion removed (-122KB gzipped from bundle), replaced with CSS animations
+- RwLock for read-heavy state (parallel reads, 90% of operations)
+- Async unlock_vault (Argon2 on Tokio thread pool, UI stays responsive)
+- React Context (AppProvider) for incremental prop drilling elimination
+
+### Features
+- Command Palette (⌘K/Ctrl+K): global fuzzy search with BM25 ranking
+- Keyboard shortcuts: ⌘N (new practice), ⌘L (lock vault)
+- Recovery key: generate + use from LoginScreen when locked out
+- Change password UI in Settings (O(1) via DEK re-wrap)
+- Vault Health dashboard: live KDF params, rotation status, record count
+- Audit Log page: chronological view of all operations with filters
+- Report & Analytics page: practice stats, weekly hours chart, type distribution
+- Activity Timeline: audit log with timeline UI
+- Onboarding Wizard: 3-step first-run guide
+- Dashboard: "Fascicoli Recenti" section (last 5 modified)
+- Notification Center: bell icon with badge in sidebar
+- Auto-backup: encrypted vault snapshots with rotation (keep last 3)
+- CSV export for time logs and invoices
+- Backend data validation (required fields, max lengths, array limits)
+- Record versioning exposed (load_record_history command)
+- Print stylesheet (@media print) for agenda/deadlines
+- Breadcrumb navigation
+- Toggle component (reusable, accessible)
+- 'Societario' practice type added
+
+### Performance
+- 97 transition-all → transition-colors (reduces CSS recalc jank on Windows/Android)
+- backdrop-blur disabled on Windows + Android (software rendering bypass)
+- box-shadow simplified for WebView2
+- Promise.all for parallel API calls (loadAllData, savePractices)
+- Preload all lazy pages after unlock
+- Debounce save in PracticeDetail (500ms)
+- 260 arbitrary Tailwind values consolidated into design system classes
+- Compressed vault records with zstd
+
+### Testing
+- 108 Rust security tests (penetration, APT, timing oracle, crash resilience)
+- 18 frontend smoke tests (Vitest)
+- cargo test added to CI release workflow
+- Python attack scripts + binary leak check
+
+### Docs
+- Security Whitepaper (Typst PDF)
+- User Guide (Typst PDF)
+- Release Notes v2.0 (Typst PDF)
+
+
 # Changelog -- LexFlow
 
 Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`

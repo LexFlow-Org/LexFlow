@@ -45,7 +45,7 @@ LexFlow è un gestionale completo per studi legali con crittografia di livello b
 | Layer | Tecnologia |
 |-------|------------|
 | Frontend | React 19 + Vite 7 + Tailwind CSS 4 |
-| Backend | Rust (Tauri v2.10) — 18 moduli |
+| Backend | Rust (Tauri v2.10) — 22 moduli |
 | Vault | Formato v4 — envelope encryption + per-record + HMAC header |
 | Crypto | aes-gcm-siv + argon2 + hmac-sha2 + ed25519-dalek (RustCrypto) |
 | Search | Trigram index cifrato + BM25 ranking |

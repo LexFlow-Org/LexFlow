@@ -37,7 +37,7 @@
   #v(8pt)
   #text(size: 11pt, fill: slate-500)[Gestionale per Studi Legali con Crittografia Zero-Knowledge]
   #v(4pt)
-  #text(size: 10pt, fill: slate-500)[Versione 2.0.5 · Marzo 2026]
+  #text(size: 10pt, fill: slate-500)[Versione 2.5.0 · Marzo 2026]
   #v(3cm)
   #text(size: 9pt, fill: slate-500)[
     macOS (Universal) · Windows 10/11 · Android 7+ \
@@ -108,7 +108,7 @@ LexFlow è un gestionale completo per studi legali con crittografia *zero-knowle
   inset: 8pt,
   [*Layer*], [*Tecnologia*],
   [Frontend], [React 19 + Vite 7 + Tailwind CSS 4],
-  [Backend], [Rust (Tauri v2.10) — 18 moduli],
+  [Backend], [Rust (Tauri v2.10) — 22 moduli],
   [Vault], [Formato v4 — envelope encryption + per-record + HMAC header],
   [Crypto], [aes-gcm-siv + argon2 + hmac-sha2 + ed25519-dalek (RustCrypto)],
   [Search], [Trigram index cifrato + BM25 ranking],
@@ -118,7 +118,7 @@ LexFlow è un gestionale completo per studi legali con crittografia *zero-knowle
 
 = Architettura Backend (Rust)
 
-Il backend è organizzato in 18 moduli Rust indipendenti:
+Il backend è organizzato in 22 moduli Rust indipendenti:
 
 #table(
   columns: (auto, 1fr),
@@ -190,6 +190,6 @@ Software proprietario. Tutti i diritti riservati. \
 #v(2cm)
 #align(center)[
   #text(size: 9pt, fill: slate-500)[
-    LexFlow · Documentazione Tecnica · v2.0.5 · Marzo 2026
+    LexFlow · Documentazione Tecnica · v2.5.0 · Marzo 2026
   ]
 ]
