@@ -4,7 +4,7 @@
 
 use serde_json::Value;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 use std::time::Instant;
 use tauri::State;
 use zeroize::{Zeroize, Zeroizing};
@@ -30,17 +30,17 @@ impl Drop for SecureKey {
 }
 
 pub struct AppState {
-    pub data_dir: Mutex<PathBuf>,
-    pub security_dir: Mutex<PathBuf>,
+    pub data_dir: RwLock<PathBuf>,
+    pub security_dir: RwLock<PathBuf>,
     /// v2 legacy: vault key derived directly from password (kept for backward compat)
     pub(crate) vault_key: Mutex<Option<SecureKey>>,
     /// v4: unwrapped DEK for data encryption (zeroized on lock)
     pub(crate) vault_dek: Mutex<Option<SecureKey>>,
-    /// v4: vault format version detected at unlock (2 or 4)
-    pub(crate) vault_version: Mutex<u32>,
+    /// v4: vault format version detected at unlock (4 only, v2 removed)
+    pub(crate) vault_version: RwLock<u32>,
     /// PERF: in-memory cache of decrypted vault data.
     /// Invalidated on every write. Avoids re-decrypting all records on each load.
-    pub(crate) vault_cache: Mutex<Option<Value>>,
+    pub(crate) vault_cache: RwLock<Option<Value>>,
     pub(crate) failed_attempts: Mutex<u32>,
     pub(crate) locked_until: Mutex<Option<Instant>>,
     pub(crate) last_activity: Mutex<Instant>,
@@ -54,12 +54,12 @@ pub struct AppState {
 impl AppState {
     pub fn new(data_dir: PathBuf, security_dir: PathBuf) -> Self {
         Self {
-            data_dir: Mutex::new(data_dir),
-            security_dir: Mutex::new(security_dir),
+            data_dir: RwLock::new(data_dir),
+            security_dir: RwLock::new(security_dir),
             vault_key: Mutex::new(None),
             vault_dek: Mutex::new(None),
-            vault_version: Mutex::new(0),
-            vault_cache: Mutex::new(None),
+            vault_version: RwLock::new(0),
+            vault_cache: RwLock::new(None),
             failed_attempts: Mutex::new(0),
             locked_until: Mutex::new(None),
             last_activity: Mutex::new(Instant::now()),
@@ -72,7 +72,7 @@ impl AppState {
 
 /// Invalidate the vault cache (call after every write).
 pub(crate) fn invalidate_vault_cache(state: &State<AppState>) {
-    *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 pub(crate) fn get_vault_key(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>>, String> {
@@ -100,7 +100,7 @@ pub(crate) fn get_vault_dek(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>
 pub(crate) fn get_vault_version(state: &State<AppState>) -> u32 {
     *state
         .vault_version
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
 }
 

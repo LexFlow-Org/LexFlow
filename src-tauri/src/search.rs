@@ -440,7 +440,7 @@ pub(crate) fn search_vault(
     let dek = get_vault_dek(&state)?;
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
@@ -488,7 +488,7 @@ pub(crate) fn rebuild_search_index(state: State<AppState>) -> Result<Value, Stri
     let dek = get_vault_dek(&state)?;
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 

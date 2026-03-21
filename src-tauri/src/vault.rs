@@ -28,7 +28,7 @@ pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, Stri
     // PERF: check cache first
     if let Some(cached) = state
         .vault_cache
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .as_ref()
     {
@@ -43,7 +43,7 @@ pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, Stri
         let key = get_vault_key(state)?;
         let path = state
             .data_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .join(VAULT_FILE);
         if !path.exists() {
@@ -56,7 +56,7 @@ pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, Stri
     };
 
     // PERF: store in cache
-    *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some(result.clone());
+    *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = Some(result.clone());
 
     Ok(result)
 }
@@ -66,7 +66,7 @@ fn read_vault_v4(state: &State<AppState>) -> Result<Value, String> {
     let dek = get_vault_dek(state)?;
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let path = dir.join(VAULT_FILE);
@@ -128,7 +128,7 @@ pub(crate) fn write_vault_internal(state: &State<AppState>, data: &Value) -> Res
         let result = write_vault_v4(state, data);
         // PERF: update cache with new data on success
         if result.is_ok() {
-            *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some(data.clone());
+            *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = Some(data.clone());
         }
         return result;
     }
@@ -136,14 +136,14 @@ pub(crate) fn write_vault_internal(state: &State<AppState>, data: &Value) -> Res
     let key = get_vault_key(state)?;
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let plaintext = Zeroizing::new(serde_json::to_vec(data).map_err(|e| e.to_string())?);
     let encrypted = encrypt_data(&key, &plaintext)?;
     let result = atomic_write_with_sync(&dir.join(VAULT_FILE), &encrypted);
     if result.is_ok() {
-        *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some(data.clone());
+        *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = Some(data.clone());
     }
     result
 }
@@ -153,7 +153,7 @@ fn write_vault_v4(state: &State<AppState>, data: &Value) -> Result<(), String> {
     let dek = get_vault_dek(state)?;
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let path = dir.join(VAULT_FILE);
@@ -291,7 +291,7 @@ fn init_new_vault_v4(
         Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
     *state
         .vault_version
-        .lock()
+        .write()
         .unwrap_or_else(|e| e.into_inner()) = 4;
 
     Ok(())
@@ -337,7 +337,7 @@ fn save_vault_field(state: &State<AppState>, field: &str, data: Value) -> Result
 pub(crate) fn vault_exists(state: State<AppState>) -> bool {
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     // v4 vault exists if vault.lex starts with V4 magic, or v2 if salt exists
@@ -366,12 +366,12 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
 fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let sec_dir = state
         .security_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
@@ -445,7 +445,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                         Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
                     *state
                         .vault_version
-                        .lock()
+                        .write()
                         .unwrap_or_else(|e| e.into_inner()) = 4;
 
                     // Perform key rotation if needed (>90 days or >10k writes)
@@ -524,10 +524,10 @@ pub(crate) fn lock_vault(state: State<AppState>) -> bool {
     *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
     *state
         .vault_version
-        .lock()
+        .write()
         .unwrap_or_else(|e| e.into_inner()) = 0;
     // SECURITY: clear plaintext cache on lock
-    *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = None;
     true
 }
 
@@ -536,7 +536,7 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
     let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let vault_path = dir.join(VAULT_FILE);
@@ -577,9 +577,9 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
     *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
     *state
         .vault_version
-        .lock()
+        .write()
         .unwrap_or_else(|e| e.into_inner()) = 0;
-    *state.vault_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = None;
     zeroize_password(password);
     json!({"success": true})
 }
@@ -592,7 +592,7 @@ pub(crate) fn change_password(
 ) -> Result<Value, String> {
     let sec_dir = state
         .security_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     // SECURITY: rate limit change_password to prevent brute-force on current password
@@ -605,7 +605,7 @@ pub(crate) fn change_password(
     let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
@@ -682,7 +682,7 @@ fn update_bio_password_if_needed(state: &State<AppState>, new_password: &str) {
     {
         let dir = state
             .data_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         if dir.join(BIO_MARKER_FILE).exists() {
@@ -705,12 +705,12 @@ fn update_bio_password_if_needed(state: &State<AppState>, new_password: &str) {
 pub(crate) fn verify_vault_password(state: State<AppState>, pwd: String) -> Result<Value, String> {
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let sec_dir = state
         .security_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     if let Err(locked_json) = check_lockout(&state, &sec_dir) {
@@ -840,7 +840,7 @@ pub(crate) fn get_vault_index(state: State<AppState>) -> Result<Value, String> {
     let dek = get_vault_dek(&state)?;
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let path = dir.join(VAULT_FILE);
@@ -897,7 +897,7 @@ pub(crate) fn load_record_detail(
     let dek = get_vault_dek(&state)?;
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let path = dir.join(VAULT_FILE);
@@ -1044,7 +1044,7 @@ pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, Str
     let dek = get_vault_dek(&state)?;
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let path = dir.join(VAULT_FILE);
@@ -1067,7 +1067,7 @@ pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, Str
 pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String) -> Value {
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let vault_path = dir.join(VAULT_FILE);
@@ -1087,7 +1087,7 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
                 Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
             *state
                 .vault_version
-                .lock()
+                .write()
                 .unwrap_or_else(|e| e.into_inner()) = 4;
             *state
                 .last_activity
@@ -1113,7 +1113,7 @@ pub(crate) fn get_vault_health(state: State<AppState>) -> Result<Value, String> 
     }
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let path = dir.join(VAULT_FILE);

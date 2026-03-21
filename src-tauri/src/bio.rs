@@ -39,7 +39,7 @@ pub(crate) fn has_bio_saved(state: State<AppState>) -> bool {
     {
         let dir = state
             .data_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         dir.join(BIO_MARKER_FILE).exists()
@@ -60,7 +60,7 @@ pub(crate) fn save_bio(state: State<AppState>, pwd: String) -> Result<bool, Stri
         entry.set_password(&pwd).map_err(|e| e.to_string())?;
         let dir = state
             .data_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let _ = secure_write(&dir.join(BIO_MARKER_FILE), b"1");
@@ -85,7 +85,7 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
 
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
@@ -119,7 +119,7 @@ pub(crate) fn bio_login(_state: State<AppState>) -> Result<Value, String> {
     {
         let sec_dir = _state
             .security_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         if let Err(locked_json) = check_lockout(&_state, &sec_dir) {
@@ -242,7 +242,7 @@ pub(crate) fn clear_bio(state: State<AppState>) -> bool {
         }
         let dir = state
             .data_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let _ = fs::remove_file(dir.join(BIO_MARKER_FILE));

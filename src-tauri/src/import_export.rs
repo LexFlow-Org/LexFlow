@@ -28,7 +28,7 @@ pub(crate) async fn export_vault(
         // v4: verify by attempting to open vault
         let dir = state
             .data_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let vault_path = dir.join(VAULT_FILE);
@@ -42,7 +42,7 @@ pub(crate) async fn export_vault(
         // v2: verify against salt+verify tag
         let dir = state
             .data_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let salt_path = dir.join(VAULT_SALT_FILE);
@@ -150,7 +150,7 @@ pub(crate) async fn import_vault(
         let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
         let dir = state
             .data_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
 
@@ -168,7 +168,7 @@ pub(crate) async fn import_vault(
             Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
         *state
             .vault_version
-            .lock()
+            .write()
             .unwrap_or_else(|e| e.into_inner()) = 4;
 
         // Now write the actual data using the v4 write path

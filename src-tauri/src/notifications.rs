@@ -106,7 +106,7 @@ pub(crate) fn sync_notification_schedule(
 ) -> bool {
     let dir = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let key = get_local_encryption_key();
@@ -722,7 +722,7 @@ pub(crate) async fn desktop_cron_job(app: AppHandle) {
         let data_dir = app
             .state::<AppState>()
             .data_dir
-            .lock()
+            .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
 

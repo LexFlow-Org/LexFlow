@@ -19,7 +19,7 @@ pub(crate) fn append_audit_log(state: &State<AppState>, event_name: &str) -> Res
     let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let path = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .join(AUDIT_LOG_FILE);
     let mut logs: Vec<Value> = if path.exists() {
@@ -56,7 +56,7 @@ pub(crate) fn get_audit_log(state: State<AppState>) -> Result<Value, String> {
     let key = get_vault_key(&state)?;
     let path = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .join(AUDIT_LOG_FILE);
     if !path.exists() {

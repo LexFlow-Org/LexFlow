@@ -946,11 +946,11 @@ pub(crate) fn setup_android(app: &mut tauri::App) {
     fs::create_dir_all(&vault_dir).expect("FATAL: cannot create Android vault directory");
     *app.state::<AppState>()
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner()) = vault_dir.clone();
     *app.state::<AppState>()
         .security_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner()) = real_dir.clone();
     crate::notifications::sync_notifications(&app.handle(), &vault_dir);
 

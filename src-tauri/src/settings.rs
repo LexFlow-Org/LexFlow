@@ -20,7 +20,7 @@ use crate::platform::decrypt_local_with_migration;
 pub(crate) fn get_settings(state: State<AppState>, app: AppHandle) -> Value {
     let path = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .join(SETTINGS_FILE);
     if !path.exists() {
@@ -76,7 +76,7 @@ pub(crate) fn get_settings(state: State<AppState>, app: AppHandle) -> Value {
 pub(crate) fn save_settings(state: State<AppState>, settings: Value) -> Result<bool, String> {
     let path = state
         .data_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .join(SETTINGS_FILE);
     let key = get_local_encryption_key();

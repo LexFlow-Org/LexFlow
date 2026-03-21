@@ -906,7 +906,7 @@
 .stagger-8 { animation-delay: 700ms; }
 
 .animate-gpu {
-  will-change: transform, opacity;
+  will-change: auto; /* reset after animation to free GPU memory */
   transform: translateZ(0);
   backface-visibility: hidden;
 }
@@ -1388,6 +1388,13 @@ body.is-windows {
 
   & .page-cascade > * {
     animation-duration: 0.2s;
+  }
+
+  /* Simplify box-shadow — WebView2 renders them in software with border-radius */
+  & .glass-card,
+  & .card,
+  & [class*="shadow-"] {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15) !important;
   }
 
   /* GPU hint for smoother scrolling and transitions */

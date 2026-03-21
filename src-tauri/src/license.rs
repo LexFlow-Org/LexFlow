@@ -644,7 +644,7 @@ pub(crate) fn verify_license(key_string: String) -> VerificationResult {
 pub(crate) fn check_license(state: State<AppState>) -> Value {
     let sec_dir = state
         .security_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let path = sec_dir.join(LICENSE_FILE);
@@ -697,7 +697,7 @@ pub(crate) fn check_license(state: State<AppState>) -> Value {
 pub(crate) fn activate_license(state: State<AppState>, key: String) -> Value {
     let sec_dir = state
         .security_dir
-        .lock()
+        .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());

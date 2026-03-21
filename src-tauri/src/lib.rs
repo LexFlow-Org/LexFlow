@@ -8,6 +8,7 @@ mod audit;
 mod bio;
 mod constants;
 mod crypto;
+mod error;
 mod files;
 mod import_export;
 mod io;
@@ -37,6 +38,13 @@ pub fn mobile_entry() {
 }
 
 pub fn run() {
+    // ── Initialize structured logging
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_target(false)
+        .compact()
+        .init();
+
     // ── SECURITY: disable core dumps (prevents DEK/plaintext in crash dumps)
     security::disable_core_dumps();
 
