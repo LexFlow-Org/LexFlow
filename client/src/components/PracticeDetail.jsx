@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useDebouncedCallback } from '../hooks/useDebounce';
 import PropTypes from 'prop-types';
 import {
   ArrowLeft, Calendar, FileText,
@@ -261,7 +262,11 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   // --- Helpers ---
-  const update = (changes) => onUpdate({ ...practice, ...changes });
+  // PERF: debounce saves to avoid encrypting+writing on every keystroke
+  const { debounced: debouncedUpdate, flush: flushUpdate } = useDebouncedCallback(
+    (updated) => onUpdate(updated), 500
+  );
+  const update = (changes) => debouncedUpdate({ ...practice, ...changes });
 
   const handleBioUnlock = useCallback(() => setBiometricVerified(true), []);
 

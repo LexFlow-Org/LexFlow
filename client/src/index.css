@@ -1474,3 +1474,36 @@ body.is-android {
     background: var(--bg-card);
   }
 }
+/* ═══════════════════════════════════════════════════════════════
+   13. PRINT STYLES — for agenda and deadline printing
+   ═══════════════════════════════════════════════════════════════ */
+@media print {
+  /* Hide non-printable elements */
+  nav, .sidebar, .hamburger-btn, button, .blur-overlay,
+  .modal-backdrop, [data-no-print], .toast-container,
+  .lexflow-toast, footer {
+    display: none !important;
+  }
+
+  /* Full width content */
+  body { background: white !important; color: black !important; }
+  main { width: 100% !important; margin: 0 !important; padding: 1cm !important; }
+  
+  /* Reset dark theme for print */
+  * {
+    color: black !important;
+    background: white !important;
+    border-color: #ccc !important;
+    box-shadow: none !important;
+  }
+
+  /* Preserve colored badges */
+  .badge-warning { color: #b45309 !important; border-color: #b45309 !important; }
+  .badge-danger { color: #dc2626 !important; border-color: #dc2626 !important; }
+  .badge-success { color: #16a34a !important; border-color: #16a34a !important; }
+
+  /* Page breaks */
+  .page-break-before { page-break-before: always; }
+  table { page-break-inside: avoid; }
+  tr { page-break-inside: avoid; }
+}

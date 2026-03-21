@@ -8,6 +8,7 @@ mod audit;
 mod bio;
 mod constants;
 mod crypto;
+mod csv_export;
 mod error;
 mod files;
 mod import_export;
@@ -21,6 +22,7 @@ mod security;
 mod settings;
 mod setup;
 mod state;
+mod validation;
 mod vault;
 mod vault_v4;
 mod vault_v4_tests;
@@ -197,6 +199,7 @@ pub fn run() {
             // Index-only reads (v4 perf)
             vault::get_vault_index,
             vault::load_record_detail,
+            vault::load_record_history,
             // Search (trigram + BM25)
             search::search_vault,
             search::rebuild_search_index,
@@ -207,6 +210,9 @@ pub fn run() {
             vault::save_time_logs,
             // Invoices
             vault::load_invoices,
+            // CSV Export
+            csv_export::export_time_logs_csv,
+            csv_export::export_invoices_csv,
             vault::save_invoices,
             // Contacts
             vault::load_contacts,

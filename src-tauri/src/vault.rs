@@ -742,7 +742,11 @@ pub(crate) fn load_practices(state: State<AppState>) -> Result<Value, String> {
 
 #[tauri::command]
 pub(crate) fn save_practices(state: State<AppState>, list: Value) -> Result<bool, String> {
-    save_vault_field(&state, "practices", list)
+    crate::validation::validate_practices(&list)?;
+    let count = list.as_array().map(|a| a.len()).unwrap_or(0);
+    let result = save_vault_field(&state, "practices", list)?;
+    let _ = append_audit_log(&state, &format!("Salvati {} fascicoli", count));
+    Ok(result)
 }
 
 #[tauri::command]
@@ -752,7 +756,10 @@ pub(crate) fn load_agenda(state: State<AppState>) -> Result<Value, String> {
 
 #[tauri::command]
 pub(crate) fn save_agenda(state: State<AppState>, agenda: Value) -> Result<bool, String> {
-    save_vault_field(&state, "agenda", agenda)
+    crate::validation::validate_agenda(&agenda)?;
+    let result = save_vault_field(&state, "agenda", agenda)?;
+    let _ = append_audit_log(&state, "Aggiornata agenda");
+    Ok(result)
 }
 
 #[tauri::command]
@@ -762,7 +769,10 @@ pub(crate) fn load_time_logs(state: State<AppState>) -> Result<Value, String> {
 
 #[tauri::command]
 pub(crate) fn save_time_logs(state: State<AppState>, logs: Value) -> Result<bool, String> {
-    save_vault_field(&state, "timeLogs", logs)
+    crate::validation::validate_time_logs(&logs)?;
+    let result = save_vault_field(&state, "timeLogs", logs)?;
+    let _ = append_audit_log(&state, "Aggiornate ore lavorate");
+    Ok(result)
 }
 
 #[tauri::command]
@@ -772,7 +782,10 @@ pub(crate) fn load_invoices(state: State<AppState>) -> Result<Value, String> {
 
 #[tauri::command]
 pub(crate) fn save_invoices(state: State<AppState>, invoices: Value) -> Result<bool, String> {
-    save_vault_field(&state, "invoices", invoices)
+    crate::validation::validate_invoices(&invoices)?;
+    let result = save_vault_field(&state, "invoices", invoices)?;
+    let _ = append_audit_log(&state, "Aggiornate fatture");
+    Ok(result)
 }
 
 #[tauri::command]
@@ -782,7 +795,11 @@ pub(crate) fn load_contacts(state: State<AppState>) -> Result<Value, String> {
 
 #[tauri::command]
 pub(crate) fn save_contacts(state: State<AppState>, contacts: Value) -> Result<bool, String> {
-    save_vault_field(&state, "contacts", contacts)
+    crate::validation::validate_contacts(&contacts)?;
+    let count = contacts.as_array().map(|a| a.len()).unwrap_or(0);
+    let result = save_vault_field(&state, "contacts", contacts)?;
+    let _ = append_audit_log(&state, &format!("Salvati {} contatti", count));
+    Ok(result)
 }
 
 // ─── Summary ────────────────────────────────────────────────
@@ -907,6 +924,43 @@ pub(crate) fn load_record_detail(
     let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
     let plaintext = vault_v4::read_current_version(entry, &dek)?;
     serde_json::from_slice(&plaintext).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn load_record_history(
+    state: State<AppState>,
+    record_id: String,
+) -> Result<Value, String> {
+    let dek = get_vault_dek(&state)?;
+    let dir = state
+        .data_dir
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let raw = fs::read(dir.join(VAULT_FILE)).map_err(|e| e.to_string())?;
+    let vault = vault_v4::deserialize_vault(&raw)?;
+
+    let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
+
+    let mut history = Vec::new();
+    for ver in &entry.versions {
+        let block = vault_v4::EncryptedBlock {
+            iv: ver.iv.clone(),
+            tag: ver.tag.clone(),
+            data: ver.data.clone(),
+            compressed: ver.compressed,
+        };
+        if let Ok(plaintext) = vault_v4::decrypt_record(&dek, &block) {
+            if let Ok(val) = serde_json::from_slice::<Value>(&plaintext) {
+                history.push(json!({
+                    "version": ver.v,
+                    "timestamp": ver.ts,
+                    "data": val,
+                }));
+            }
+        }
+    }
+    Ok(json!(history))
 }
 
 // ─── Conflict Check ─────────────────────────────────────────

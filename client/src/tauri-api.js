@@ -66,6 +66,7 @@ export const getVaultHealth = () => safeInvoke('get_vault_health');
 // PERF: Index-only reads (v4) — instant list rendering without decrypting records
 export const getVaultIndex = () => safeInvoke('get_vault_index');
 export const loadRecordDetail = (recordId) => safeInvoke('load_record_detail', { recordId });
+export const loadRecordHistory = (recordId) => safeInvoke('load_record_history', { recordId });
 
 // Full-text search (v4 — trigram fuzzy + BM25 ranking)
 export const searchVault = (query, limit = 50) => safeInvoke('search_vault', { query, limit });
@@ -73,6 +74,10 @@ export const rebuildSearchIndex = () => safeInvoke('rebuild_search_index');
 
 // Audit log
 export const getAuditLog = () => safeInvoke('get_audit_log');
+
+// CSV Export
+export const exportTimeLogsCsv = () => safeInvoke('export_time_logs_csv');
+export const exportInvoicesCsv = () => safeInvoke('export_invoices_csv');
 
 // Data
 export const loadPractices = () => safeInvoke('load_practices');
