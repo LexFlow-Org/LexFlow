@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// LexFlow — Security Whitepaper v2.0
+// LexFlow — Security Whitepaper v2.5.0
 // Architettura Crittografica del Vault v4
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -48,7 +48,7 @@
   #v(8pt)
   #text(size: 11pt, fill: slate-500)[Architettura Crittografica — Vault v4]
   #v(4pt)
-  #text(size: 10pt, fill: slate-500)[Versione 2.0 · Marzo 2026]
+  #text(size: 10pt, fill: slate-500)[Versione 2.5.0 · Marzo 2026]
   #v(3cm)
   #text(size: 9pt, fill: slate-500)[
     Documento tecnico di architettura \
@@ -73,7 +73,7 @@
 
 LexFlow è un gestionale per studi legali con crittografia *zero-knowledge*. Tutti i dati sensibili — fascicoli, agenda, contatti, time tracking, fatturazione — sono cifrati localmente con AES-256-GCM-SIV prima di essere scritti su disco. Nessun dato transita mai in chiaro su rete o cloud.
 
-Il vault v4, introdotto nella versione 2.0, rappresenta un'evoluzione completa dell'architettura crittografica rispetto al precedente formato monolitico. L'obiettivo è fornire la massima sicurezza senza compromettere le performance, con un design verificabile e standard industriali.
+Il vault v4, introdotto nella versione 2.5.0, rappresenta un'evoluzione completa dell'architettura crittografica rispetto al precedente formato monolitico. L'obiettivo è fornire la massima sicurezza senza compromettere le performance, con un design verificabile e standard industriali.
 
 == Principi di Design
 

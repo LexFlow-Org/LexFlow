@@ -42,7 +42,7 @@
   #v(8pt)
   #text(size: 11pt, fill: slate-500)[Manuale completo dell'applicazione]
   #v(4pt)
-  #text(size: 10pt, fill: slate-500)[Versione 2.0 · Marzo 2026]
+  #text(size: 10pt, fill: slate-500)[Versione 2.5.0 · Marzo 2026]
 ]
 
 #pagebreak()
@@ -262,6 +262,6 @@ L'importazione sovrascrive il vault attuale. Il vault corrente non viene salvato
 #v(2cm)
 #align(center)[
   #text(size: 9pt, fill: slate-500)[
-    LexFlow Guida Utente · v2.0 · Marzo 2026
+    LexFlow Guida Utente · v2.5.0 · Marzo 2026
   ]
 ]

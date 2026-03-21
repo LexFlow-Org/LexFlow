@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// LexFlow — Release Notes v2.0
+// LexFlow — Release Notes v2.5.0
 // ══════════════════════════════════════════════════════════════════════════
 
 #let slate-900 = rgb("#0F172A")
@@ -27,7 +27,7 @@
   #v(2cm)
   #line(length: 40%, stroke: 0.5pt + slate-300)
   #v(1cm)
-  #text(size: 18pt, weight: "bold", fill: slate-900)[Novità della Versione 2.0]
+  #text(size: 18pt, weight: "bold", fill: slate-900)[Novità della Versione 2.5.0]
   #v(8pt)
   #text(size: 10pt, fill: slate-500)[Marzo 2026]
 ]
@@ -98,6 +98,6 @@ Cliccando la X, l'app si nasconde nella tray e il vault si blocca automaticament
 #v(2cm)
 #align(center)[
   #text(size: 9pt, fill: slate-500)[
-    LexFlow Release Notes · v2.0 · Marzo 2026
+    LexFlow Release Notes · v2.5.0 · Marzo 2026
   ]
 ]

@@ -66,6 +66,10 @@ jobs:
         working-directory: client
         run: npx vitest run
 
+      - name: Rust tests (108 security tests)
+        working-directory: src-tauri
+        run: cargo test --lib --release
+
   # ---------------------------------------------------------
   # 2. VERSION CONSISTENCY -- all manifests must agree
   # ---------------------------------------------------------

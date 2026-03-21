@@ -59,7 +59,7 @@ LexFlow è un gestionale completo per studi legali con crittografia *zero-knowle
   columns: (auto, 1fr),
   stroke: 0.5pt + slate-300,
   inset: 8pt,
-  [*Versione*], [2.0.5],
+  [*Versione*], [2.5.0],
   [*Piattaforme*], [macOS (Apple Silicon + Intel), Windows 10/11, Android 7+],
   [*Tecnologia*], [Tauri v2 · React 19 · Rust],
   [*Bundle ID*], [`com.pietrolongo.lexflow`],

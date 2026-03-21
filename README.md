@@ -70,6 +70,10 @@ src-tauri/src/
 ├── audit.rs            ← Encrypted audit log
 ├── settings.rs         ← Encrypted settings with migration
 ├── import_export.rs    ← Vault export/import (.lex backup files)
+├── backup.rs            ← Auto-backup with rotation (keep last 3)
+├── csv_export.rs        ← CSV export for time logs and invoices
+├── error.rs             ← LexFlowError structured error types
+├── validation.rs        ← Backend data validation (required fields, limits)
 ├── notifications.rs    ← Desktop cron + mobile AOT scheduling
 ├── platform.rs         ← Machine fingerprint, local encryption key
 ├── io.rs               ← Atomic write, secure_write, safe_bounded_read
