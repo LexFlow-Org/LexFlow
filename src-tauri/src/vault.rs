@@ -6,6 +6,8 @@
 use crate::audit::append_audit_log;
 use crate::constants::*;
 use crate::crypto::{decrypt_data, encrypt_data};
+#[allow(unused_imports)] // Used in new code paths, incremental adoption
+use crate::error::LexFlowError;
 use crate::io::{atomic_write_with_sync, secure_write};
 use crate::lockout::{check_lockout, clear_lockout, record_failed_attempt};
 use crate::state::{
