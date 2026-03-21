@@ -19,6 +19,7 @@ import CreatePracticeModal from './components/CreatePracticeModal';
 import ErrorBoundary from './ErrorBoundary';
 import TccLocationBanner from './components/TccLocationBanner';
 import CommandPalette from './components/CommandPalette';
+import Breadcrumb from './components/Breadcrumb';
 
 // Pagine — lazy loading: caricate solo quando l'utente ci naviga
 import Dashboard from './pages/Dashboard';
@@ -510,6 +511,7 @@ export default function App() {
           />
 
           <div className="flex-1 overflow-auto p-4 pt-3 sm:p-8 sm:pt-4">
+            <Breadcrumb />
             <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 size={24} className="animate-spin text-primary" /></div>}>
             <Routes>
               <Route path="/" element={
