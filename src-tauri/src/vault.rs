@@ -468,8 +468,18 @@ pub(crate) fn vault_exists(state: State<AppState>) -> bool {
     dir.join(VAULT_SALT_FILE).exists()
 }
 
+/// Internal unlock used by both the Tauri command and bio_unlock_vault.
+/// Takes password by value to allow zeroization.
+pub(crate) fn unlock_vault_with_password(state: &State<AppState>, password: String) -> Value {
+    unlock_vault_inner(state, password)
+}
+
 #[tauri::command]
 pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
+    unlock_vault_inner(&state, password)
+}
+
+fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
     let dir = state
         .data_dir
         .lock()
@@ -481,7 +491,7 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    if let Err(locked_json) = check_lockout(&state, &sec_dir) {
+    if let Err(locked_json) = check_lockout(state, &sec_dir) {
         return locked_json;
     }
 
@@ -493,20 +503,20 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
 
     if is_new {
         // Create new vault in v4 format
-        match init_new_vault_v4(&state, &password, &dir) {
+        match init_new_vault_v4(state, &password, &dir) {
             Ok(()) => {}
             Err(e) => {
                 zeroize_password(password);
                 return e;
             }
         }
-        clear_lockout(&state, &sec_dir);
+        clear_lockout(state, &sec_dir);
         *state
             .last_activity
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = Instant::now();
         zeroize_password(password);
-        let _ = append_audit_log(&state, "Nuovo Vault v4 creato");
+        let _ = append_audit_log(state, "Nuovo Vault v4 creato");
         return json!({"success": true, "isNew": true});
     }
 
@@ -560,17 +570,17 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
                         eprintln!("[LexFlow] Key rotation needed — will rotate on next save");
                     }
 
-                    clear_lockout(&state, &sec_dir);
+                    clear_lockout(state, &sec_dir);
                     *state
                         .last_activity
                         .lock()
                         .unwrap_or_else(|e| e.into_inner()) = Instant::now();
                     zeroize_password(password);
-                    let _ = append_audit_log(&state, "Sblocco Vault v4");
+                    let _ = append_audit_log(state, "Sblocco Vault v4");
                     return json!({"success": true, "isNew": false});
                 }
                 Err(e) => {
-                    record_failed_attempt(&state, &sec_dir);
+                    record_failed_attempt(state, &sec_dir);
                     zeroize_password(password);
                     return json!({"success": false, "error": e});
                 }
@@ -597,7 +607,7 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
             };
             let stored = fs::read(dir.join(VAULT_VERIFY_FILE)).unwrap_or_default();
             if !verify_hash_matches(&v2_key, &stored) {
-                record_failed_attempt(&state, &sec_dir);
+                record_failed_attempt(state, &sec_dir);
                 zeroize_password(password);
                 return json!({"success": false, "error": "Password errata"});
             }
@@ -653,13 +663,13 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
                         .lock()
                         .unwrap_or_else(|e| e.into_inner()) = 4;
 
-                    clear_lockout(&state, &sec_dir);
+                    clear_lockout(state, &sec_dir);
                     *state
                         .last_activity
                         .lock()
                         .unwrap_or_else(|e| e.into_inner()) = Instant::now();
                     zeroize_password(password);
-                    let _ = append_audit_log(&state, "Vault migrato v2→v4");
+                    let _ = append_audit_log(state, "Vault migrato v2→v4");
                     return json!({"success": true, "isNew": false, "migrated": true});
                 }
                 Err(e) => {
@@ -683,13 +693,13 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = 2;
 
-            clear_lockout(&state, &sec_dir);
+            clear_lockout(state, &sec_dir);
             *state
                 .last_activity
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = Instant::now();
             zeroize_password(password);
-            let _ = append_audit_log(&state, "Sblocco Vault v2 (migrazione v4 fallita)");
+            let _ = append_audit_log(state, "Sblocco Vault v2 (migrazione v4 fallita)");
             return json!({"success": true, "isNew": false});
         }
 
@@ -713,7 +723,7 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
             return json!({"success": false, "error": e});
         }
     };
-    if let Err(e) = init_new_vault(&state, k, &dir) {
+    if let Err(e) = init_new_vault(state, k, &dir) {
         zeroize_password(password);
         return e;
     }
@@ -722,13 +732,13 @@ pub(crate) fn unlock_vault(state: State<AppState>, password: String) -> Value {
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = 2;
 
-    clear_lockout(&state, &sec_dir);
+    clear_lockout(state, &sec_dir);
     *state
         .last_activity
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = Instant::now();
     zeroize_password(password);
-    let _ = append_audit_log(&state, "Sblocco Vault");
+    let _ = append_audit_log(state, "Sblocco Vault");
     json!({"success": true, "isNew": true})
 }
 

@@ -9,7 +9,6 @@ use tauri::State;
 #[cfg(not(target_os = "android"))]
 use serde_json::json;
 
-// Desktop-only imports (bio_unlock_vault, save_bio, clear_bio, bio_login)
 #[cfg(not(target_os = "android"))]
 use crate::audit::append_audit_log;
 #[cfg(not(target_os = "android"))]
@@ -17,17 +16,13 @@ use crate::constants::*;
 #[cfg(not(target_os = "android"))]
 use crate::io::secure_write;
 #[cfg(not(target_os = "android"))]
-use crate::lockout::{check_lockout, clear_lockout};
+use crate::lockout::check_lockout;
 #[cfg(not(target_os = "android"))]
-use crate::state::SecureKey;
-#[cfg(not(target_os = "android"))]
-use crate::vault::authenticate_vault_password;
+use crate::vault::unlock_vault_with_password;
 #[cfg(not(target_os = "android"))]
 use std::fs;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::time::Duration;
-#[cfg(not(target_os = "android"))]
-use std::time::Instant;
 
 #[tauri::command]
 pub(crate) fn check_bio() -> bool {
@@ -93,35 +88,29 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let sec_dir = state
-        .security_dir
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
-    let auth_result = authenticate_vault_password(&saved_pwd, &dir);
+
+    // Use the same unlock flow as manual password (handles v2 + v4)
+    let result = unlock_vault_with_password(state, saved_pwd.clone());
     zeroize_password(saved_pwd);
 
-    match auth_result {
-        Ok(k) => {
-            *(state.vault_key.lock().unwrap_or_else(|e| e.into_inner())) = Some(SecureKey::new(k));
-            clear_lockout(state, &sec_dir);
-            *(state
-                .last_activity
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())) = Instant::now();
-            let _ = append_audit_log(state, "Sblocco Vault (biometria)");
-            Ok(json!({"success": true}))
-        }
-        Err(_) => {
-            if let Ok(entry) = keyring::Entry::new(BIO_SERVICE, &user) {
-                let _ = entry.delete_credential();
-            }
-            let _ = fs::remove_file(dir.join(BIO_MARKER_FILE));
-            Ok(
-                json!({"success": false, "error": "Password biometrica non più valida. Accedi con la password e riconfigura la biometria."}),
-            )
-        }
+    // If unlock succeeded, return success
+    if result
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        let _ = append_audit_log(state, "Sblocco Vault (biometria)");
+        return Ok(result);
     }
+
+    // Bio password is stale (e.g. password changed) — clear bio credentials
+    if let Ok(entry) = keyring::Entry::new(BIO_SERVICE, &user) {
+        let _ = entry.delete_credential();
+    }
+    let _ = fs::remove_file(dir.join(BIO_MARKER_FILE));
+    Ok(
+        json!({"success": false, "error": "Password biometrica non più valida. Accedi con la password e riconfigura la biometria."}),
+    )
 }
 
 #[tauri::command]

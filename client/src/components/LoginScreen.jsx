@@ -50,6 +50,14 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
 
   const bioTriggered = useRef(false);
   const bioAutoTriggeredOnReturn = useRef(false);
+
+  // Reset bio refs when LoginScreen appears (autoLocked changes or component mounts)
+  // This ensures biometrics re-triggers after every lock cycle
+  useEffect(() => {
+    bioTriggered.current = false;
+    bioAutoTriggeredOnReturn.current = false;
+    bioInFlight.current = false;
+  }, [autoLocked]);
   // Track if a bio login attempt is currently in-flight to prevent double-triggers
   const bioInFlight = useRef(false);
   const MAX_BIO_ATTEMPTS = 3;
@@ -312,21 +320,19 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         return;
       }
 
-      // If this is a new vault, automatically enable biometrics (user can disable later in Settings)
-      // IMPORTANT: Do NOT rely on the `bioAvailable` state — it may be stale at this point
-      // because checkBio() was called before the vault existed. Call it fresh now.
-      if (result.isNew) {
-        try {
-          const bioNowAvailable = await api.checkBio();
-          if (bioNowAvailable) {
-            await api.saveBio(providedPwd);
-            setBioAvailable(true);
-            setBioSaved(true);
-            console.debug('[LoginScreen] Biometrics auto-enrolled at first vault creation ✓');
-          }
-        } catch (e) {
-          console.warn('[LoginScreen] Biometrics auto-enroll failed (non-critical):', e);
+      // Auto-enroll biometrics on EVERY successful manual password unlock
+      // (not just new vaults) — ensures bio is configured after update/reinstall
+      try {
+        const bioNowAvailable = await api.checkBio();
+        const bioAlreadySaved = await api.hasBioSaved();
+        if (bioNowAvailable && !bioAlreadySaved) {
+          await api.saveBio(providedPwd);
+          setBioAvailable(true);
+          setBioSaved(true);
+          console.debug('[LoginScreen] Biometrics auto-enrolled on manual unlock ✓');
         }
+      } catch (e) {
+        console.warn('[LoginScreen] Biometrics auto-enroll failed (non-critical):', e);
       }
 
       setPassword('');
