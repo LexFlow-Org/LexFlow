@@ -136,7 +136,7 @@ function ExportBackupModal({ onClose }) {
   const doExport = async () => {
     setError('');
     if (!pwd) { setError('Inserisci una password per il backup.'); return; }
-    if (pwd.length < 8) { setError('Password troppo corta (min. 8 caratteri).'); return; }
+    if (pwd.length < 12) { setError('Password troppo corta (min. 12 caratteri).'); return; }
     if (pwd !== pwdConfirm) { setError('Le password non corrispondono.'); return; }
     if (!api.exportVault) { toast.error('Servizio backup non disponibile'); return; }
     setLoading(true);

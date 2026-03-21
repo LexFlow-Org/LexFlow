@@ -44,6 +44,9 @@ const preloadPages = () => {
   import('./pages/SettingsPage');
   import('./pages/TimeTrackingPage');
   import('./pages/ContactsPage');
+  import('./pages/AuditLogPage');
+  import('./pages/ReportPage');
+  import('./pages/ActivityPage');
 };
 
 export default function App() {

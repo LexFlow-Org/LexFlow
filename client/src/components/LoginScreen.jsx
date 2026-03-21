@@ -35,6 +35,9 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   // Modal per Reset Vault (sostituisce window.prompt -- non mostra password in chiaro)
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryInput, setRecoveryInput] = useState('');
+  const [recoveryError, setRecoveryError] = useState('');
   const [resetError, setResetError] = useState('');
 
   const executeReset = useCallback(async () => {
@@ -508,13 +511,22 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
 
         <div className="mt-8 pt-6 border-t border-border/30 flex flex-col items-center gap-4">
           {!isNew && (
-            <button 
-              type="button" 
-              onClick={() => { setShowResetModal(true); setResetPassword(''); setResetError(''); }}
-              className="text-text-dim hover:text-danger text-2xs font-bold uppercase tracking-widest transition-colors"
-            >
-              Password dimenticata? Reset Vault
-            </button>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowRecovery(true); setRecoveryInput(''); setRecoveryError(''); }}
+                className="text-text-dim hover:text-primary text-2xs font-bold uppercase tracking-widest transition-colors"
+              >
+                Usa Chiave di Recupero
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowResetModal(true); setResetPassword(''); setResetError(''); }}
+                className="text-text-dim hover:text-danger text-2xs font-bold uppercase tracking-widest transition-colors"
+              >
+                Factory Reset Vault
+              </button>
+            </div>
           )}
 
           <div className="flex items-center gap-4 opacity-60">
@@ -583,6 +595,67 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                 className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest"
               >
                 Conferma Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recovery Key Modal */}
+      {showRecovery && (
+        <div className="fixed inset-0 z-[200] bg-black/80 blur-overlay flex items-center justify-center p-4 animate-fade-in">
+          <div className="glass-card max-w-md w-full p-0 overflow-hidden animate-fade-in-up">
+            <div className="modal-header">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-primary-soft rounded-2xl flex items-center justify-center border border-primary/20">
+                  <KeyRound size={22} className="text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-text">Chiave di Recupero</h3>
+                  <p className="text-xs text-text-dim mt-0.5">Inserisci la chiave per sbloccare il vault</p>
+                </div>
+              </div>
+              <button onClick={() => setShowRecovery(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="px-8 py-6 space-y-4">
+              <input
+                type="text"
+                value={recoveryInput}
+                onChange={e => setRecoveryInput(e.target.value.toUpperCase())}
+                placeholder="XXXX-XXXX-XXXX-XXXX"
+                className="w-full px-4 py-3 rounded-xl bg-input border border-border text-text text-center font-mono text-lg tracking-[4px] placeholder:text-text-dim/40 outline-none focus:border-primary"
+                autoFocus
+              />
+              {recoveryError && (
+                <p className="text-danger text-2xs font-semibold">{recoveryError}</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setShowRecovery(false)} className="btn-cancel">Annulla</button>
+              <button
+                onClick={async () => {
+                  setRecoveryError('');
+                  if (!recoveryInput || recoveryInput.length < 10) {
+                    setRecoveryError('Chiave troppo corta');
+                    return;
+                  }
+                  try {
+                    const res = await api.unlockWithRecovery(recoveryInput.trim());
+                    if (res?.success) {
+                      setShowRecovery(false);
+                      onUnlock();
+                    } else {
+                      setRecoveryError(res?.error || 'Chiave non valida');
+                    }
+                  } catch (e) {
+                    setRecoveryError(String(e));
+                  }
+                }}
+                className="btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest"
+              >
+                Sblocca
               </button>
             </div>
           </div>
