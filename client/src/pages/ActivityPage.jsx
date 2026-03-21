@@ -39,7 +39,7 @@ export default function ActivityPage() {
           <div className="space-y-1">
             {log.map((entry, i) => {
               const event = typeof entry === 'string' ? entry : (entry.event || JSON.stringify(entry));
-              const ts = entry.timestamp || '';
+              const ts = entry.time || '';
               const displayTs = ts ? new Date(ts).toLocaleString('it-IT', {
                 day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
               }) : '';

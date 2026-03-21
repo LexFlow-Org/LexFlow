@@ -314,7 +314,8 @@ pub(crate) fn acquire_single_instance_mutex() -> bool {
     use std::ffi::CString;
 
     // Use the bundle identifier as the mutex name (globally unique)
-    let mutex_name = CString::new("Global\\com.pietrolongo.lexflow").unwrap();
+    let mutex_name =
+        CString::new("Global\\com.pietrolongo.lexflow").expect("mutex name has no null bytes");
 
     let handle = unsafe {
         windows_sys::Win32::System::Threading::CreateMutexA(
@@ -900,7 +901,11 @@ pub(crate) fn setup_system_tray(app: &mut tauri::App) -> Result<(), Box<dyn std:
 
     TrayIconBuilder::new()
         .tooltip("LexFlow — Gestionale Legale")
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(
+            app.default_window_icon()
+                .expect("app icon configured in tauri.conf.json")
+                .clone(),
+        )
         .menu(&tray_menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {

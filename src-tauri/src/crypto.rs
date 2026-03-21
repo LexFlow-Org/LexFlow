@@ -66,7 +66,8 @@ pub(crate) fn decrypt_data(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 pub(crate) fn verify_hash_matches(key: &[u8], stored: &[u8]) -> bool {
-    let mut hmac = <Hmac<Sha256> as Mac>::new_from_slice(key).unwrap();
+    let mut hmac =
+        <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC-SHA256 accepts any key length");
     hmac.update(b"LEX_VERIFY_DOMAIN_V2");
     hmac.verify_slice(stored).is_ok()
 }

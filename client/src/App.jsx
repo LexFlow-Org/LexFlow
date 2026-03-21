@@ -20,6 +20,8 @@ import ErrorBoundary from './ErrorBoundary';
 import TccLocationBanner from './components/TccLocationBanner';
 import CommandPalette from './components/CommandPalette';
 import Breadcrumb from './components/Breadcrumb';
+import OnboardingWizard from './components/OnboardingWizard';
+import { AppProvider } from './contexts/AppContext';
 
 // Pagine — lazy loading: caricate solo quando l'utente ci naviga
 import Dashboard from './pages/Dashboard';
@@ -79,6 +81,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
 
   const [showCreate, setShowCreate] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // --- TEMA CHIARO/SCURO ---
   const saveSettingsForTheme = useCallback(async (updated) => {
@@ -354,6 +357,12 @@ export default function App() {
         await requestPermission();
       }
     } catch { console.debug('[App] Notification permission non-critical'); }
+
+    // Show onboarding wizard on first launch (no practices yet)
+    const pracs = await api.loadPractices().catch(() => []);
+    if (!pracs || pracs.length === 0) {
+      setShowOnboarding(true);
+    }
   }, [loadAllData]);
 
   // E2E bypass: when testing, make it easy to skip the login gate.
@@ -438,6 +447,7 @@ export default function App() {
   return (
     <LicenseActivation>
       <ErrorBoundary>
+      <AppProvider value={{ practices, agendaEvents, settings, savePractices, saveAgenda }}>
       <div className="flex h-screen bg-background text-text-primary overflow-hidden border border-border rounded-lg shadow-2xl relative">
         
         {/* Privacy Shield */}
@@ -589,7 +599,11 @@ export default function App() {
             onSave={(p) => savePractices([p, ...practices])}
           />
         )}
+        {showOnboarding && (
+          <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
+        )}
       </div>
+    </AppProvider>
     </ErrorBoundary>
     </LicenseActivation>
   );

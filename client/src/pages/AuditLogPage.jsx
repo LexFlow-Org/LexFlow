@@ -44,7 +44,7 @@ export default function AuditLogPage() {
 
   const filtered = filter
     ? log.filter(entry => {
-        const text = `${entry.event || ''} ${entry.timestamp || ''}`.toLowerCase();
+        const text = `${entry.event || ''} ${entry.time || ''}`.toLowerCase();
         return text.includes(filter.toLowerCase());
       })
     : log;
@@ -89,7 +89,7 @@ export default function AuditLogPage() {
         <div className="space-y-1">
           {filtered.map((entry, i) => {
             const event = entry.event || entry;
-            const ts = entry.timestamp || '';
+            const ts = entry.time || '';
             const colorClass = getEventColor(typeof event === 'string' ? event : '');
             const displayEvent = typeof event === 'string' ? event : JSON.stringify(event);
             const displayTs = ts ? new Date(ts).toLocaleString('it-IT', {
