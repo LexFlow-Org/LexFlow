@@ -113,8 +113,9 @@ pub(crate) fn verify_binary_integrity() {
 
     // Expected HMAC tag (hex-encoded, computed once at build time and hardcoded)
     // ROTATED 2026-03-21: HMAC updated after Ed25519 key rotation (compromised key)
+    // Seed: INTEGRITY-V2 + VAULT_MAGIC + AES_KEY_LEN(32) + NONCE_LEN(12) + m(16384) + t(3) + p(1) + NEW_PUB_KEY + DEK_WIPE(10)
     const EXPECTED_HMAC_HEX: &str =
-        "56a52100746d17478fd893ba15f9b9a278c82728c950b6804f7e53b738b3d0bf";
+        "db7064e6ccf6569eb84aa3ce1c15acf86d7b313ca9cdb2c6d0442810936027fe";
     let expected_bytes = match hex::decode(EXPECTED_HMAC_HEX) {
         Ok(b) => b,
         Err(_) => {
