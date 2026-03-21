@@ -208,6 +208,35 @@ export default function App() {
     handleLockLocal(true); // lock manuale: auto-trigger biometria al re-unlock
   };
 
+  // --- KEYBOARD SHORTCUTS (cross-platform: ⌘ on Mac, Ctrl on Windows/Linux) ---
+  useEffect(() => {
+    if (isLocked) return;
+    const handleShortcut = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      switch (e.key) {
+        case 'k': // ⌘K — Command Palette (search)
+          e.preventDefault();
+          setCmdPaletteOpen(prev => !prev);
+          break;
+        case 'n': // ⌘N — Nuovo fascicolo
+          if (!e.shiftKey) {
+            e.preventDefault();
+            setShowCreate(true);
+          }
+          break;
+        case 'l': // ⌘L — Blocca vault
+          e.preventDefault();
+          handleManualLock();
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [isLocked, handleManualLock]);
+
   // --- 4. LOGICA DATI & SINCRONIZZAZIONE ---
   const syncDeadlinesToAgenda = useCallback((newPractices, currentAgenda) => {
     const manualEvents = currentAgenda.filter(e => !e.autoSync);

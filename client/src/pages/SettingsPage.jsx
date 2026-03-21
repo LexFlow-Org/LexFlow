@@ -507,6 +507,19 @@ export default function SettingsPage({ onLock }) {
   const [changePwdSuccess, setChangePwdSuccess] = useState('');
   const [recoveryKey, setRecoveryKey] = useState('');
   const [vaultHealth, setVaultHealth] = useState(null);
+
+  // Auto-load vault health on mount + refresh every 30s
+  useEffect(() => {
+    const loadHealth = async () => {
+      try {
+        const h = await api.getVaultHealth();
+        if (h) setVaultHealth(h);
+      } catch (_) {}
+    };
+    loadHealth();
+    const interval = setInterval(loadHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showBioResetConfirm, setShowBioResetConfirm] = useState(false);
@@ -1033,28 +1046,41 @@ export default function SettingsPage({ onLock }) {
 
         <div className="border-t border-border" />
 
-        {/* Vault Health */}
+        {/* Vault Health — auto-loaded, auto-refreshed */}
         <div className="space-y-3">
-          <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Stato del Vault</label>
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Stato del Vault</label>
+            {vaultHealth && (
+              <span className="text-[9px] text-emerald-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Live
+              </span>
+            )}
+          </div>
           {vaultHealth ? (
             <div className="grid gap-2 sm:grid-cols-2 text-xs">
-              {Object.entries(vaultHealth).map(([k, v]) => (
-                <div key={k} className="flex justify-between bg-surface rounded-lg px-3 py-2 border border-border">
-                  <span className="text-text-dim">{k}</span>
-                  <span className="text-text font-mono">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
-                </div>
-              ))}
+              {Object.entries(vaultHealth).map(([k, v]) => {
+                const label = {
+                  version: 'Versione Vault', vault_format: 'Formato',
+                  kdf_algorithm: 'Algoritmo KDF', kdf_memory_mb: 'Memoria KDF',
+                  kdf_iterations: 'Iterazioni KDF', kdf_parallelism: 'Parallelismo KDF',
+                  record_count: 'N° Record', total_writes: 'Scritture Totali',
+                  dek_created: 'DEK Creata', rotation_due: 'Rotazione',
+                  cipher: 'Cifratura', compressed: 'Compressione',
+                }[k] || k;
+                const displayVal = typeof v === 'object' ? JSON.stringify(v)
+                  : typeof v === 'boolean' ? (v ? '✓ Attiva' : '✗ No')
+                  : String(v);
+                return (
+                  <div key={k} className="flex justify-between bg-surface rounded-lg px-3 py-2 border border-border">
+                    <span className="text-text-dim">{label}</span>
+                    <span className="text-text font-mono">{displayVal}</span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
-            <button onClick={async () => {
-              try {
-                const h = await api.getVaultHealth();
-                setVaultHealth(h);
-              } catch (e) { toast?.error(String(e)); }
-            }}
-              className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
-              Mostra Stato Vault
-            </button>
+            <div className="text-xs text-text-dim text-center py-4">Caricamento stato vault...</div>
           )}
         </div>
       </section>
