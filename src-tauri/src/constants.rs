@@ -23,21 +23,12 @@ pub(crate) const MACHINE_ID_FILE: &str = ".machine-id";
 pub(crate) const BIO_SERVICE: &str = "LexFlow_Bio";
 
 pub(crate) const VAULT_MAGIC: &[u8] = b"LEXFLOW_V2_SECURE";
-pub(crate) const ARGON2_SALT_LEN: usize = 32;
 pub(crate) const AES_KEY_LEN: usize = 32;
 pub(crate) const NONCE_LEN: usize = 12;
 
 pub(crate) const ARGON2_M_COST: u32 = 16384;
 pub(crate) const ARGON2_T_COST: u32 = 3;
 pub(crate) const ARGON2_P_COST: u32 = 1;
-
-// v4: MAX_FAILED_ATTEMPTS and LOCKOUT_SECS replaced by exponential backoff in lockout.rs
-
-pub(crate) const LEGACY_AAD_SUNSET_THRESHOLD: u32 = 200;
-pub(crate) static LEGACY_AAD_CLEAN_COUNTER: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(0);
-pub(crate) static LEGACY_AAD_EVER_USED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) const MAX_SETTINGS_FILE_SIZE: u64 = 10 * 1024 * 1024;
 

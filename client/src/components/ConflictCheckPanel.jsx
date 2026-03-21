@@ -65,7 +65,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
           value={query}
           onChange={e => handleInput(e.target.value)}
           placeholder="Nome, cognome, società, codice fiscale, P.IVA..."
-          className="w-full pl-14 pr-12 py-4 bg-surface border border-border rounded-2xl text-text text-lg placeholder:text-text-dim/50 focus:border-primary/50 focus:bg-card focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+          className="w-full pl-14 pr-12 py-4 bg-surface border border-border rounded-2xl text-text text-lg placeholder:text-text-dim/50 focus:border-primary/50 focus:bg-card focus:ring-2 focus:ring-primary/20 transition-colors outline-none"
           autoFocus
         />
         {query && (
@@ -126,7 +126,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
                       type="button"
                       key={p.id || i}
                       onClick={() => onSelectPractice?.(p.id)}
-                      className="bg-card hover:bg-card-hover border border-border rounded-xl p-4 cursor-pointer transition-all group active:scale-[0.99] text-left w-full"
+                      className="bg-card hover:bg-card-hover border border-border rounded-xl p-4 cursor-pointer transition-colors group active:scale-[0.99] text-left w-full"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">

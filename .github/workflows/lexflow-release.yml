@@ -139,6 +139,10 @@ jobs:
           cargo clippy --release -- -D warnings 2>&1
           cargo fmt --check 2>&1
 
+      - name: Quality Gate -- cargo test (111 security tests)
+        working-directory: src-tauri
+        run: cargo test --lib --release 2>&1
+
       - name: Quality Gate -- ESLint
         working-directory: client
         run: npx eslint . --max-warnings 0

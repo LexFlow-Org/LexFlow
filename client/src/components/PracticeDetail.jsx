@@ -211,7 +211,7 @@ function StatusDropdown({ status, onChangeStatus }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${
           status === 'active'
             ? 'bg-surface text-text border-border hover:bg-card'
             : 'bg-surface text-text-muted border-border hover:bg-card'
@@ -597,7 +597,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </span>
                 <button
                   onClick={handleExport}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-card text-text-muted border border-border hover:bg-card-hover hover:text-text transition-all"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-card text-text-muted border border-border hover:bg-card-hover hover:text-text transition-colors"
                 >
                   <Download size={14} />
                   Esporta PDF
@@ -617,12 +617,12 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                     <div className="w-2.5 h-2.5 rounded-full bg-primary ring-2 ring-primary/20" />
                     <div className="w-px h-full bg-border my-1" />
                   </div>
-                  <div className="flex-1 rounded-2xl bg-surface border border-border p-4 hover:bg-card hover:border-border transition-all">
+                  <div className="flex-1 rounded-2xl bg-surface border border-border p-4 hover:bg-card hover:border-border transition-colors">
                     <div className="flex justify-between items-start mb-2.5">
                       <span className="text-[11px] font-semibold text-primary/90 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/15">
                         {new Date(note.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(note.date).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}
                       </span>
-                      <button onClick={() => confirmDeleteNote(idx)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-danger-soft text-text-dim hover:text-danger transition-all">
+                      <button onClick={() => confirmDeleteNote(idx)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-danger-soft text-text-dim hover:text-danger transition-colors">
                          <Trash2 size={14} />
                       </button>
                     </div>
@@ -635,7 +635,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             <form onSubmit={addNote} className="sticky bottom-0 bg-background pt-4 border-t border-border">
               <div className="relative">
                 <textarea
-                  className="w-full min-h-[80px] pr-14 pl-4 py-3 resize-none rounded-2xl bg-surface border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 focus:bg-card outline-none transition-all"
+                  className="w-full min-h-[80px] pr-14 pl-4 py-3 resize-none rounded-2xl bg-surface border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 focus:bg-card outline-none transition-colors"
                   placeholder="Scrivi una nota di udienza, una telefonata o un appunto..."
                   value={newNote}
                   onChange={e => setNewNote(e.target.value)}
@@ -649,7 +649,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 <button
                   type="submit"
                   disabled={!newNote.trim()}
-                  className="absolute right-3 bottom-3 w-9 h-9 flex items-center justify-center bg-primary rounded-xl hover:bg-primary-hover disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  className="absolute right-3 bottom-3 w-9 h-9 flex items-center justify-center bg-primary rounded-xl hover:bg-primary-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <Send size={15} className="text-black" />
                 </button>
@@ -666,7 +666,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               <button 
                 type="button"
                 onClick={handleUploadPDF}
-                className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-surface hover:border-border transition-all border border-border group text-left w-full"
+                className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-surface hover:border-border transition-colors border border-border group text-left w-full"
               >
                 <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                   <FilePlus size={24} className="text-primary" />
@@ -680,7 +680,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               <button
                 type="button"
                 onClick={linkFolder}
-                className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-surface hover:border-border transition-all border border-border group text-left w-full"
+                className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-surface hover:border-border transition-colors border border-border group text-left w-full"
               >
                 <div className="w-12 h-12 rounded-xl bg-warning-soft flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                   <FolderPlus size={24} className="text-warning" />
@@ -722,7 +722,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <button onClick={(e) => { e.stopPropagation(); att.path && api.openPath(att.path); }} className="btn-ghost text-xs p-2 relative z-[1]">
                         <FolderOpen size={14} />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveAttachment(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-all relative z-[1]">
+                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveAttachment(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-colors relative z-[1]">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -761,7 +761,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       <button onClick={(e) => { e.stopPropagation(); openFolderAtPath(fld.path); }} className="btn-ghost text-xs p-2 relative z-[1]" title="Apri nel Finder">
                         <FolderOpen size={14} />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveFolder(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-all relative z-[1]">
+                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveFolder(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-colors relative z-[1]">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -821,7 +821,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       key={String(opt.value)}
                       type="button"
                       onClick={() => setNewDeadlineRemind(opt.value)}
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors border ${
                         newDeadlineRemind === opt.value
                           ? 'bg-primary text-black border-primary'
                           : 'bg-surface text-text-dim border-border hover:bg-card hover:text-text'
@@ -831,7 +831,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                     </button>
                   ))}
                   {/* Pill orario personalizzato "Alle" */}
-                  <div className={`inline-flex items-center rounded-xl border transition-all ${
+                  <div className={`inline-flex items-center rounded-xl border transition-colors ${
                     newDeadlineRemind === 'custom'
                       ? 'border-primary bg-primary/10'
                       : 'border-border bg-surface hover:bg-card'
@@ -903,7 +903,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                           {deadlineLabel}
                         </div>
                         {d.source === 'practice' && (
-                          <button onClick={(e) => { e.stopPropagation(); confirmDeleteDeadline(d.idx); }} className="opacity-0 group-hover:opacity-100 p-1.5 text-text-dim hover:text-danger transition-all">
+                          <button onClick={(e) => { e.stopPropagation(); confirmDeleteDeadline(d.idx); }} className="opacity-0 group-hover:opacity-100 p-1.5 text-text-dim hover:text-danger transition-colors">
                             <Trash2 size={14} />
                           </button>
                         )}
@@ -1017,7 +1017,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   <p className="text-text-dim text-[10px]">Inserisci la Master Password per esportare</p>
                 </div>
               </div>
-              <button onClick={() => setShowExportPwdModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim hover:text-text transition-all group">
+              <button onClick={() => setShowExportPwdModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim hover:text-text transition-colors group">
                 <X size={18} className="group-hover:rotate-90 transition-transform" />
               </button>
             </div>
@@ -1033,7 +1033,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               />
               <div className="flex gap-3">
                 <button type="button" onClick={() => setShowExportPwdModal(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-border text-text-dim text-xs font-bold uppercase tracking-widest hover:bg-surface hover:text-text transition-all">
+                  className="flex-1 py-2.5 rounded-xl border border-border text-text-dim text-xs font-bold uppercase tracking-widest hover:bg-surface hover:text-text transition-colors">
                   Annulla
                 </button>
                 <button type="submit" disabled={!exportPwd}

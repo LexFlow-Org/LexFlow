@@ -441,7 +441,7 @@ export default function App() {
         {privacyEnabled && blurred && (
           <button 
             type="button"
-            className="fixed inset-0 z-[9999] bg-background/95 backdrop-blur-xl flex items-center justify-center transition-opacity duration-300 cursor-pointer animate-fade-in border-none outline-none w-full"
+            className="fixed inset-0 z-[9999] bg-background/95 blur-overlay flex items-center justify-center transition-opacity duration-300 cursor-pointer animate-fade-in border-none outline-none w-full"
             onClick={handleManualLock}
           >
             <div className="text-center">

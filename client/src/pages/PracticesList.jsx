@@ -30,12 +30,12 @@ const PracticeRow = memo(function PracticeRow({ practice: p, onSelect }) {
     <button type="button"
       key={p?.id}
       onClick={() => typeof onSelect === 'function' && onSelect(p.id)}
-      className="glass-card p-6 flex items-center justify-between group hover:bg-surface hover:border-border transition-all cursor-pointer border border-border relative overflow-hidden text-left w-full"
+      className="glass-card p-6 flex items-center justify-between group hover:bg-surface hover:border-border transition-colors cursor-pointer border border-border relative overflow-hidden text-left w-full"
     >
       <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${style.stripe}`} />
 
       <div className="flex items-center gap-6 flex-1 min-w-0">
-        <div className={`w-14 h-14 rounded-2xl flex-shrink-0 flex items-center justify-center transition-all group-hover:scale-110 ${style.bg} ${style.color}`}>
+        <div className={`w-14 h-14 rounded-2xl flex-shrink-0 flex items-center justify-center transition-colors group-hover:scale-110 ${style.bg} ${style.color}`}>
           <Briefcase size={26} />
         </div>
 
@@ -71,7 +71,7 @@ const PracticeRow = memo(function PracticeRow({ practice: p, onSelect }) {
 
       <div className="flex items-center gap-4">
          {p?.biometricProtected && <Fingerprint size={16} className="text-primary/60" title="Protetto con biometria" />}
-         <ChevronRight className="text-text-dim group-hover:text-primary group-hover:translate-x-1 transition-all" size={24} />
+         <ChevronRight className="text-text-dim group-hover:text-primary group-hover:translate-x-1 transition-colors" size={24} />
       </div>
     </button>
   );
@@ -130,7 +130,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         </div>
         <button 
           onClick={() => typeof onNewPractice === 'function' && onNewPractice()} 
-          className="btn-primary flex items-center gap-2 px-7 py-3.5 hover:scale-[1.02] active:scale-[0.98] transition-all"
+          className="btn-primary flex items-center gap-2 px-7 py-3.5 hover:scale-[1.02] active:scale-[0.98] transition-colors"
         >
           <Plus size={18} strokeWidth={3} />
           <span className="font-bold uppercase tracking-widest text-xs">Nuovo Fascicolo</span>
@@ -142,7 +142,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         {/* Totali */}
         <button type="button"
           onClick={() => setFilterStatus('all')}
-          className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
+          className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-colors duration-300 text-left ${
             filterStatus === 'all' 
               ? 'border-primary/40 bg-primary/5'
               : 'border-border hover:bg-surface opacity-70 hover:opacity-100'
@@ -160,7 +160,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         {/* Attivi */}
         <button type="button"
           onClick={() => setFilterStatus('active')}
-          className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
+          className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-colors duration-300 text-left ${
             filterStatus === 'active'
               ? 'border-primary/40 bg-primary/5 shadow-neon'
               : 'border-border hover:bg-surface opacity-70 hover:opacity-100'
@@ -178,7 +178,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         {/* Chiusi */}
         <button type="button"
           onClick={() => setFilterStatus('closed')}
-          className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-all duration-300 text-left ${
+          className={`glass-card p-5 flex items-center gap-4 border cursor-pointer transition-colors duration-300 text-left ${
             filterStatus === 'closed'
               ? 'border-primary/40 bg-primary/5 shadow-neon'
               : 'border-border hover:bg-surface opacity-70 hover:opacity-100'
@@ -212,7 +212,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <Filter size={14} className="text-text-dim opacity-50" />
             
             <select 
-              className="bg-transparent border-none text-xs font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-all p-0"
+              className="bg-transparent border-none text-xs font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-colors p-0"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
@@ -224,7 +224,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
             <div className="w-[1px] h-4 bg-border" />
 
             <select 
-              className="bg-transparent border-none text-xs font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-all p-0"
+              className="bg-transparent border-none text-xs font-black uppercase tracking-[2px] text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-colors p-0"
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
             >

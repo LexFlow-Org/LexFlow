@@ -5,9 +5,7 @@
 
 use crate::audit::append_audit_log;
 use crate::constants::*;
-use crate::crypto::{
-    decrypt_data, derive_secure_key, encrypt_data, make_verify_tag, verify_hash_matches,
-};
+use crate::crypto::{decrypt_data, encrypt_data};
 use crate::io::{atomic_write_with_sync, secure_write};
 use crate::lockout::{check_lockout, clear_lockout, record_failed_attempt};
 use crate::state::{
@@ -252,19 +250,6 @@ fn write_vault_v4(state: &State<AppState>, data: &Value) -> Result<(), String> {
 
 // ─── Password validation ────────────────────────────────────
 
-pub(crate) fn authenticate_vault_password(
-    password: &str,
-    dir: &std::path::Path,
-) -> Result<Zeroizing<Vec<u8>>, String> {
-    let salt = fs::read(dir.join(VAULT_SALT_FILE)).map_err(|e| e.to_string())?;
-    let key = derive_secure_key(password, &salt)?;
-    let stored = fs::read(dir.join(VAULT_VERIFY_FILE)).unwrap_or_default();
-    if !verify_hash_matches(&key, &stored) {
-        return Err("Password errata".into());
-    }
-    Ok(key)
-}
-
 fn validate_password_strength(password: &str) -> Result<(), Value> {
     let pwd_strong = password.len() >= 12
         && password.chars().any(|c| c.is_uppercase())
@@ -276,29 +261,6 @@ fn validate_password_strength(password: &str) -> Result<(), Value> {
             json!({"success": false, "error": "Password troppo debole: minimo 12 caratteri, una maiuscola, una minuscola, un numero e un simbolo."}),
         );
     }
-    Ok(())
-}
-
-fn create_new_vault_salt(password: &str, salt_path: &std::path::Path) -> Result<Vec<u8>, Value> {
-    validate_password_strength(password)?;
-    let mut s = vec![0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut s);
-    secure_write(salt_path, &s).map_err(
-        |e| json!({"success": false, "error": format!("Errore scrittura vault: {}", e)}),
-    )?;
-    Ok(s)
-}
-
-fn init_new_vault(
-    state: &State<AppState>,
-    k: Zeroizing<Vec<u8>>,
-    dir: &std::path::Path,
-) -> Result<(), Value> {
-    let tag = make_verify_tag(&k);
-    secure_write(&dir.join(VAULT_VERIFY_FILE), &tag)
-        .map_err(|e| json!({"success": false, "error": format!("Errore init vault: {}", e)}))?;
-    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = Some(SecureKey::new(k));
-    let _ = write_vault_internal(state, &json!({"practices":[], "agenda":[]}));
     Ok(())
 }
 
@@ -333,84 +295,6 @@ fn init_new_vault_v4(
         .unwrap_or_else(|e| e.into_inner()) = 4;
 
     Ok(())
-}
-
-// ─── Transactional swap (shared v2/v4) ──────────────────────
-
-pub(crate) fn transactional_vault_swap(
-    dir: &std::path::Path,
-    staging_dir: &std::path::Path,
-) -> Result<(), String> {
-    let vault_path = dir.join(VAULT_FILE);
-    let salt_path = dir.join(VAULT_SALT_FILE);
-    let verify_path = dir.join(VAULT_VERIFY_FILE);
-
-    for bak_name in &[".vault.bak", ".salt.bak", ".verify.bak"] {
-        let bak_path = dir.join(bak_name);
-        if bak_path.exists() {
-            let _ = fs::remove_file(&bak_path);
-        }
-    }
-
-    let _ = fs::rename(&vault_path, dir.join(".vault.bak"));
-    let _ = fs::rename(&salt_path, dir.join(".salt.bak"));
-    let _ = fs::rename(&verify_path, dir.join(".verify.bak"));
-
-    if fs::rename(staging_dir.join(VAULT_FILE), &vault_path).is_err() {
-        let _ = fs::rename(dir.join(".vault.bak"), &vault_path);
-        let _ = fs::rename(dir.join(".salt.bak"), &salt_path);
-        let _ = fs::rename(dir.join(".verify.bak"), &verify_path);
-        return Err("Errore swap vault.lex. Rollback eseguito.".into());
-    }
-
-    if fs::rename(staging_dir.join(VAULT_SALT_FILE), &salt_path).is_err() {
-        let _ = fs::rename(&vault_path, staging_dir.join(VAULT_FILE));
-        let _ = fs::rename(dir.join(".vault.bak"), &vault_path);
-        let _ = fs::rename(dir.join(".salt.bak"), &salt_path);
-        let _ = fs::rename(dir.join(".verify.bak"), &verify_path);
-        return Err("Errore swap vault.salt. Rollback eseguito.".into());
-    }
-
-    if fs::rename(staging_dir.join(VAULT_VERIFY_FILE), &verify_path).is_err() {
-        let _ = fs::rename(&salt_path, staging_dir.join(VAULT_SALT_FILE));
-        let _ = fs::rename(dir.join(".salt.bak"), &salt_path);
-        let _ = fs::rename(&vault_path, staging_dir.join(VAULT_FILE));
-        let _ = fs::rename(dir.join(".vault.bak"), &vault_path);
-        let _ = fs::rename(dir.join(".verify.bak"), &verify_path);
-        return Err("Errore swap vault.verify. Rollback eseguito.".into());
-    }
-
-    Ok(())
-}
-
-pub(crate) fn cleanup_vault_backups(dir: &std::path::Path) {
-    for bak_name in &[".vault.bak", ".salt.bak", ".verify.bak"] {
-        let bak_path = dir.join(bak_name);
-        if !bak_path.exists() {
-            continue;
-        }
-        if let Ok(meta) = bak_path.metadata() {
-            let size = meta.len() as usize;
-            if size > 0 {
-                let _ = secure_write(&bak_path, &vec![0u8; size]);
-            }
-        }
-        let _ = fs::remove_file(&bak_path);
-    }
-}
-
-fn reencrypt_audit_log(dir: &std::path::Path, old_key: &[u8], new_key: &[u8]) {
-    let audit_path = dir.join(AUDIT_LOG_FILE);
-    if !audit_path.exists() {
-        return;
-    }
-    if let Ok(enc) = fs::read(&audit_path) {
-        if let Ok(dec) = decrypt_data(old_key, &enc) {
-            if let Ok(re_enc) = encrypt_data(new_key, &dec) {
-                let _ = atomic_write_with_sync(&audit_path, &re_enc);
-            }
-        }
-    }
 }
 
 // ─── Vault field helpers ────────────────────────────────────
@@ -496,10 +380,9 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
     }
 
     let vault_path = dir.join(VAULT_FILE);
-    let salt_path = dir.join(VAULT_SALT_FILE);
 
-    // Detect if this is a new vault, existing v4, or existing v2
-    let is_new = !vault_path.exists() && !salt_path.exists();
+    // v4-only: check if vault exists
+    let is_new = !vault_path.exists();
 
     if is_new {
         // Create new vault in v4 format
@@ -565,9 +448,46 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                         .lock()
                         .unwrap_or_else(|e| e.into_inner()) = 4;
 
-                    // Check if key rotation is needed
+                    // Perform key rotation if needed (>90 days or >10k writes)
                     if vault_v4::needs_rotation(&vault.rotation) {
-                        eprintln!("[LexFlow] Key rotation needed — will rotate on next save");
+                        eprintln!(
+                            "[LexFlow] Key rotation triggered — re-encrypting all records..."
+                        );
+                        let kek = match vault_v4::derive_kek(&password, &vault.kdf) {
+                            Ok(k) => k,
+                            Err(e) => {
+                                eprintln!("[LexFlow] KEK re-derive for rotation failed: {}", e);
+                                // Non-fatal: skip rotation, vault is still usable
+                                Zeroizing::new(vec![])
+                            }
+                        };
+                        if !kek.is_empty() {
+                            let mut vault_mut = vault;
+                            match vault_v4::rotate_dek(&mut vault_mut, &kek) {
+                                Ok(new_dek) => {
+                                    // Write rotated vault
+                                    if let Ok(serialized) = vault_v4::serialize_vault(&vault_mut) {
+                                        let _ = atomic_write_with_sync(&vault_path, &serialized);
+                                        // Update DEK in state
+                                        *state
+                                            .vault_dek
+                                            .lock()
+                                            .unwrap_or_else(|e| e.into_inner()) =
+                                            Some(SecureKey::new(new_dek));
+                                        let _ = append_audit_log(
+                                            state,
+                                            "Rotazione DEK automatica completata",
+                                        );
+                                        eprintln!(
+                                            "[LexFlow] ✓ Key rotation completed successfully"
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("[LexFlow] Key rotation failed (non-fatal): {}", e);
+                                }
+                            }
+                        }
                     }
 
                     clear_lockout(state, &sec_dir);
@@ -587,159 +507,14 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
             }
         }
 
-        if version == 2 {
-            // v2 vault — authenticate with legacy method, then migrate to v4
-            let v2_salt = match fs::read(dir.join(VAULT_SALT_FILE)) {
-                Ok(s) => s,
-                Err(e) => {
-                    zeroize_password(password);
-                    return json!({"success": false, "error": format!("Salt non trovato: {}", e)});
-                }
-            };
-
-            // Verify password against v2 verify tag
-            let v2_key = match derive_secure_key(&password, &v2_salt) {
-                Ok(k) => k,
-                Err(e) => {
-                    zeroize_password(password);
-                    return json!({"success": false, "error": e});
-                }
-            };
-            let stored = fs::read(dir.join(VAULT_VERIFY_FILE)).unwrap_or_default();
-            if !verify_hash_matches(&v2_key, &stored) {
-                record_failed_attempt(state, &sec_dir);
-                zeroize_password(password);
-                return json!({"success": false, "error": "Password errata"});
-            }
-
-            // Backup v2 files before migration
-            let backup_dir = dir.join(".v2_backup");
-            let _ = fs::create_dir_all(&backup_dir);
-            for f in &[VAULT_FILE, VAULT_SALT_FILE, VAULT_VERIFY_FILE] {
-                let src = dir.join(f);
-                if src.exists() {
-                    let _ = fs::copy(&src, backup_dir.join(f));
-                }
-            }
-
-            // Migrate v2 → v4
-            eprintln!("[LexFlow] Migrating vault v2 → v4...");
-            match vault_v4::migrate_v2_to_v4(&password, &raw, &v2_salt) {
-                Ok((vault, dek)) => {
-                    // Write v4 vault
-                    match vault_v4::serialize_vault(&vault) {
-                        Ok(serialized) => {
-                            if let Err(e) = atomic_write_with_sync(&vault_path, &serialized) {
-                                eprintln!(
-                                    "[LexFlow] CRITICAL: v4 write failed: {}. V2 backup at {:?}",
-                                    e, backup_dir
-                                );
-                                // Restore v2 backup
-                                for f in &[VAULT_FILE, VAULT_SALT_FILE, VAULT_VERIFY_FILE] {
-                                    let bak = backup_dir.join(f);
-                                    if bak.exists() {
-                                        let _ = fs::copy(&bak, dir.join(f));
-                                    }
-                                }
-                                zeroize_password(password);
-                                return json!({"success": false, "error": "Migrazione v4 fallita. Vault v2 ripristinato."});
-                            }
-                        }
-                        Err(e) => {
-                            zeroize_password(password);
-                            return json!({"success": false, "error": format!("Serializzazione v4 fallita: {}", e)});
-                        }
-                    }
-
-                    eprintln!(
-                        "[LexFlow] ✓ Vault migrated to v4 successfully. V2 backup at {:?}",
-                        backup_dir
-                    );
-
-                    *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
-                        Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
-                    *state
-                        .vault_version
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner()) = 4;
-
-                    clear_lockout(state, &sec_dir);
-                    *state
-                        .last_activity
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner()) = Instant::now();
-                    zeroize_password(password);
-                    let _ = append_audit_log(state, "Vault migrato v2→v4");
-                    return json!({"success": true, "isNew": false, "migrated": true});
-                }
-                Err(e) => {
-                    eprintln!("[LexFlow] Migration failed: {}. Falling back to v2.", e);
-                    // Restore v2 backup and unlock in v2 mode
-                    for f in &[VAULT_FILE, VAULT_SALT_FILE, VAULT_VERIFY_FILE] {
-                        let bak = backup_dir.join(f);
-                        if bak.exists() {
-                            let _ = fs::copy(&bak, dir.join(f));
-                        }
-                    }
-                    // Fall through to v2 unlock below
-                }
-            }
-
-            // v2 fallback unlock (migration failed or not attempted)
-            *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) =
-                Some(SecureKey::new(v2_key));
-            *state
-                .vault_version
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()) = 2;
-
-            clear_lockout(state, &sec_dir);
-            *state
-                .last_activity
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()) = Instant::now();
-            zeroize_password(password);
-            let _ = append_audit_log(state, "Sblocco Vault v2 (migrazione v4 fallita)");
-            return json!({"success": true, "isNew": false});
-        }
-
-        // Unknown format
+        // v2 and unknown formats no longer supported
         zeroize_password(password);
-        return json!({"success": false, "error": "Formato vault non riconosciuto"});
+        return json!({"success": false, "error": "Formato vault non supportato. Aggiornare da una versione precedente dell'app."});
     }
 
-    // No vault.lex but salt exists — legacy v2 first-time init path
-    let salt = match create_new_vault_salt(&password, &salt_path) {
-        Ok(s) => s,
-        Err(e) => {
-            zeroize_password(password);
-            return e;
-        }
-    };
-    let k = match derive_secure_key(&password, &salt) {
-        Ok(k) => k,
-        Err(e) => {
-            zeroize_password(password);
-            return json!({"success": false, "error": e});
-        }
-    };
-    if let Err(e) = init_new_vault(state, k, &dir) {
-        zeroize_password(password);
-        return e;
-    }
-    *state
-        .vault_version
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = 2;
-
-    clear_lockout(state, &sec_dir);
-    *state
-        .last_activity
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = Instant::now();
+    // No vault file found
     zeroize_password(password);
-    let _ = append_audit_log(state, "Sblocco Vault");
-    json!({"success": true, "isNew": true})
+    json!({"success": false, "error": "Vault non trovato"})
 }
 
 #[tauri::command]
@@ -764,22 +539,16 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let salt_path = dir.join(VAULT_SALT_FILE);
     let vault_path = dir.join(VAULT_FILE);
-    if vault_path.exists() && !salt_path.exists() {
-        // v4 vaults don't have a separate salt file — check v4 format
+    if vault_path.exists() {
+        // Verify password before reset
         if let Ok(data) = fs::read(&vault_path) {
-            if !data.starts_with(vault_v4::VAULT_V4_MAGIC) {
-                zeroize_password(password);
-                return json!({"success": false, "error": "Possibile manomissione: vault.lex presente ma vault.salt mancante."});
-            }
-            // v4: verify password via open_vault_v4
             if vault_v4::open_vault_v4(&password, &data).is_err() {
                 zeroize_password(password);
                 return json!({"success": false, "error": "Password errata"});
             }
         }
-    } else if salt_path.exists() && authenticate_vault_password(&password, &dir).is_err() {
+    } else if false {
         zeroize_password(password);
         return json!({"success": false, "error": "Password errata"});
     }
@@ -821,74 +590,44 @@ pub(crate) fn change_password(
     current_password: String,
     new_password: String,
 ) -> Result<Value, String> {
+    let sec_dir = state
+        .security_dir
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    // SECURITY: rate limit change_password to prevent brute-force on current password
+    if let Err(locked_json) = check_lockout(&state, &sec_dir) {
+        zeroize_password(current_password);
+        zeroize_password(new_password);
+        return Ok(locked_json);
+    }
+
     let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let dir = state
         .data_dir
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let version = get_vault_version(&state);
 
-    if version == 4 {
-        // v4: re-wrap DEK with new KEK — O(1), no re-encryption needed!
-        let result = change_password_v4(&state, &dir, &current_password, &new_password);
-        zeroize_password(current_password);
-        zeroize_password(new_password);
-        return result;
-    }
+    // v4-only: re-wrap DEK with new KEK — O(1), no re-encryption needed!
+    let result = change_password_v4(&state, &dir, &current_password, &new_password);
 
-    // v2 legacy path: re-encrypt entire vault
-    let current_key = match authenticate_vault_password(&current_password, &dir) {
-        Ok(k) => k,
-        Err(_) => {
-            zeroize_password(current_password);
-            zeroize_password(new_password);
-            return Ok(json!({"success": false, "error": "Password attuale errata"}));
+    // Record failed attempt if password was wrong
+    if let Ok(ref val) = result {
+        if val
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            clear_lockout(&state, &sec_dir);
+        } else {
+            record_failed_attempt(&state, &sec_dir);
         }
-    };
-
-    let vault_path = dir.join(VAULT_FILE);
-    let vault_data = if vault_path.exists() {
-        let enc = fs::read(&vault_path).map_err(|e| e.to_string())?;
-        let dec = decrypt_data(&current_key, &enc)?;
-        serde_json::from_slice::<Value>(&dec).map_err(|e| e.to_string())?
-    } else {
-        json!({"practices":[], "agenda":[]})
-    };
-
-    let mut new_salt = vec![0u8; ARGON2_SALT_LEN];
-    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut new_salt);
-    let new_key = derive_secure_key(&new_password, &new_salt)?;
-
-    let vault_plaintext =
-        Zeroizing::new(serde_json::to_vec(&vault_data).map_err(|e| e.to_string())?);
-    let encrypted_vault = encrypt_data(&new_key, &vault_plaintext)?;
-    let new_verify_tag = make_verify_tag(&new_key);
-
-    let staging_dir = dir.join(".staging");
-    let _ = fs::create_dir_all(&staging_dir);
-    if atomic_write_with_sync(&staging_dir.join(VAULT_FILE), &encrypted_vault).is_err()
-        || atomic_write_with_sync(&staging_dir.join(VAULT_SALT_FILE), &new_salt).is_err()
-        || atomic_write_with_sync(&staging_dir.join(VAULT_VERIFY_FILE), &new_verify_tag).is_err()
-    {
-        let _ = fs::remove_dir_all(&staging_dir);
-        return Err("Errore critico. Cambio annullato.".into());
     }
 
-    transactional_vault_swap(&dir, &staging_dir)?;
-    cleanup_vault_backups(&dir);
-    let _ = fs::remove_dir_all(&staging_dir);
-    reencrypt_audit_log(&dir, &current_key, &new_key);
-
-    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) =
-        Some(SecureKey::new(Zeroizing::new(new_key.to_vec())));
-
-    update_bio_password_if_needed(&state, &new_password);
-
-    let _ = append_audit_log(&state, "Password cambiata");
     zeroize_password(current_password);
     zeroize_password(new_password);
-    Ok(json!({"success": true}))
+    result
 }
 
 /// v4 change password: only re-wrap DEK with new KEK — O(1)!
@@ -978,16 +717,11 @@ pub(crate) fn verify_vault_password(state: State<AppState>, pwd: String) -> Resu
         return Ok(locked_json);
     }
 
-    let version = get_vault_version(&state);
-    let valid = if version == 4 {
-        let vault_path = dir.join(VAULT_FILE);
-        if let Ok(raw) = fs::read(&vault_path) {
-            vault_v4::open_vault_v4(&pwd, &raw).is_ok()
-        } else {
-            false
-        }
+    let vault_path = dir.join(VAULT_FILE);
+    let valid = if let Ok(raw) = fs::read(&vault_path) {
+        vault_v4::open_vault_v4(&pwd, &raw).is_ok()
     } else {
-        authenticate_vault_password(&pwd, &dir).is_ok()
+        false
     };
 
     if !valid {

@@ -105,7 +105,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
               <p className="text-text-dim text-xs uppercase tracking-widest font-medium opacity-60">Configurazione Pratica Digitale</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
             <X size={24} className="group-hover:rotate-90 transition-transform" />
           </button>
         </div>
@@ -121,7 +121,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             <div className="relative group">
               <input
                 id="cpm-client"
-                className={`input-field pl-5 w-full bg-surface border-border focus:border-primary/50 transition-all ${errors.client ? 'border-danger-border bg-danger-soft' : ''}`}
+                className={`input-field pl-5 w-full bg-surface border-border focus:border-primary/50 transition-colors ${errors.client ? 'border-danger-border bg-danger-soft' : ''}`}
                 placeholder="Inserisci il nome del cliente o della società..."
                 value={formData.client}
                 onChange={e => updateField('client', e.target.value)}
@@ -146,7 +146,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                   key={m.id}
                   type="button"
                   onClick={() => updateField('type', m.id)}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 border uppercase tracking-wider ${
+                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-colors duration-300 border uppercase tracking-wider ${
                     formData.type === m.id
                       ? `${MATERIA_CSS[m.id]} scale-105 ring-2 ring-border`
                       : 'bg-surface border-border text-text-dim hover:bg-card hover:border-border'
@@ -239,7 +239,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             <button 
               id="cpm-docs"
               type="button"
-              className="border-2 border-dashed border-border rounded-[24px] p-8 flex flex-col items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer group relative w-full text-left"
+              className="border-2 border-dashed border-border rounded-[24px] p-8 flex flex-col items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/5 transition-colors cursor-pointer group relative w-full text-left"
               onClick={handleSelectFile}
             >
               <div className="w-14 h-14 bg-surface rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -276,7 +276,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
             <label htmlFor="cpm-notes" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Note / Strategia</label>
             <textarea
               id="cpm-notes"
-              className="input-field w-full min-h-[120px] py-4 px-5 resize-none bg-surface border-border focus:bg-card transition-all"
+              className="input-field w-full min-h-[120px] py-4 px-5 resize-none bg-surface border-border focus:bg-card transition-colors"
               placeholder="Annotazioni libere..."
               value={formData.description}
               onChange={e => updateField('description', e.target.value)}
@@ -291,7 +291,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
           </button>
           <button 
             onClick={handleSubmit} 
-            className="btn-primary px-10 py-3 flex items-center gap-3 hover:scale-[1.05] active:scale-[0.98] transition-all"
+            className="btn-primary px-10 py-3 flex items-center gap-3 hover:scale-[1.05] active:scale-[0.98] transition-colors"
           >
             <Save size={18} />
             <span className="font-black uppercase tracking-widest text-xs">Salva Fascicolo</span>

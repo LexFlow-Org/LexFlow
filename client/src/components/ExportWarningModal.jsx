@@ -33,7 +33,7 @@ export default function ExportWarningModal({ isOpen, onClose, onConfirm }) {
                 <p className="text-xs text-text-dim mt-0.5">Esportazione Documento — Leggere prima di procedere</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>

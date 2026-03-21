@@ -190,12 +190,12 @@ export default function ContactsPage({ practices, onSelectPractice }) {
         {/* Type filter pills — scrollable on mobile */}
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
           <button onClick={() => setFilterType('all')}
-            className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border ${filterType === 'all' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-surface text-text-dim border-border hover:bg-card'}`}>
+            className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border ${filterType === 'all' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-surface text-text-dim border-border hover:bg-card'}`}>
             Tutti ({typeCounts.all})
           </button>
           {CONTACT_TYPES.map(t => (
             <button key={t.id} onClick={() => setFilterType(t.id)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border ${filterType === t.id ? t.color : 'bg-surface text-text-dim border-border hover:bg-card'}`}>
+              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border ${filterType === t.id ? t.color : 'bg-surface text-text-dim border-border hover:bg-card'}`}>
               {t.label} ({typeCounts[t.id] || 0})
             </button>
           ))}
@@ -257,7 +257,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setEditingContact({ ...c }); }}
-                          className="p-2 hover:bg-card-hover rounded-full transition-all cursor-pointer"
+                          className="p-2 hover:bg-card-hover rounded-full transition-colors cursor-pointer"
                           title="Modifica"
                         >
                           <Edit3 size={14} className="text-text-dim hover:text-primary transition-colors" />
@@ -266,7 +266,7 @@ export default function ContactsPage({ practices, onSelectPractice }) {
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : c.id); }}
-                        className="p-2 hover:bg-card-hover rounded-lg transition-all cursor-pointer"
+                        className="p-2 hover:bg-card-hover rounded-lg transition-colors cursor-pointer"
                         title={isExpanded ? 'Chiudi dettaglio' : 'Apri dettaglio'}
                       >
                         {isExpanded ? (
@@ -406,7 +406,7 @@ function ContactModal({ initial, onSave, onClose }) {
               <p className="text-text-dim text-xs uppercase tracking-widest font-medium opacity-60">Anagrafica</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
             <X size={24} className="group-hover:rotate-90 transition-transform" />
           </button>
         </div>
@@ -419,7 +419,7 @@ function ContactModal({ initial, onSave, onClose }) {
             <div className="flex flex-wrap gap-2.5">
               {CONTACT_TYPES.map(t => (
                 <button key={t.id} onClick={() => updateField('type', t.id)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 border ${form.type === t.id ? t.color + ' scale-105 ring-2 ring-border' : 'bg-surface text-text-dim border-border hover:bg-card hover:border-border'}`}>
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors duration-300 border ${form.type === t.id ? t.color + ' scale-105 ring-2 ring-border' : 'bg-surface text-text-dim border-border hover:bg-card hover:border-border'}`}>
                   {t.label}
                 </button>
               ))}
@@ -513,7 +513,7 @@ function ContactModal({ initial, onSave, onClose }) {
         {/* Footer — stile unificato */}
         <div className="modal-footer gap-4">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
-          <button onClick={handleSubmit} className="btn-primary px-10 py-3 flex items-center gap-3 hover:scale-[1.05] active:scale-[0.98] transition-all">
+          <button onClick={handleSubmit} className="btn-primary px-10 py-3 flex items-center gap-3 hover:scale-[1.05] active:scale-[0.98] transition-colors">
             <Check size={18} />
             <span className="font-black uppercase tracking-widest text-xs">{initial ? 'Aggiorna' : 'Salva Contatto'}</span>
           </button>
@@ -558,10 +558,10 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={onEdit} className="p-2.5 hover:bg-primary/10 rounded-full transition-all group/edit cursor-pointer" title="Modifica">
+          <button type="button" onClick={onEdit} className="p-2.5 hover:bg-primary/10 rounded-full transition-colors group/edit cursor-pointer" title="Modifica">
             <Edit3 size={15} className="text-text-dim group-hover/edit:text-primary transition-colors" />
           </button>
-          <button type="button" onClick={onDelete} className="p-2.5 hover:bg-danger-soft rounded-full transition-all cursor-pointer" title="Elimina">
+          <button type="button" onClick={onDelete} className="p-2.5 hover:bg-danger-soft rounded-full transition-colors cursor-pointer" title="Elimina">
             <Trash2 size={15} className="text-danger hover:text-danger" />
           </button>
         </div>
@@ -681,7 +681,7 @@ const ContactDetailCard = memo(function ContactDetailCard({ contact, typeInfo, l
           <div className="space-y-1">
             {linkedPractices.map(p => (
               <button type="button" key={p.id} onClick={() => onSelectPractice?.(p.id)}
-                className="flex items-center gap-2.5 px-3 py-2 bg-surface hover:bg-card border border-border rounded-lg transition-all group text-left w-full">
+                className="flex items-center gap-2.5 px-3 py-2 bg-surface hover:bg-card border border-border rounded-lg transition-colors group text-left w-full">
                 <Briefcase size={13} className="text-text-dim flex-shrink-0" />
                 <p className="text-text text-sm truncate flex-1 group-hover:text-primary transition-colors">{p.client} — {p.object}</p>
                 <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${p.status === 'active' ? 'bg-success-soft text-success' : 'bg-surface text-text-dim'}`}>

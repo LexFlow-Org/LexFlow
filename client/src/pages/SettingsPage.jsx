@@ -86,7 +86,7 @@ function FactoryResetModal({ onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Tutti i dati verranno eliminati</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -116,7 +116,7 @@ function FactoryResetModal({ onClose }) {
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
-          <button onClick={doReset} className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-all text-xs font-bold uppercase tracking-widest">Conferma Reset</button>
+          <button onClick={doReset} className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest">Conferma Reset</button>
         </div>
       </div>
     </ModalOverlay>
@@ -171,7 +171,7 @@ function ExportBackupModal({ onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Crea un file .lex cifrato</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -264,7 +264,7 @@ function ImportBackupModal({ onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Sovrascrive i dati attuali</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -400,7 +400,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
             <X size={20} className="group-hover:rotate-90 transition-transform" />
           </button>
         </div>
@@ -417,7 +417,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
           <div className="modal-footer">
             <button onClick={onClose} className="btn-cancel">Annulla</button>
             <button onClick={doDeactivate} disabled={loading}
-              className={`px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-all text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
+              className={`px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
               {loading ? 'Disattivazione...' : 'Disattiva'}
             </button>
           </div>
@@ -681,7 +681,7 @@ export default function SettingsPage({ onLock }) {
                       toast.error('Errore salvataggio');
                     }
                   }}
-                  className="bg-surface border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
+                  className="bg-surface border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors appearance-none cursor-pointer"
                 >
                   <option value="Avv.">Avv.</option>
                   <option value="Praticante">Praticante</option>
@@ -747,7 +747,7 @@ export default function SettingsPage({ onLock }) {
                         setNotificationTime(opt.value);
                         saveNotifySettings({ notificationTime: opt.value, preavviso: opt.value });
                       }}
-                      className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
+                      className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors border ${
                         notificationTime === opt.value
                           ? 'bg-primary text-black border-primary'
                           : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
@@ -843,7 +843,7 @@ export default function SettingsPage({ onLock }) {
                   key={opt.value}
                   type="button"
                   onClick={() => handleAutolockChange(opt)}
-                  className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors border ${
                     autolockMinutes === opt.value
                       ? 'bg-primary text-black border-primary'
                       : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
@@ -858,14 +858,14 @@ export default function SettingsPage({ onLock }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <button 
               onClick={onLock}
-              className="flex items-center justify-center gap-3 p-4 rounded-xl bg-surface hover:bg-card border border-border text-text transition-all group"
+              className="flex items-center justify-center gap-3 p-4 rounded-xl bg-surface hover:bg-card border border-border text-text transition-colors group"
             >
               <Lock size={18} className="text-primary transition-transform group-hover:-rotate-12" />
               <span className="text-sm font-bold uppercase tracking-wider">Blocca Vault Ora</span>
             </button>
             <button 
               onClick={() => setShowBioResetConfirm(true)}
-              className={`flex items-center gap-4 p-4 rounded-xl border transition-all group relative ${
+              className={`flex items-center gap-4 p-4 rounded-xl border transition-colors group relative ${
                 {
                   active: 'bg-success-soft hover:bg-success-soft border-success-border',
                   available: 'bg-warning-soft hover:bg-warning-soft border-warning-border',
@@ -1088,7 +1088,7 @@ export default function SettingsPage({ onLock }) {
       <div className="pt-12 text-center">
         <button
           onClick={() => setShowFactoryReset(true)}
-          className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-all duration-300 group"
+          className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-colors duration-300 group"
         >
           <Lock size={18} className="transition-transform group-hover:-rotate-12" />
           <span className="font-black text-[11px] uppercase tracking-widest">Factory Reset Vault</span>

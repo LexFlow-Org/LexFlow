@@ -397,7 +397,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
               <p className="text-text-dim text-xs uppercase tracking-widest font-medium opacity-60">Gestione Agenda</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
             <X size={24} className="group-hover:rotate-90 transition-transform" />
           </button>
         </div>
@@ -416,11 +416,11 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <label htmlFor="em-date" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Data</label>
-              <input id="em-date" type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all" value={evDate} onChange={e => setEvDate(e.target.value)} />
+              <input id="em-date" type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors" value={evDate} onChange={e => setEvDate(e.target.value)} />
             </div>
             <div className="space-y-2">
               <label htmlFor="em-start" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Inizio</label>
-              <input id="em-start" type="time" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all" value={timeStart} onChange={e => {
+              <input id="em-start" type="time" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors" value={timeStart} onChange={e => {
                 handleTimeStartChange(e.target.value);
                 const [h,m] = e.target.value.split(':').map(Number);
                 setTimeEnd(fmtTime(Math.min(h+1,23), m));
@@ -428,7 +428,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
             </div>
             <div className="space-y-2">
               <label htmlFor="em-end" className="text-[10px] font-black text-text-dim uppercase tracking-[2px] ml-1">Fine</label>
-              <input id="em-end" type="time" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all" value={timeEnd} onChange={e => setTimeEnd(e.target.value)} />
+              <input id="em-end" type="time" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors" value={timeEnd} onChange={e => setTimeEnd(e.target.value)} />
             </div>
           </div>
 
@@ -439,7 +439,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
               {Object.entries(CAT_LABELS).map(([key, label]) => (
                 <button key={key} type="button"
                   onClick={() => setCategory(key)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 border uppercase tracking-wider ${
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-colors duration-300 border uppercase tracking-wider ${
                     category === key
                       ? `${CAT_PILL_STYLES[key]} scale-105 ring-2 ring-border`
                       : 'bg-surface border-border text-text-dim hover:bg-card hover:border-border'
@@ -462,7 +462,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
               {REMIND_OPTIONS.map(opt => (
                 <button key={String(opt.value)} type="button"
                   onClick={() => { setRemindMinutes(opt.value); }}
-                  className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                  className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors border ${
                     remindMinutes === opt.value
                       ? 'bg-primary text-black border-primary'
                       : 'bg-surface text-text-dim border-border hover:bg-card hover:text-text'
@@ -471,7 +471,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
                 </button>
               ))}
               {/* Pill orario personalizzato */}
-              <div className={`inline-flex items-center rounded-xl border transition-all ${
+              <div className={`inline-flex items-center rounded-xl border transition-colors ${
                 remindMinutes === 'custom'
                   ? 'border-primary bg-primary/10'
                   : 'border-border bg-surface hover:bg-card'
@@ -503,7 +503,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
                 id="em-practice"
                 value={practiceId}
                 onChange={e => setPracticeId(e.target.value)}
-                className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none"
+                className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors appearance-none"
               >
                 <option value="">— Nessun fascicolo —</option>
                 {linkablePractices.map(p => (
@@ -519,20 +519,20 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
         {/* Footer — stile unificato con Fascicoli */}
         <div className="modal-footer gap-3">
           {isEdit && !event?.autoSync && (
-            <button type="button" onClick={() => setConfirmDelete(true)} className="px-5 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+            <button type="button" onClick={() => setConfirmDelete(true)} className="px-5 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest flex items-center gap-2">
               <Trash2 size={16}/> Elimina
             </button>
           )}
           {/* Link al fascicolo collegato */}
           {isEdit && practiceId && onSelectPractice && (
-            <button type="button" onClick={() => { onClose(); onSelectPractice(practiceId); }} className="px-5 py-3 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+            <button type="button" onClick={() => { onClose(); onSelectPractice(practiceId); }} className="px-5 py-3 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors text-xs font-bold uppercase tracking-widest flex items-center gap-2">
               <FolderOpen size={16}/> Fascicolo
             </button>
           )}
           <button 
             type="submit"
             onClick={handleSubmit} 
-            className="btn-primary px-10 py-3 flex items-center gap-3 active:scale-[0.98] transition-all"
+            className="btn-primary px-10 py-3 flex items-center gap-3 active:scale-[0.98] transition-colors"
           >
             <span className="font-black uppercase tracking-widest text-xs">{isEdit ? 'Salva Modifiche' : 'Crea Impegno'}</span>
           </button>
@@ -579,7 +579,7 @@ function StatsCard({ events }) {
               <circle cx={36} cy={36} r={28} fill="none" stroke="var(--primary)" strokeWidth={6}
                 strokeLinecap="round" strokeDasharray={2*Math.PI*28}
                 strokeDashoffset={2*Math.PI*28*(1 - todayPct/100)}
-                className="transition-all duration-1000 ease-out"
+                className="transition-colors duration-1000 ease-out"
                 />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center flex-col">
@@ -609,7 +609,7 @@ function StatsCard({ events }) {
                     <span className="text-text font-medium">{count}</span>
                   </div>
                   <div className="h-1 bg-surface rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-1000 ${catBarClass(cat)}`} style={{width: `${pct}%`}}/>
+                    <div className={`h-full rounded-full transition-colors duration-1000 ${catBarClass(cat)}`} style={{width: `${pct}%`}}/>
                   </div>
                 </div>
               );
@@ -799,7 +799,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                       const colLeft = totalCols > 1 ? `calc(56px + ${ev.col} * ((100% - 56px - 8px) / ${totalCols}))` : undefined;
                       return (
                         <div key={ev.id} data-evid={ev.id}
-                          className={`agenda-event absolute rounded-lg px-3 py-1.5 cursor-pointer transition-all duration-200 hover:z-20 text-left border-l-4 ev-text
+                          className={`agenda-event absolute rounded-lg px-3 py-1.5 cursor-pointer transition-colors duration-200 hover:z-20 text-left border-l-4 ev-text
                               ${evBgClass(ev.category)}
                               ${ev.completed ? 'opacity-40 line-through' : ''}
                           `}
@@ -833,7 +833,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                                   {/* Checkbox completamento */}
                                   <button
                                     onClick={e => { e.stopPropagation(); onToggle(ev.id); }}
-                                    className={`pointer-events-auto w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
+                                    className={`pointer-events-auto w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
                                       ev.completed
                                         ? 'bg-success border-success'
                                         : 'border-white/50 hover:border-primary hover:bg-primary/10'
@@ -1072,7 +1072,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
                 <div className="space-y-0.5 overflow-y-auto max-h-[80px] no-scrollbar relative z-[1]">
                   {dayEvts.slice(0, 4).map(ev => (
                     <button type="button" key={ev.id} onClick={e => {e.stopPropagation(); onEdit(ev);}}
-                      className={`agenda-event text-[9px] font-bold px-1.5 py-1 rounded-sm truncate border-l-[2px] transition-all hover:scale-[1.02] hover:z-10 block w-full text-left cursor-pointer ev-text-strong ${evBgClass(ev.category)}`}
+                      className={`agenda-event text-[9px] font-bold px-1.5 py-1 rounded-sm truncate border-l-[2px] transition-colors hover:scale-[1.02] hover:z-10 block w-full text-left cursor-pointer ev-text-strong ${evBgClass(ev.category)}`}
                       title={`${ev.title} — ${CAT_LABELS[ev.category] || ev.category}`}>
                       {ev.title}
                     </button>
@@ -1165,7 +1165,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
             </div>
             <button
               onClick={() => setNotifyEnabled(!notifyEnabled)}
-              className={`w-11 h-6 rounded-full transition-all duration-300 relative ${
+              className={`w-11 h-6 rounded-full transition-colors duration-300 relative ${
                 notifyEnabled ? 'bg-primary' : 'bg-card'
               }`}
             >
@@ -1186,7 +1186,7 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
                   key={opt.value}
                   type="button"
                   onClick={() => setPreavviso(opt.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
                     preavviso === opt.value
                       ? 'bg-primary text-black border-primary'
                       : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
@@ -1320,7 +1320,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
           {/* Stats toggle */}
           <button 
             onClick={() => setShowStats(!showStats)} 
-            className={`p-2 rounded-xl transition-all border ${
+            className={`p-2 rounded-xl transition-colors border ${
               showStats 
                 ? 'bg-primary/10 border-primary/20 text-primary' 
                 : 'bg-surface border-border text-text-dim hover:text-white hover:bg-card'
@@ -1333,7 +1333,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
           {/* Bell */}
           <button 
             onClick={() => effectiveSettings?.notifyEnabled !== false && setShowNotifPopup(true)} 
-            className={`p-2 rounded-xl border transition-all relative ${
+            className={`p-2 rounded-xl border transition-colors relative ${
               effectiveSettings?.notifyEnabled !== false
                 ? 'bg-surface border-border hover:bg-card text-text-dim hover:text-white cursor-pointer'
                 : 'bg-surface border-border text-text-dim opacity-40 cursor-not-allowed'
@@ -1357,7 +1357,7 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
             <button 
               key={key} 
               onClick={() => toggleFilter(key)} 
-              className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border flex-shrink-0 ${
+              className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border flex-shrink-0 ${
                 isActive 
                   ? `${CAT_PILL_STYLES[key]} scale-105` 
                   : 'border-border text-text-dim hover:bg-surface hover:text-white bg-surface'

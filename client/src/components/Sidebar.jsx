@@ -126,7 +126,7 @@ function DesktopNavItem({ item }) {
   return (
     <NavLink
       to={item.path}
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative cursor-pointer ${
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-300 group relative cursor-pointer ${
         isActive
           ? 'bg-primary scale-[1.02] sidebar-nav-active'
           : 'text-text-dim hover:text-primary hover:bg-primary-soft'
@@ -137,7 +137,7 @@ function DesktopNavItem({ item }) {
       )}
       <item.icon
         size={20}
-        className={`transition-all duration-300 ${
+        className={`transition-colors duration-300 ${
           isActive ? 'sidebar-nav-active' : 'group-hover:scale-110'
         }`}
       />
@@ -193,7 +193,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
       <div className="flex justify-center px-4 py-3 flex-shrink-0">
         <button
           onClick={onToggleTheme}
-          className="w-10 h-10 flex items-center justify-center rounded-full text-primary hover:text-primary hover:bg-primary/10 transition-all"
+          className="w-10 h-10 flex items-center justify-center rounded-full text-primary hover:text-primary hover:bg-primary/10 transition-colors"
           title={isLight ? 'Tema scuro' : 'Tema chiaro'}
         >
           {isLight ? <Moon size={22} strokeWidth={2.5} /> : <Sun size={22} strokeWidth={2.5} />}
@@ -204,7 +204,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
       <div className="p-6 bg-sidebar-bg">
         <button
           onClick={onLock}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-all duration-300 group"
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-colors duration-300 group"
         >
           <Lock size={18} className="transition-transform group-hover:-rotate-12" />
           <span className="font-black text-[11px] uppercase tracking-widest">Blocca Vault</span>

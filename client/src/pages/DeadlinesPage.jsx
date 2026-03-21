@@ -269,7 +269,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
             ].map(({ label, value, onChange }) => (
               <div key={label} className="flex items-center justify-between bg-surface rounded-lg px-3 py-2 border border-border">
                 <span className="text-xs text-text font-medium">{label}</span>
-                <input type="time" disabled={settings?.notifyEnabled === false} className={`bg-surface border border-border rounded-lg px-2.5 py-1 text-xs text-text font-mono text-center focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all w-24 ${settings?.notifyEnabled === false ? 'cursor-not-allowed' : ''}`} value={value} onChange={onChange} />
+                <input type="time" disabled={settings?.notifyEnabled === false} className={`bg-surface border border-border rounded-lg px-2.5 py-1 text-xs text-text font-mono text-center focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors w-24 ${settings?.notifyEnabled === false ? 'cursor-not-allowed' : ''}`} value={value} onChange={onChange} />
               </div>
             ))}
           </div>

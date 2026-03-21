@@ -80,7 +80,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
               {ev.practiceId && (
                 <button type="button"
                   onClick={(e) => { e.stopPropagation(); if (onSelectPractice) onSelectPractice(ev.practiceId); }}
-                  className="p-1.5 rounded-lg transition-all flex-shrink-0 group/brief border border-transparent hover:border-white/20"
+                  className="p-1.5 rounded-lg transition-colors flex-shrink-0 group/brief border border-transparent hover:border-white/20"
                   title="Vai al Fascicolo"
                 >
                   <FolderOpen size={14} className="text-white/70 group-hover/brief:text-white transition-colors" />

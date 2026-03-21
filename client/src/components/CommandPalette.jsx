@@ -108,7 +108,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
   return (
     <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh]"
          onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/60 blur-overlay-sm" />
       <div className="relative w-full max-w-xl mx-4 bg-[var(--bg-card)] border border-[var(--border)]
                       rounded-2xl shadow-2xl overflow-hidden"
            onClick={e => e.stopPropagation()}>

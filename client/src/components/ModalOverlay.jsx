@@ -60,7 +60,7 @@ export default function ModalOverlay({
   const zCls = Z_MAP[zIndex] || 'z-50';
 
   return (
-    <div className={`fixed inset-0 ${zCls} flex items-center justify-center bg-black/85 backdrop-blur-xl p-4`}>
+    <div className={`fixed inset-0 ${zCls} flex items-center justify-center bg-black/85 blur-overlay p-4`}>
       <button
         type="button"
         className="absolute inset-0 cursor-default"

@@ -92,7 +92,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
 
       {/* Trigger (closed) / Input wrapper (open) */}
       {open ? (
-        <div className="flex items-center gap-2 input-field py-2.5 pr-2 transition-all w-full border-primary ring-1 ring-primary/20">
+        <div className="flex items-center gap-2 input-field py-2.5 pr-2 transition-colors w-full border-primary ring-1 ring-primary/20">
           <Search size={14} className="text-text-dim flex-shrink-0" />
           <input
             ref={inputRef}
@@ -115,7 +115,7 @@ export default function PracticeCombobox({ value, onChange, practices, placehold
             aria-expanded={false}
             aria-haspopup="listbox"
             aria-controls="practice-listbox"
-            className={`flex items-center gap-2 input-field py-2.5 cursor-pointer transition-all w-full text-left ${value ? 'pr-8' : 'pr-2'}`}
+            className={`flex items-center gap-2 input-field py-2.5 cursor-pointer transition-colors w-full text-left ${value ? 'pr-8' : 'pr-2'}`}
             onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}
           >
             <Briefcase size={14} className="text-text-dim flex-shrink-0" />

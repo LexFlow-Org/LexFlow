@@ -489,7 +489,7 @@ pub(crate) fn needs_rotation(rotation: &RotationMeta) -> bool {
 
 /// Perform key rotation: generate new DEK, re-encrypt all records + index.
 /// Called when needs_rotation() returns true (>90 days or >10k writes).
-#[allow(dead_code)] // Will be called when rotation UI/trigger is implemented
+/// Triggered automatically at unlock in vault.rs.
 pub(crate) fn rotate_dek(vault: &mut VaultV4, kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
     // Unwrap old DEK
     let old_dek = unwrap_dek(kek, &vault.wrapped_dek, &vault.dek_iv)?;
@@ -647,95 +647,7 @@ pub(crate) fn detect_vault_version(data: &[u8]) -> u32 {
     0 // unknown
 }
 
-/// Migrate a v2 vault to v4 format.
-/// Decrypts with legacy params, then re-encrypts with optimal v4 params.
-pub(crate) fn migrate_v2_to_v4(
-    password: &str,
-    v2_data: &[u8],
-    v2_salt: &[u8],
-) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
-    // 1. Decrypt v2 vault with legacy fixed params
-    let v2_key = crate::crypto::derive_secure_key(password, v2_salt)?;
-    let decrypted = crate::crypto::decrypt_data(&v2_key, v2_data)?;
-    let vault_json: serde_json::Value =
-        serde_json::from_slice(&decrypted).map_err(|e| format!("V2 vault parse: {}", e))?;
-
-    // 2. Create new v4 vault with benchmarked params
-    let (mut vault, dek) = create_vault_v4(password)?;
-
-    // 3. Split JSON into individual records with unique IDs
-    let fields = ["practices", "agenda", "contacts", "timeLogs", "invoices"];
-    let mut index_entries: Vec<IndexEntry> = Vec::new();
-
-    for field in &fields {
-        if let Some(array) = vault_json.get(*field).and_then(|v| v.as_array()) {
-            for item in array {
-                let id = item
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                if id.is_empty() {
-                    // FIX: log warning instead of silent skip
-                    eprintln!(
-                        "[LexFlow] WARNING: v2→v4 migration skipping {} record without id",
-                        field
-                    );
-                    continue;
-                }
-
-                let record_key = format!("{}_{}", field, id);
-
-                // Encrypt record
-                let plaintext =
-                    serde_json::to_vec(item).map_err(|e| format!("Record serialize: {}", e))?;
-                let block = encrypt_record(&dek, &plaintext)?;
-
-                let entry = RecordEntry {
-                    versions: vec![RecordVersion {
-                        v: 1,
-                        ts: chrono::Utc::now().to_rfc3339(),
-                        iv: block.iv,
-                        tag: block.tag,
-                        data: block.data,
-                        compressed: block.compressed,
-                    }],
-                    current: 1,
-                };
-                vault.records.insert(record_key.clone(), entry);
-
-                // Build index entry
-                let title = extract_record_title(item, field);
-                let tags = extract_record_tags(item, field);
-                let updated_at = item
-                    .get("updatedAt")
-                    .or_else(|| item.get("createdAt"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-
-                index_entries.push(IndexEntry {
-                    id: record_key,
-                    field: field.to_string(),
-                    title,
-                    tags,
-                    updated_at,
-                });
-            }
-        }
-    }
-
-    // 4. Encrypt index
-    vault.index = encrypt_index(&dek, &index_entries)?;
-
-    // 5. Recompute header MAC (index changed) — reuse KEK via re-derivation
-    // NOTE: derive_kek is called again here because create_vault_v4 doesn't expose KEK.
-    // This is ~300ms extra but happens only once during v2→v4 migration.
-    let migration_kek = derive_kek(password, &vault.kdf)?;
-    vault.header_mac = compute_header_mac(&migration_kek, &vault);
-
-    Ok((vault, dek))
-}
+// v2 migration removed — v2 vaults no longer supported
 
 // ─── Record metadata helpers (used by migration + vault write) ───
 

@@ -393,7 +393,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               type="button" 
               onClick={() => handleBioLogin(false)} 
               disabled={loading} 
-              className="w-full py-4 bg-primary text-black rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] font-bold"
+              className="w-full py-4 bg-primary text-black rounded-2xl flex items-center justify-center gap-3 transition-colors hover:scale-[1.02] font-bold"
             >
               <Fingerprint size={24} />
               Accedi con Biometria
@@ -418,7 +418,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                 <input 
                   id="login-master-pwd"
                   type={showPwd ? 'text' : 'password'} 
-                  className="input-field pl-12 pr-12 py-4 rounded-2xl bg-input border-border hover:border-primary/30 transition-all text-text placeholder:text-text-dim/40" 
+                  className="input-field pl-12 pr-12 py-4 rounded-2xl bg-input border-border hover:border-primary/30 transition-colors text-text placeholder:text-text-dim/40" 
                   placeholder="Inserisci la password..." 
                   value={password} 
                   onChange={e => setPassword(e.target.value)} 
@@ -442,7 +442,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                   {[1, 2, 3, 4, 5, 6].map((s) => (
                     <div 
                       key={s} 
-                      className={`h-full flex-1 rounded-full transition-all duration-500 ${s <= strength.segments ? strength.color : 'bg-surface'}`}
+                      className={`h-full flex-1 rounded-full transition-colors duration-500 ${s <= strength.segments ? strength.color : 'bg-surface'}`}
                     />
                   ))}
                 </div>
@@ -481,7 +481,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
           <button 
             type="submit" 
             disabled={loading || lockoutSeconds > 0} 
-            className="btn-primary w-full py-4 rounded-2xl justify-center font-bold text-sm tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="btn-primary w-full py-4 rounded-2xl justify-center font-bold text-sm tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             {(() => {
               if (loading) {
@@ -531,7 +531,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
 
       {/* Reset Vault Modal -- sostituisce window.prompt (no password in chiaro nel UI) */}
       {showResetModal && (
-        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 animate-fade-in">
+        <div className="fixed inset-0 z-[200] bg-black/80 blur-overlay flex items-center justify-center p-4 animate-fade-in">
           <button type="button" className="absolute inset-0 cursor-default" aria-label="Chiudi" onClick={() => setShowResetModal(false)} tabIndex={-1} />
           <div className="relative z-10 modal-card modal-card-sm no-drag">
             <div className="modal-header-gradient modal-header-gradient-danger">
@@ -545,7 +545,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                     <p className="text-xs text-text-dim mt-0.5">Tutti i dati verranno eliminati</p>
                   </div>
                 </div>
-                <button onClick={() => setShowResetModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+                <button onClick={() => setShowResetModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
                   <X size={20} className="group-hover:rotate-90 transition-transform" />
                 </button>
               </div>
@@ -580,7 +580,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               <button onClick={() => setShowResetModal(false)} className="btn-cancel">Annulla</button>
               <button
                 onClick={executeReset}
-                className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-all text-xs font-bold uppercase tracking-widest"
+                className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest"
               >
                 Conferma Reset
               </button>

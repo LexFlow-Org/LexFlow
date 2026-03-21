@@ -1031,95 +1031,10 @@ mod tests {
     //  PART 10: MIGRATION SAFETY
     // ═══════════════════════════════════════════════════════════
 
-    #[test]
-    fn migration_v2_to_v4_preserves_data() {
-        // Create a v2-format vault manually
-        let password = "MigrazioneTest123!";
-        let mut salt = [0u8; 32];
-        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
-        let v2_key = crate::crypto::derive_secure_key(password, &salt).unwrap();
-
-        let vault_data = serde_json::json!({
-            "practices": [
-                {"id": "p1", "client": "Rossi", "object": "Contratto locazione", "status": "active"},
-                {"id": "p2", "client": "Bianchi", "object": "Decreto ingiuntivo", "status": "closed"},
-            ],
-            "agenda": [
-                {"id": "a1", "title": "Udienza Rossi", "date": "2025-03-20"},
-            ],
-            "contacts": [
-                {"id": "c1", "name": "Mario Rossi", "email": "rossi@test.it"},
-            ],
-            "timeLogs": [],
-            "invoices": [],
-        });
-
-        let plaintext = serde_json::to_vec(&vault_data).unwrap();
-        let encrypted = crate::crypto::encrypt_data(&v2_key, &plaintext).unwrap();
-
-        // Migrate
-        let (vault, dek) = migrate_v2_to_v4(password, &encrypted, &salt).unwrap();
-
-        assert_eq!(vault.version, 4);
-        assert_eq!(vault.kdf.alg, "argon2id");
-
-        // Verify index has all records
-        let index = decrypt_index(&dek, &vault.index).unwrap();
-        assert_eq!(
-            index.len(),
-            4,
-            "Expected 4 records (2 practices + 1 agenda + 1 contact)"
-        );
-
-        // Verify each record decrypts correctly
-        for idx_entry in &index {
-            let rec = vault.records.get(&idx_entry.id).unwrap();
-            let dec = read_current_version(rec, &dek).unwrap();
-            let val: serde_json::Value = serde_json::from_slice(&dec).unwrap();
-            assert!(
-                val.get("id").is_some(),
-                "Record {} missing 'id' field",
-                idx_entry.id
-            );
-        }
-
-        // Verify header MAC is valid
-        let kek = derive_kek(password, &vault.kdf).unwrap();
-        assert!(verify_header_mac(&kek, &vault).is_ok());
-    }
+    // v2 migration tests removed — v2 no longer supported
 
     #[test]
-    fn migration_wrong_password_fails_clean() {
-        let password = "CorrectPwd123!";
-        let mut salt = [0u8; 32];
-        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
-        let key = crate::crypto::derive_secure_key(password, &salt).unwrap();
-        let data = serde_json::json!({"practices": [], "agenda": []});
-        let encrypted =
-            crate::crypto::encrypt_data(&key, &serde_json::to_vec(&data).unwrap()).unwrap();
-
-        // Wrong password must fail
-        assert!(migrate_v2_to_v4("WrongPwd123!", &encrypted, &salt).is_err());
-    }
-
-    #[test]
-    fn migration_empty_vault() {
-        let password = "EmptyVault123!";
-        let mut salt = [0u8; 32];
-        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
-        let key = crate::crypto::derive_secure_key(password, &salt).unwrap();
-        let data = serde_json::json!({"practices": [], "agenda": []});
-        let encrypted =
-            crate::crypto::encrypt_data(&key, &serde_json::to_vec(&data).unwrap()).unwrap();
-
-        let (vault, dek) = migrate_v2_to_v4(password, &encrypted, &salt).unwrap();
-        let index = decrypt_index(&dek, &vault.index).unwrap();
-        assert_eq!(index.len(), 0);
-        assert_eq!(vault.records.len(), 0);
-    }
-
-    #[test]
-    fn migration_double_is_idempotent() {
+    fn vault_reopen_is_idempotent() {
         let password = "DoubleTest123!";
         let (vault, dek) = create_vault_v4(password).unwrap();
         let serialized = serialize_vault(&vault).unwrap();

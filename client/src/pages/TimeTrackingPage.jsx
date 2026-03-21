@@ -398,13 +398,13 @@ export default function TimeTrackingPage({ practices }) {
                     if (!isFuture) setSelectedDay(isSelected ? null : ds);
                   }}
                   disabled={isFuture}
-                  className={`glass-card p-3 text-center transition-all cursor-pointer ${isToday ? 'border-primary/30 bg-primary/5' : ''} ${isSelected ? 'ring-2 ring-primary border-primary/40 bg-primary/10' : ''} ${isFuture ? 'opacity-40 cursor-not-allowed' : 'hover:border-primary/20 hover:bg-primary/[0.03]'}`}
+                  className={`glass-card p-3 text-center transition-colors cursor-pointer ${isToday ? 'border-primary/30 bg-primary/5' : ''} ${isSelected ? 'ring-2 ring-primary border-primary/40 bg-primary/10' : ''} ${isFuture ? 'opacity-40 cursor-not-allowed' : 'hover:border-primary/20 hover:bg-primary/[0.03]'}`}
                 >
                   <div className="text-[10px] text-text-dim font-bold">{DAYS_IT[d.getDay()]}</div>
                   <div className={`text-sm font-bold ${isToday ? 'text-primary' : 'text-text'}`}>{d.getDate()}</div>
                   <div className="text-[10px] text-text-dim mt-1">{fmtDuration(dayMin)}</div>
                   <div className="w-full bg-surface rounded-full h-1 mt-1.5">
-                    <div className="bg-primary h-1 rounded-full transition-all" style={{ width: `${Math.min((dayMin / 480) * 100, 100)}%` }} />
+                    <div className="bg-primary h-1 rounded-full transition-colors" style={{ width: `${Math.min((dayMin / 480) * 100, 100)}%` }} />
                   </div>
                 </button>
               );
@@ -443,7 +443,7 @@ export default function TimeTrackingPage({ practices }) {
                     </div>
                   ) : (
                     displayLogs.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || '')).map(log => (
-                      <div key={log.id} className="glass-card p-3 flex items-center gap-4 group hover:border-primary/20 transition-all">
+                      <div key={log.id} className="glass-card p-3 flex items-center gap-4 group hover:border-primary/20 transition-colors">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                           <Clock size={18} className="text-primary" />
                         </div>
@@ -502,7 +502,7 @@ export default function TimeTrackingPage({ practices }) {
               invoices.map(inv => {
                 const totals = calcTotals(inv.items || []);
                 return (
-                  <div key={inv.id} className="glass-card p-4 flex items-center gap-4 group hover:border-primary/20 transition-all">
+                  <div key={inv.id} className="glass-card p-4 flex items-center gap-4 group hover:border-primary/20 transition-colors">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                       <Receipt size={18} className="text-primary" />
                     </div>
@@ -587,7 +587,7 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Inserisci i dettagli dell&apos;attivit&agrave;</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -702,7 +702,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
                 <p className="text-xs text-text-dim mt-0.5">Compila i dettagli della parcella</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-all group">
+            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>

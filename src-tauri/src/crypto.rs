@@ -60,43 +60,13 @@ pub(crate) fn decrypt_data(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
         msg: ciphertext,
         aad: VAULT_MAGIC,
     };
-    if let Ok(dec) = cipher.decrypt(nonce, payload) {
-        LEGACY_AAD_CLEAN_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        return Ok(dec);
-    }
-
-    let clean_count = LEGACY_AAD_CLEAN_COUNTER.load(std::sync::atomic::Ordering::Relaxed);
-    if clean_count >= LEGACY_AAD_SUNSET_THRESHOLD
-        && !LEGACY_AAD_EVER_USED.load(std::sync::atomic::Ordering::Relaxed)
-    {
-        return Err("Auth failed (legacy fallback disabled — all files should be migrated)".into());
-    }
-
-    let legacy_payload = Payload {
-        msg: ciphertext,
-        aad: b"",
-    };
     cipher
-        .decrypt(nonce, legacy_payload)
+        .decrypt(nonce, payload)
         .map_err(|_| "Auth failed".into())
-        .inspect(|_dec| {
-            LEGACY_AAD_CLEAN_COUNTER.store(0, std::sync::atomic::Ordering::Relaxed);
-            LEGACY_AAD_EVER_USED.store(true, std::sync::atomic::Ordering::Relaxed);
-            eprintln!(
-                "SECURITY WARNING: File decifrato con fallback legacy (senza AAD). \
-                RE-CIFRATURA AUTOMATICA in corso. Questo fallback sarà rimosso in v4.0.0."
-            );
-        })
 }
 
 pub(crate) fn verify_hash_matches(key: &[u8], stored: &[u8]) -> bool {
     let mut hmac = <Hmac<Sha256> as Mac>::new_from_slice(key).unwrap();
     hmac.update(b"LEX_VERIFY_DOMAIN_V2");
     hmac.verify_slice(stored).is_ok()
-}
-
-pub(crate) fn make_verify_tag(vault_key: &[u8]) -> Vec<u8> {
-    let mut hmac = <Hmac<Sha256> as Mac>::new_from_slice(vault_key).unwrap();
-    hmac.update(b"LEX_VERIFY_DOMAIN_V2");
-    hmac.finalize().into_bytes().to_vec()
 }
