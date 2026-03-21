@@ -18,6 +18,7 @@ import PracticeDetail from './components/PracticeDetail';
 import CreatePracticeModal from './components/CreatePracticeModal';
 import ErrorBoundary from './ErrorBoundary';
 import TccLocationBanner from './components/TccLocationBanner';
+import CommandPalette from './components/CommandPalette';
 
 // Pagine — lazy loading: caricate solo quando l'utente ci naviga
 import Dashboard from './pages/Dashboard';
@@ -27,6 +28,7 @@ const AgendaPage = lazy(() => import('./pages/AgendaPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 
 // PERF: preload all lazy pages after initial render to eliminate navigation delay.
 // Chunks download in background so page switches are instant.
@@ -58,6 +60,9 @@ export default function App() {
   const [blurred, setBlurred] = useState(false);
   const [privacyEnabled, setPrivacyEnabled] = useState(true);
   const [version, setVersion] = useState('');
+
+  // --- COMMAND PALETTE (⌘K) ---
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
 
   // --- STATO SIDEBAR MOBILE ---
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -433,6 +438,19 @@ export default function App() {
         {/* Hamburger button — solo su mobile/Android (<1024px) */}
         {isMobile && <HamburgerButton onClick={() => setSidebarOpen(true)} />}
 
+        <CommandPalette
+          isOpen={cmdPaletteOpen}
+          onClose={(action) => {
+            if (action === 'toggle') setCmdPaletteOpen(prev => !prev);
+            else setCmdPaletteOpen(false);
+          }}
+          onNavigate={(result) => {
+            if (result.field === 'practices') navigate(`/practices/${result.id}`);
+            else if (result.field === 'agenda') navigate('/agenda');
+            else if (result.field === 'contacts') navigate('/contacts');
+            else if (result.field === 'timeLogs') navigate('/time-tracking');
+          }}
+        />
         <main className="flex-1 h-screen overflow-hidden relative flex flex-col bg-background pt-[env(titlebar-area-height,0px)]">
           <WindowControls />
           <TccLocationBanner />
@@ -524,6 +542,7 @@ export default function App() {
               <Route path="/contatti" element={
                 <ContactsPage practices={practices} onSelectPractice={handleSelectPractice} />
               } />
+              <Route path="/audit" element={<AuditLogPage />} />
             </Routes>
             </Suspense>
           </div>

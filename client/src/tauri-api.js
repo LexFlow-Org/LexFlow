@@ -71,6 +71,9 @@ export const loadRecordDetail = (recordId) => safeInvoke('load_record_detail', {
 export const searchVault = (query, limit = 50) => safeInvoke('search_vault', { query, limit });
 export const rebuildSearchIndex = () => safeInvoke('rebuild_search_index');
 
+// Audit log
+export const getAuditLog = () => safeInvoke('get_audit_log');
+
 // Data
 export const loadPractices = () => safeInvoke('load_practices');
 export const savePractices = (list) => safeInvoke('save_practices', { list });

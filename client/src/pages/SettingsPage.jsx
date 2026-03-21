@@ -501,6 +501,12 @@ export default function SettingsPage({ onLock }) {
   
   // Modal visibility flags
   const [showFactoryReset, setShowFactoryReset] = useState(false);
+  const [changePwdCurrent, setChangePwdCurrent] = useState('');
+  const [changePwdNew, setChangePwdNew] = useState('');
+  const [changePwdError, setChangePwdError] = useState('');
+  const [changePwdSuccess, setChangePwdSuccess] = useState('');
+  const [recoveryKey, setRecoveryKey] = useState('');
+  const [vaultHealth, setVaultHealth] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showBioResetConfirm, setShowBioResetConfirm] = useState(false);
@@ -955,8 +961,106 @@ export default function SettingsPage({ onLock }) {
       {/* License information card inserted at the end of settings */}
       <LicenseSettings />
 
+      {/* ── Sicurezza: Cambio Password + Recovery Key + Vault Health ── */}
+      <section className="glass-card p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <ShieldCheck size={20} className="text-primary" />
+          <h2 className="text-lg font-bold text-text">Sicurezza Vault</h2>
+        </div>
+
+        {/* Cambio Password */}
+        <div className="space-y-3">
+          <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Cambia Password Master</label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input type="password" placeholder="Password attuale"
+              value={changePwdCurrent} onChange={e => setChangePwdCurrent(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary" />
+            <input type="password" placeholder="Nuova password (min 12 car.)"
+              value={changePwdNew} onChange={e => setChangePwdNew(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary" />
+          </div>
+          {changePwdError && <p className="text-xs text-danger">{changePwdError}</p>}
+          {changePwdSuccess && <p className="text-xs text-emerald-400">{changePwdSuccess}</p>}
+          <button
+            onClick={async () => {
+              setChangePwdError(''); setChangePwdSuccess('');
+              if (!changePwdCurrent || !changePwdNew) { setChangePwdError('Compila entrambi i campi'); return; }
+              if (changePwdNew.length < 12) { setChangePwdError('La nuova password deve avere almeno 12 caratteri'); return; }
+              try {
+                const res = await api.changePassword(changePwdCurrent, changePwdNew);
+                if (res?.success) {
+                  setChangePwdSuccess('Password cambiata con successo');
+                  setChangePwdCurrent(''); setChangePwdNew('');
+                } else {
+                  setChangePwdError(res?.error || 'Errore cambio password');
+                }
+              } catch (e) { setChangePwdError(String(e)); }
+            }}
+            className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
+            Cambia Password
+          </button>
+        </div>
+
+        <div className="border-t border-border" />
+
+        {/* Recovery Key */}
+        <div className="space-y-3">
+          <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Chiave di Emergenza</label>
+          <p className="text-xs text-text-dim">Genera una chiave di recupero per sbloccare il vault se dimentichi la password. Conservala in un luogo sicuro.</p>
+          {recoveryKey ? (
+            <div className="bg-surface border border-primary-soft rounded-xl p-4 space-y-2">
+              <p className="text-center font-mono text-lg tracking-[4px] text-primary font-bold select-all">{recoveryKey}</p>
+              <p className="text-xs text-text-dim text-center">Copia e conserva questa chiave. Non verrà mostrata di nuovo.</p>
+              <button onClick={() => { api.secureCopy?.(recoveryKey); toast?.success('Chiave copiata (auto-cancellazione in 30s)'); }}
+                className="w-full px-4 py-2 rounded-xl bg-primary-soft text-primary text-xs font-bold uppercase tracking-widest">
+                Copia negli Appunti
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await api.generateRecoveryKey();
+                  if (res?.recovery_key) setRecoveryKey(res.recovery_key);
+                  else toast?.error(res?.error || 'Errore generazione chiave');
+                } catch (e) { toast?.error(String(e)); }
+              }}
+              className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
+              Genera Chiave di Emergenza
+            </button>
+          )}
+        </div>
+
+        <div className="border-t border-border" />
+
+        {/* Vault Health */}
+        <div className="space-y-3">
+          <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Stato del Vault</label>
+          {vaultHealth ? (
+            <div className="grid gap-2 sm:grid-cols-2 text-xs">
+              {Object.entries(vaultHealth).map(([k, v]) => (
+                <div key={k} className="flex justify-between bg-surface rounded-lg px-3 py-2 border border-border">
+                  <span className="text-text-dim">{k}</span>
+                  <span className="text-text font-mono">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <button onClick={async () => {
+              try {
+                const h = await api.getVaultHealth();
+                setVaultHealth(h);
+              } catch (e) { toast?.error(String(e)); }
+            }}
+              className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
+              Mostra Stato Vault
+            </button>
+          )}
+        </div>
+      </section>
+
       <div className="pt-12 text-center">
-        <button 
+        <button
           onClick={() => setShowFactoryReset(true)}
           className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-all duration-300 group"
         >

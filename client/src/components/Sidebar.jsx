@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Briefcase, CalendarClock,
   CalendarDays, Settings, Lock, ShieldCheck, X, Menu,
-  Clock, Users, Sun, Moon
+  Clock, Users, Sun, Moon, Shield, Search
 } from 'lucide-react';
 import logo from '../assets/logo.svg';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -54,7 +54,10 @@ const sections = [
   },
   {
     title: 'Configurazione',
-    items: [{ path: '/settings', label: 'Impostazioni', icon: Settings }],
+    items: [
+      { path: '/settings', label: 'Impostazioni', icon: Settings },
+      { path: '/audit',    label: 'Registro Attività', icon: Shield },
+    ],
   },
 ];
 
