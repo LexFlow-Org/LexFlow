@@ -294,7 +294,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
 
       {/* ═══ FASCICOLI MODIFICATI DI RECENTE ═══ */}
       {practices && practices.length > 0 && (
-        <div className="glass-card p-5">
+        <div className="glass-card p-5 mt-6">
           <h3 className="text-2xs font-black uppercase tracking-label text-text-muted mb-3">Fascicoli Recenti</h3>
           <div className="space-y-2">
             {practices
