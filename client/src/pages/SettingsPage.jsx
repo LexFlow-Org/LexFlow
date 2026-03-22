@@ -657,7 +657,58 @@ export default function SettingsPage({ onLock }) {
       </div>
 
       <div className={`grid gap-6 ${settingsLoaded ? 'opacity-100' : 'opacity-0'}`}>
-      {/* ── Sicurezza: Cambio Password + Recovery Key + Vault Health ── */}
+
+
+        
+        {/* SEZIONE PROFILO STUDIO */}
+        {(lawyerName || studioName) && (
+        <section className="glass-card p-6 space-y-6">
+          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
+            <Briefcase className="text-text-muted" size={20} />
+            <h2 className="text-lg font-bold text-text">Profilo Studio</h2>
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            {lawyerName && (
+            <div className="space-y-2">
+              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Titolo e Nome</label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={lawyerTitle}
+                  onChange={async (e) => {
+                    const newTitle = e.target.value;
+                    setLawyerTitle(newTitle);
+                    try {
+                      await api.saveSettings({ ...buildFullSettings(), lawyerTitle: newTitle });
+                      toast.success(`Titolo aggiornato: ${newTitle}`);
+                    } catch {
+                      toast.error('Errore salvataggio');
+                    }
+                  }}
+                  className="bg-surface border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors appearance-none cursor-pointer"
+                >
+                  <option value="Avv.">Avv.</option>
+                  <option value="Praticante">Praticante</option>
+                </select>
+                <div className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
+                  {lawyerName}
+                </div>
+              </div>
+            </div>
+            )}
+            {studioName && (
+            <div className="space-y-2">
+              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
+              <div className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
+                {studioName}
+              </div>
+            </div>
+            )}
+          </div>
+          <p className="text-2xs text-text-dim">Il titolo e lo studio vengono utilizzati nell&apos;intestazione dei report PDF e in tutta l&apos;app.</p>
+        </section>
+        )}
+
+
       <section className="glass-card p-6 space-y-6">
         <div className="flex items-center gap-3">
           <ShieldCheck size={20} className="text-primary" />
@@ -717,7 +768,8 @@ export default function SettingsPage({ onLock }) {
               onClick={async () => {
                 try {
                   const res = await api.generateRecoveryKey();
-                  if (res?.recovery_key) setRecoveryKey(res.recovery_key);
+                  if (res?.recoveryKey) setRecoveryKey(res.recoveryKey);
+                  else if (res?.recovery_key) setRecoveryKey(res.recovery_key);
                   else toast?.error(res?.error || 'Errore generazione chiave');
                 } catch (e) { toast?.error(String(e)); }
               }}
@@ -729,47 +781,65 @@ export default function SettingsPage({ onLock }) {
 
         <div className="border-t border-border" />
 
-        {/* Vault Health — auto-loaded, auto-refreshed */}
-        <div className="space-y-3">
+        {/* Stato del Vault — user-friendly */}
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Stato del Vault</label>
             {vaultHealth && (
-              <span className="text-3xs text-emerald-400 flex items-center gap-1">
+              <span className="text-2xs text-emerald-400 flex items-center gap-1.5 bg-emerald-400/10 px-2.5 py-1 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live
+                Protetto
               </span>
             )}
           </div>
           {vaultHealth ? (
-            <div className="grid gap-2 sm:grid-cols-2 text-xs">
-              {Object.entries(vaultHealth).map(([k, v]) => {
-                const label = {
-                  version: 'Versione Vault', vault_format: 'Formato',
-                  kdf_algorithm: 'Algoritmo KDF', kdf_memory_mb: 'Memoria KDF',
-                  kdf_iterations: 'Iterazioni KDF', kdf_parallelism: 'Parallelismo KDF',
-                  record_count: 'N° Record', total_writes: 'Scritture Totali',
-                  dek_created: 'DEK Creata', rotation_due: 'Rotazione',
-                  cipher: 'Cifratura', compressed: 'Compressione',
-                }[k] || k;
-                const displayVal = typeof v === 'object' ? JSON.stringify(v)
-                  : typeof v === 'boolean' ? (v ? '✓ Attiva' : '✗ No')
-                  : String(v);
-                return (
-                  <div key={k} className="flex justify-between bg-surface rounded-lg px-3 py-2 border border-border">
-                    <span className="text-text-dim">{label}</span>
-                    <span className="text-text font-mono">{displayVal}</span>
-                  </div>
-                );
-              })}
+            <div className="space-y-3">
+              {/* Key metrics — large and clear */}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="bg-surface rounded-xl p-4 border border-border text-center">
+                  <p className="text-2xl font-black text-text">{vaultHealth.record_count || 0}</p>
+                  <p className="text-2xs text-text-dim font-medium mt-1">Fascicoli protetti</p>
+                </div>
+                <div className="bg-surface rounded-xl p-4 border border-border text-center">
+                  <p className="text-2xl font-black text-text">{vaultHealth.total_writes || 0}</p>
+                  <p className="text-2xs text-text-dim font-medium mt-1">Operazioni totali</p>
+                </div>
+                <div className="bg-surface rounded-xl p-4 border border-border text-center">
+                  <p className={`text-2xl font-black ${vaultHealth.rotation_due ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {vaultHealth.rotation_due ? 'Richiesta' : 'OK'}
+                  </p>
+                  <p className="text-2xs text-text-dim font-medium mt-1">Rotazione chiave</p>
+                </div>
+              </div>
+              {/* Technical details — collapsed by default */}
+              <details className="group">
+                <summary className="text-2xs text-text-dim cursor-pointer hover:text-text transition-colors flex items-center gap-1">
+                  <span className="group-open:rotate-90 transition-transform">&#9654;</span>
+                  Dettagli tecnici
+                </summary>
+                <div className="grid gap-2 sm:grid-cols-2 text-xs mt-3">
+                  {[
+                    ['Formato', vaultHealth.vault_format || `v${vaultHealth.version}`],
+                    ['Cifratura', vaultHealth.cipher || 'AES-256-GCM-SIV'],
+                    ['Derivazione chiave', vaultHealth.kdf_algorithm || 'Argon2id'],
+                    ['Memoria derivazione', vaultHealth.kdf_memory_mb ? `${vaultHealth.kdf_memory_mb} MB` : '-'],
+                    ['Compressione', vaultHealth.compressed ? 'zstd attiva' : 'Non attiva'],
+                    ['Chiave creata', vaultHealth.dek_created ? new Date(vaultHealth.dek_created).toLocaleDateString('it-IT') : '-'],
+                  ].map(([label, val]) => (
+                    <div key={label} className="flex justify-between bg-surface/50 rounded-lg px-3 py-2 border border-border/50">
+                      <span className="text-text-dim">{label}</span>
+                      <span className="text-text font-medium">{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
             </div>
           ) : (
-            <div className="text-xs text-text-dim text-center py-4">Caricamento stato vault...</div>
+            <div className="text-xs text-text-dim text-center py-4">Caricamento...</div>
           )}
         </div>
       </section>
 
-
-        {/* Sezione Sicurezza */}
         <section className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
             <Shield className="text-text-muted" size={20} />
@@ -879,7 +949,6 @@ export default function SettingsPage({ onLock }) {
           </div>
         </section>
 
-        {/* SEZIONE NOTIFICHE (AGGIUNTA) */}
         <section className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
             <Bell className="text-text-muted" size={20} />
@@ -947,56 +1016,6 @@ export default function SettingsPage({ onLock }) {
           </div>
         </section>
 
-        
-        {/* SEZIONE PROFILO STUDIO */}
-        {(lawyerName || studioName) && (
-        <section className="glass-card p-6 space-y-6">
-          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-            <Briefcase className="text-text-muted" size={20} />
-            <h2 className="text-lg font-bold text-text">Profilo Studio</h2>
-          </div>
-          <div className="grid gap-5 sm:grid-cols-2">
-            {lawyerName && (
-            <div className="space-y-2">
-              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Titolo e Nome</label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={lawyerTitle}
-                  onChange={async (e) => {
-                    const newTitle = e.target.value;
-                    setLawyerTitle(newTitle);
-                    try {
-                      await api.saveSettings({ ...buildFullSettings(), lawyerTitle: newTitle });
-                      toast.success(`Titolo aggiornato: ${newTitle}`);
-                    } catch {
-                      toast.error('Errore salvataggio');
-                    }
-                  }}
-                  className="bg-surface border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors appearance-none cursor-pointer"
-                >
-                  <option value="Avv.">Avv.</option>
-                  <option value="Praticante">Praticante</option>
-                </select>
-                <div className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
-                  {lawyerName}
-                </div>
-              </div>
-            </div>
-            )}
-            {studioName && (
-            <div className="space-y-2">
-              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
-              <div className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
-                {studioName}
-              </div>
-            </div>
-            )}
-          </div>
-          <p className="text-2xs text-text-dim">Il titolo e lo studio vengono utilizzati nell&apos;intestazione dei report PDF e in tutta l&apos;app.</p>
-        </section>
-        )}
-
-        {/* Sezione Dati */}
         <section className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
             <HardDrive className="text-text-muted" size={20} />
@@ -1064,6 +1083,7 @@ export default function SettingsPage({ onLock }) {
           </div>
         </section>
       </div>
+
 
 
       {/* License information card inserted at the end of settings */}
