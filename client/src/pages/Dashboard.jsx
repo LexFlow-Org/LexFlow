@@ -53,6 +53,15 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
       >
         {relevant.map((ev, i) => (
           <div key={ev.id || i} data-event-row>
+            {/* Period separator for evening view (oggi/domani) */}
+            {ev._period && (i === 0 || relevant[i - 1]?._period !== ev._period) && (
+              <div className="flex items-center gap-2 mb-2 mt-1">
+                <span className="text-2xs font-bold uppercase tracking-wider text-white/50">
+                  {ev._period === 'oggi' ? '📌 Ancora oggi' : '☀️ Domani'}
+                </span>
+                <div className="flex-1 h-px bg-white/10" />
+              </div>
+            )}
             <div
               role="button"
               tabIndex={0}
@@ -222,8 +231,15 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       filtered = events.filter(e => e.date === todayStr && !e.completed && (e.timeStart || '') >= '13:00');
       periodLabel = 'questo pomeriggio';
     } else {
-      filtered = events.filter(e => e.date === tomorrowStr && !e.completed);
-      periodLabel = 'domani';
+      // Sera: mostra eventi rimasti di oggi (dalle 18+) E quelli di domani
+      const todayRemaining = events.filter(e => e.date === todayStr && !e.completed && (e.timeStart || '') >= '18:00');
+      const tomorrowEvents = events.filter(e => e.date === tomorrowStr && !e.completed);
+      // Marca gli eventi di domani per distinguerli visivamente
+      filtered = [
+        ...todayRemaining.map(e => ({ ...e, _period: 'oggi' })),
+        ...tomorrowEvents.map(e => ({ ...e, _period: 'domani' })),
+      ];
+      periodLabel = 'questa sera';
     }
 
     return {

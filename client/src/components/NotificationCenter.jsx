@@ -59,7 +59,7 @@ export default function NotificationCenter() {
       {/* Bell button */}
       <button
         onClick={() => { setIsOpen(!isOpen); if (!isOpen) markAllRead(); }}
-        className="relative p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-dim)] transition-colors"
+        className="relative w-10 h-10 flex items-center justify-center rounded-full text-[var(--text-dim)] hover:text-[var(--primary)] hover:bg-[var(--primary-soft)] transition-colors"
         aria-label={`Notifiche${unreadCount > 0 ? ` (${unreadCount} non lette)` : ''}`}
       >
         <Bell size={18} />
