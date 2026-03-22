@@ -41,12 +41,8 @@ pub fn mobile_entry() {
 }
 
 pub fn run() {
-    // ── Initialize structured logging
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_target(false)
-        .compact()
-        .init();
+    // NOTE: do NOT init tracing-subscriber here — tauri-plugin-log handles it.
+    // Double-init causes panic: "attempted to set a logger after already initialized"
 
     // ── SECURITY: disable core dumps (prevents DEK/plaintext in crash dumps)
     security::disable_core_dumps();
