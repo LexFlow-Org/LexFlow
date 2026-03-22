@@ -13,7 +13,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, CalendarClock,
   CalendarDays, Settings, Lock, ShieldCheck, X, Menu,
-  Clock, Users, Sun, Moon, Shield, BarChart3, Activity
+  Clock, Users, Sun, Moon, BarChart3, Activity
 } from 'lucide-react';
 import logo from '../assets/logo.svg';
 import NotificationCenter from './NotificationCenter';
@@ -53,13 +53,6 @@ const sections = [
       { path: '/ore',       label: 'Gestione Ore', icon: Clock },
       { path: '/report',    label: 'Report', icon: BarChart3 },
       { path: '/attivita',  label: 'Attività', icon: Activity },
-    ],
-  },
-  {
-    title: 'Configurazione',
-    items: [
-      { path: '/settings', label: 'Impostazioni', icon: Settings },
-      { path: '/audit',    label: 'Registro Attività', icon: Shield },
     ],
   },
 ];
@@ -141,12 +134,23 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
         ))}
       </nav>
 
-      {/* Toggle Tema + Notifiche */}
+      {/* Notifiche + Impostazioni + Tema */}
       <div className="flex justify-center items-center gap-2 px-4 py-3 flex-shrink-0">
         <NotificationCenter />
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `w-10 h-10 flex items-center justify-center rounded-full transition-colors ${
+              isActive ? 'text-primary bg-primary/10' : 'text-text-dim hover:text-primary hover:bg-primary/10'
+            }`
+          }
+          title="Impostazioni"
+        >
+          <Settings size={20} strokeWidth={2.5} />
+        </NavLink>
         <button
           onClick={onToggleTheme}
-          className="w-10 h-10 flex items-center justify-center rounded-full text-primary hover:text-primary hover:bg-primary/10 transition-colors"
+          className="w-10 h-10 flex items-center justify-center rounded-full text-text-dim hover:text-primary hover:bg-primary/10 transition-colors"
           title={isLight ? 'Tema scuro' : 'Tema chiaro'}
         >
           {isLight ? <Moon size={22} strokeWidth={2.5} /> : <Sun size={22} strokeWidth={2.5} />}

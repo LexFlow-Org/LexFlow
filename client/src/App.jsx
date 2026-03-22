@@ -31,7 +31,6 @@ const AgendaPage = lazy(() => import('./pages/AgendaPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
-const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const ReportPage = lazy(() => import('./pages/ReportPage'));
 const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 
@@ -44,7 +43,6 @@ const preloadPages = () => {
   import('./pages/SettingsPage');
   import('./pages/TimeTrackingPage');
   import('./pages/ContactsPage');
-  import('./pages/AuditLogPage');
   import('./pages/ReportPage');
   import('./pages/ActivityPage');
 };
@@ -591,9 +589,9 @@ export default function App() {
               <Route path="/contatti" element={
                 <ContactsPage practices={practices} onSelectPractice={handleSelectPractice} />
               } />
-              <Route path="/audit" element={<AuditLogPage />} />
               <Route path="/report" element={<ReportPage practices={practices} />} />
               <Route path="/attivita" element={<ActivityPage />} />
+              <Route path="/audit" element={<ActivityPage />} />
             </Routes>
             </Suspense>
           </div>
