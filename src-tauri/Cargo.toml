@@ -1,6 +1,6 @@
 [package]
 name = "lexflow"
-version = "2.6.1"
+version = "2.6.3"
 description = "LexFlow -- Gestionale Studio Legale con Crittografia Zero-Knowledge"
 authors = ["Pietro Longo"]
 edition = "2021"
