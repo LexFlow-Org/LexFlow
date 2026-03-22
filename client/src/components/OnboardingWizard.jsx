@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, Fingerprint, FileText, ArrowRight, Check, SkipForward } from 'lucide-react';
+import { Shield, Fingerprint, ArrowRight, Check, SkipForward } from 'lucide-react';
 import * as api from '../tauri-api';
 
 const steps = [
@@ -15,13 +15,6 @@ const steps = [
     description: 'Abilita Touch ID, Windows Hello o impronta digitale per sbloccare il vault senza digitare la password.',
     skippable: true,
     skipLabel: 'Il mio dispositivo non supporta la biometria',
-  },
-  {
-    icon: FileText,
-    title: 'Crea il primo Fascicolo',
-    description: 'Inizia aggiungendo il tuo primo fascicolo. Potrai gestire pratiche, scadenze, contatti e molto altro.',
-    skippable: true,
-    skipLabel: 'Lo farò dopo',
   },
 ];
 
