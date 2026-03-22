@@ -879,13 +879,18 @@ pub(crate) fn setup_system_tray(app: &mut tauri::App) -> Result<(), Box<dyn std:
     let quit_item = MenuItem::with_id(app, "quit", "Chiudi LexFlow", true, None::<&str>)?;
     let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
+    // Load dedicated tray-icon.rgba (pre-converted from rounded PNG)
+    // Format: 4 bytes width LE + 4 bytes height LE + raw RGBA pixels
+    let tray_icon = {
+        let raw = include_bytes!("../icons/tray-icon.rgba");
+        let w = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
+        let h = u32::from_le_bytes([raw[4], raw[5], raw[6], raw[7]]);
+        tauri::image::Image::new_owned(raw[8..].to_vec(), w, h)
+    };
+
     TrayIconBuilder::new()
         .tooltip("LexFlow — Gestionale Legale")
-        .icon(
-            app.default_window_icon()
-                .expect("app icon configured in tauri.conf.json")
-                .clone(),
-        )
+        .icon(tray_icon)
         .menu(&tray_menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
