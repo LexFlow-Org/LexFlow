@@ -34,7 +34,7 @@ pub(crate) const MAX_RECORD_VERSIONS: usize = 5;
 // ─── Types ──────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct VaultV4 {
+pub struct VaultV4 {
     pub version: u32,
     pub kdf: KdfParams,
     pub wrapped_dek: String,
@@ -54,7 +54,7 @@ pub(crate) struct VaultV4 {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct KdfParams {
+pub struct KdfParams {
     pub alg: String,
     pub m: u32,
     pub t: u32,
@@ -63,7 +63,7 @@ pub(crate) struct KdfParams {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct RotationMeta {
+pub struct RotationMeta {
     pub created: String,    // ISO8601
     pub interval_days: u32, // default 90
     pub writes: u64,        // incremented on each write
@@ -71,7 +71,7 @@ pub(crate) struct RotationMeta {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct EncryptedBlock {
+pub struct EncryptedBlock {
     pub iv: String,   // base64, 12 bytes
     pub tag: String,  // base64, 16 bytes (GCM tag)
     pub data: String, // base64, ciphertext (without tag, tag is separate)
@@ -80,7 +80,7 @@ pub(crate) struct EncryptedBlock {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct RecordVersion {
+pub struct RecordVersion {
     pub v: u32,
     pub ts: String, // ISO8601
     pub iv: String,
@@ -91,13 +91,13 @@ pub(crate) struct RecordVersion {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct RecordEntry {
+pub struct RecordEntry {
     pub versions: Vec<RecordVersion>,
     pub current: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct IndexEntry {
+pub struct IndexEntry {
     pub id: String,
     pub field: String,      // "practices", "agenda", etc.
     pub title: String,      // searchable summary
@@ -111,7 +111,7 @@ pub(crate) struct IndexEntry {
 
 /// Benchmark Argon2 to find params yielding ~300-500ms on this device.
 /// Called during vault creation and password change.
-pub(crate) fn benchmark_argon2_params() -> KdfParams {
+pub fn benchmark_argon2_params() -> KdfParams {
     let cores = std::thread::available_parallelism()
         .map(|n| n.get() as u32)
         .unwrap_or(1);
@@ -195,7 +195,7 @@ pub(crate) fn benchmark_argon2_params() -> KdfParams {
 
 /// Derive KEK from password + KdfParams (reads params from vault header).
 /// SECURITY: validates minimum KDF params to prevent downgrade attacks.
-pub(crate) fn derive_kek(password: &str, params: &KdfParams) -> Result<Zeroizing<Vec<u8>>, String> {
+pub fn derive_kek(password: &str, params: &KdfParams) -> Result<Zeroizing<Vec<u8>>, String> {
     // SECURITY: reject trivially weak params that an attacker could inject
     if params.m < 8192 {
         return Err(format!("KDF m_cost too low ({}), minimum 8192", params.m));
@@ -322,7 +322,7 @@ pub(crate) fn compute_header_mac(kek: &[u8], vault: &VaultV4) -> String {
 }
 
 /// Verify header HMAC before attempting decrypt (constant-time via HMAC verify_slice).
-pub(crate) fn verify_header_mac(kek: &[u8], vault: &VaultV4) -> Result<(), String> {
+pub fn verify_header_mac(kek: &[u8], vault: &VaultV4) -> Result<(), String> {
     let stored_bytes = B64
         .decode(&vault.header_mac)
         .map_err(|_| "Stored header MAC decode failed")?;
@@ -544,7 +544,7 @@ pub(crate) fn rotate_dek(vault: &mut VaultV4, kek: &[u8]) -> Result<Zeroizing<Ve
 // ═══════════════════════════════════════════════════════════
 
 /// Serialize VaultV4 to bytes for disk storage.
-pub(crate) fn serialize_vault(vault: &VaultV4) -> Result<Vec<u8>, String> {
+pub fn serialize_vault(vault: &VaultV4) -> Result<Vec<u8>, String> {
     let json = serde_json::to_vec(vault).map_err(|e| format!("Vault serialize: {}", e))?;
     let mut out = VAULT_V4_MAGIC.to_vec();
     out.extend_from_slice(&json);
@@ -552,7 +552,7 @@ pub(crate) fn serialize_vault(vault: &VaultV4) -> Result<Vec<u8>, String> {
 }
 
 /// Deserialize VaultV4 from bytes read from disk.
-pub(crate) fn deserialize_vault(data: &[u8]) -> Result<VaultV4, String> {
+pub fn deserialize_vault(data: &[u8]) -> Result<VaultV4, String> {
     if !data.starts_with(VAULT_V4_MAGIC) {
         return Err("Not a v4 vault file".into());
     }
@@ -561,7 +561,7 @@ pub(crate) fn deserialize_vault(data: &[u8]) -> Result<VaultV4, String> {
 }
 
 /// Create a brand new v4 vault from password. Returns (vault, dek).
-pub(crate) fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
+pub fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
     // Benchmark and generate KDF params
     let mut kdf = benchmark_argon2_params();
     let mut salt = [0u8; 32];
@@ -610,10 +610,7 @@ pub(crate) fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<
 
 /// Open an existing v4 vault: derive KEK, verify header MAC, unwrap DEK.
 /// Anti-rollback: verify write counter against stored maximum.
-pub(crate) fn open_vault_v4(
-    password: &str,
-    data: &[u8],
-) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
+pub fn open_vault_v4(password: &str, data: &[u8]) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
     let vault = deserialize_vault(data)?;
 
     if vault.version != 4 {

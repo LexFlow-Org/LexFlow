@@ -2,11 +2,45 @@
 """
 attack_vault_format.py — Craft malicious vault files and verify parser rejects them.
 Tests the vault parser from the OUTSIDE (attacker perspective).
-Run: python3 ci/attack_vault_format.py
+
+Run standalone (Python-only checks):
+    python3 ci/attack_vault_format.py
+
+Run with CLI binary (full end-to-end):
+    python3 ci/attack_vault_format.py --cli target/release/lexflow-cli
 """
-import json, base64, os, sys, struct
+import json, base64, os, sys, struct, subprocess, tempfile, shutil
 
 MAGIC = b"LEXFLOW_V4"
+CLI_PATH = None
+
+# Parse --cli argument
+if "--cli" in sys.argv:
+    idx = sys.argv.index("--cli")
+    if idx + 1 < len(sys.argv):
+        CLI_PATH = sys.argv[idx + 1]
+        if not os.path.isfile(CLI_PATH):
+            print(f"ERROR: CLI binary not found: {CLI_PATH}")
+            sys.exit(1)
+        print(f"Using CLI binary: {CLI_PATH}")
+
+def try_open_with_cli(vault_bytes: bytes) -> tuple:
+    """Try to open vault bytes with the CLI binary. Returns (exit_code, stderr)."""
+    if CLI_PATH is None:
+        return None, None
+    with tempfile.NamedTemporaryFile(suffix=".lex", delete=False) as f:
+        f.write(vault_bytes)
+        tmp_path = f.name
+    try:
+        result = subprocess.run(
+            [CLI_PATH, "open", tmp_path, "--password", "test"],
+            capture_output=True, timeout=30, text=True
+        )
+        return result.returncode, result.stderr
+    except subprocess.TimeoutExpired:
+        return 1, "TIMEOUT"
+    finally:
+        os.unlink(tmp_path)
 
 def craft_vault(header_json: dict) -> bytes:
     """Create a vault file with given header JSON."""
@@ -54,21 +88,29 @@ tests_failed = 0
 def check_rejected(name: str, vault_bytes: bytes):
     """Verify that the vault bytes cannot be parsed as valid."""
     global tests_passed, tests_failed
+    # If CLI available, test with actual Rust parser
+    if CLI_PATH:
+        code, stderr = try_open_with_cli(vault_bytes)
+        if code == 0:
+            print(f"  ✗ FAIL: {name} — CLI accepted malicious vault!")
+            tests_failed += 1
+            return
+        if "panic" in (stderr or "").lower():
+            print(f"  ✗ FAIL: {name} — CLI panicked: {stderr[:100]}")
+            tests_failed += 1
+            return
+        tests_passed += 1
+        return
+    # Fallback: Python-side validation
     try:
-        # Try to parse the JSON after magic
         if not vault_bytes.startswith(MAGIC):
             tests_passed += 1
-            return  # Would fail at magic check
+            return
         json_part = vault_bytes[len(MAGIC):]
         parsed = json.loads(json_part)
-        # Even if JSON parses, check for required fields
-        if not isinstance(parsed, dict):
+        if not isinstance(parsed, dict) or parsed.get("version") != 4:
             tests_passed += 1
             return
-        if parsed.get("version") != 4:
-            tests_passed += 1
-            return
-        # If it parses as valid JSON with version=4, check KDF params
         kdf = parsed.get("kdf", {})
         if isinstance(kdf, dict):
             m = kdf.get("m", 0)
@@ -77,7 +119,7 @@ def check_rejected(name: str, vault_bytes: bytes):
             if m < 8192 or m > 524288 or t < 2 or t > 100 or p < 1 or p > 16:
                 tests_passed += 1
                 return
-        tests_passed += 1  # Would fail at HMAC verification anyway
+        tests_passed += 1
     except (json.JSONDecodeError, UnicodeDecodeError, KeyError, TypeError):
         tests_passed += 1
 
