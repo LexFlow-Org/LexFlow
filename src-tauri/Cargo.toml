@@ -12,6 +12,8 @@ crate-type = ["rlib", "cdylib"]
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
+sha2 = "0.10"
+hmac = "0.12"
 
 [dependencies]
 # Core & Serialization

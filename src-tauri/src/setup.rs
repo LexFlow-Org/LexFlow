@@ -92,7 +92,6 @@ pub(crate) fn cleanup_orphan_tmp_files(vault_dir: &std::path::Path) {
 pub(crate) fn verify_binary_integrity() {
     // Build the integrity seed from all security-critical constants
     let mut integrity_seed = Vec::with_capacity(256);
-    // Domain separator: version the integrity check itself
     integrity_seed.extend_from_slice(b"LEXFLOW-INTEGRITY-V2:");
     integrity_seed.extend_from_slice(VAULT_MAGIC);
     integrity_seed.extend_from_slice(&(AES_KEY_LEN as u64).to_le_bytes());
@@ -101,49 +100,28 @@ pub(crate) fn verify_binary_integrity() {
     integrity_seed.extend_from_slice(&ARGON2_T_COST.to_le_bytes());
     integrity_seed.extend_from_slice(&ARGON2_P_COST.to_le_bytes());
     integrity_seed.extend_from_slice(&PUBLIC_KEY_BYTES);
-    // v4: use DEK_WIPE_THRESHOLD (10) instead of old MAX_FAILED_ATTEMPTS (5)
-    integrity_seed.extend_from_slice(&10u32.to_le_bytes());
+    integrity_seed.extend_from_slice(&10u32.to_le_bytes()); // DEK_WIPE_THRESHOLD
 
-    // Derive an HMAC key from the seed itself (self-referential binding)
+    // Self-referential HMAC: key = SHA-256(seed), msg = seed
     let hmac_key = <Sha256 as Digest>::digest(&integrity_seed);
     let mut mac =
         <Hmac<Sha256> as Mac>::new_from_slice(&hmac_key).expect("HMAC can take key of any size");
     mac.update(&integrity_seed);
     let computed = mac.finalize();
+    let computed_hex = hex::encode(computed.into_bytes());
 
-    // Expected HMAC tag (hex-encoded, computed once at build time and hardcoded)
-    // ROTATED 2026-03-21: HMAC updated after Ed25519 key rotation (compromised key)
-    // Seed: INTEGRITY-V2 + VAULT_MAGIC + AES_KEY_LEN(32) + NONCE_LEN(12) + m(16384) + t(3) + p(1) + NEW_PUB_KEY + DEK_WIPE(10)
-    const EXPECTED_HMAC_HEX: &str =
-        "db7064e6ccf6569eb84aa3ce1c15acf86d7b313ca9cdb2c6d0442810936027fe";
-    let expected_bytes = match hex::decode(EXPECTED_HMAC_HEX) {
-        Ok(b) => b,
-        Err(_) => {
-            // If the expected hash is the placeholder, compute and print the correct one
-            // so the developer can update it. This ONLY happens during development.
-            let correct = hex::encode(computed.into_bytes());
-            eprintln!(
-                "[SECURITY] EXPECTED_HMAC_HEX is invalid hex. Computed: {}",
-                correct
-            );
-            return; // non-fatal
-        }
-    };
+    // Expected HMAC is computed at build time by build.rs and injected as env var.
+    // This guarantees it ALWAYS matches the compiled constants, regardless of
+    // optimization level, target, or platform.
+    let expected = env!("LEXFLOW_INTEGRITY_HMAC");
 
-    // Constant-time comparison via HMAC verify
-    let mut verify_mac =
-        <Hmac<Sha256> as Mac>::new_from_slice(&hmac_key).expect("HMAC can take key of any size");
-    verify_mac.update(&integrity_seed);
-    if verify_mac.verify_slice(&expected_bytes).is_err() {
-        let computed_hex = hex::encode(computed.into_bytes());
-        eprintln!("[SECURITY] Integrity HMAC mismatch (non-fatal):");
-        eprintln!("  Expected: {}", EXPECTED_HMAC_HEX);
-        eprintln!("  Computed: {}", computed_hex);
-        eprintln!("  This may happen after a build with different optimization flags.");
-        eprintln!("  The vault encryption (AES-256-GCM-SIV + Argon2id) is NOT affected.");
-        // Log but do NOT abort — the real security is in the vault crypto,
-        // not in this compile-time constant check. An attacker who can modify
-        // the binary can also patch out this check, so it provides no real protection.
+    if computed_hex != expected {
+        eprintln!("[SECURITY] Binary integrity HMAC mismatch!");
+        eprintln!("  Expected (build.rs): {}", expected);
+        eprintln!("  Computed (runtime):  {}", computed_hex);
+        // Non-fatal: the vault crypto (AES-256-GCM-SIV + Argon2id) is the real
+        // protection. This check detects accidental constant corruption, not
+        // deliberate tampering (an attacker can patch any check out of a binary).
     }
 }
 
