@@ -72,7 +72,7 @@ export default function NotificationCenter() {
 
       {/* Panel */}
       {isOpen && (
-        <div className="absolute right-0 top-10 w-80 max-h-96 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50">
+        <div className="absolute left-0 bottom-12 w-80 max-h-96 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
             <h3 className="text-sm font-bold text-[var(--text)]">Notifiche</h3>
             <button onClick={() => setIsOpen(false)} className="text-[var(--text-dim)] hover:text-[var(--text)]">
