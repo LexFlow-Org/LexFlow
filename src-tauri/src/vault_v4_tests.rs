@@ -1759,7 +1759,7 @@ mod tests {
         };
 
         // Truncated file (fails at deserialize, before Argon2)
-        let t_truncated = {
+        let _t_truncated = {
             let s = std::time::Instant::now();
             let _ = open_vault_v4("AnyPwd123!", &bytes[..20]);
             s.elapsed().as_millis()
@@ -1977,7 +1977,7 @@ mod tests {
         rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
         new_kdf.salt = B64.encode(salt);
         let new_kek = derive_kek("NewPwd123!", &new_kdf).unwrap();
-        let (new_wrapped, new_iv) = wrap_dek(&new_kek, &dek).unwrap();
+        let (new_wrapped, _new_iv) = wrap_dek(&new_kek, &dek).unwrap();
 
         // Old and new wrapped DEK must differ
         assert_ne!(
@@ -2009,7 +2009,7 @@ mod tests {
         rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
         new_kdf.salt = B64.encode(salt);
         let new_kek = derive_kek("Pwd2_Test123!", &new_kdf).unwrap();
-        let (new_wrapped, new_iv) = wrap_dek(&new_kek, &dek1).unwrap();
+        let (new_wrapped, _new_iv) = wrap_dek(&new_kek, &dek1).unwrap();
         // Unwrap with new KEK → must produce same DEK
         let dek2 = unwrap_dek(&new_kek, &new_wrapped, &new_iv).unwrap();
         assert_eq!(*dek1, *dek2, "DEK changed after re-wrap!");
