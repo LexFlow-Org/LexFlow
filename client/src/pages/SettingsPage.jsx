@@ -657,122 +657,117 @@ export default function SettingsPage({ onLock }) {
       </div>
 
       <div className={`grid gap-6 ${settingsLoaded ? 'opacity-100' : 'opacity-0'}`}>
-        
-        {/* SEZIONE PROFILO STUDIO */}
-        {(lawyerName || studioName) && (
-        <section className="glass-card p-6 space-y-6">
-          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-            <Briefcase className="text-text-muted" size={20} />
-            <h2 className="text-lg font-bold text-text">Profilo Studio</h2>
+      {/* ── Sicurezza: Cambio Password + Recovery Key + Vault Health ── */}
+      <section className="glass-card p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <ShieldCheck size={20} className="text-primary" />
+          <h2 className="text-lg font-bold text-text">Sicurezza Vault</h2>
+        </div>
+
+        {/* Cambio Password */}
+        <div className="space-y-3">
+          <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Cambia Password Master</label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input type="password" placeholder="Password attuale"
+              value={changePwdCurrent} onChange={e => setChangePwdCurrent(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary" />
+            <input type="password" placeholder="Nuova password (min 12 car.)"
+              value={changePwdNew} onChange={e => setChangePwdNew(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary" />
           </div>
-          <div className="grid gap-5 sm:grid-cols-2">
-            {lawyerName && (
-            <div className="space-y-2">
-              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Titolo e Nome</label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={lawyerTitle}
-                  onChange={async (e) => {
-                    const newTitle = e.target.value;
-                    setLawyerTitle(newTitle);
-                    try {
-                      await api.saveSettings({ ...buildFullSettings(), lawyerTitle: newTitle });
-                      toast.success(`Titolo aggiornato: ${newTitle}`);
-                    } catch {
-                      toast.error('Errore salvataggio');
-                    }
-                  }}
-                  className="bg-surface border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors appearance-none cursor-pointer"
-                >
-                  <option value="Avv.">Avv.</option>
-                  <option value="Praticante">Praticante</option>
-                </select>
-                <div className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
-                  {lawyerName}
-                </div>
-              </div>
+          {changePwdError && <p className="text-xs text-danger">{changePwdError}</p>}
+          {changePwdSuccess && <p className="text-xs text-emerald-400">{changePwdSuccess}</p>}
+          <button
+            onClick={async () => {
+              setChangePwdError(''); setChangePwdSuccess('');
+              if (!changePwdCurrent || !changePwdNew) { setChangePwdError('Compila entrambi i campi'); return; }
+              if (changePwdNew.length < 12) { setChangePwdError('La nuova password deve avere almeno 12 caratteri'); return; }
+              try {
+                const res = await api.changePassword(changePwdCurrent, changePwdNew);
+                if (res?.success) {
+                  setChangePwdSuccess('Password cambiata con successo');
+                  setChangePwdCurrent(''); setChangePwdNew('');
+                } else {
+                  setChangePwdError(res?.error || 'Errore cambio password');
+                }
+              } catch (e) { setChangePwdError(String(e)); }
+            }}
+            className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
+            Cambia Password
+          </button>
+        </div>
+
+        <div className="border-t border-border" />
+
+        {/* Recovery Key */}
+        <div className="space-y-3">
+          <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Chiave di Emergenza</label>
+          <p className="text-xs text-text-dim">Genera una chiave di recupero per sbloccare il vault se dimentichi la password. Conservala in un luogo sicuro.</p>
+          {recoveryKey ? (
+            <div className="bg-surface border border-primary-soft rounded-xl p-4 space-y-2">
+              <p className="text-center font-mono text-lg tracking-[4px] text-primary font-bold select-all">{recoveryKey}</p>
+              <p className="text-xs text-text-dim text-center">Copia e conserva questa chiave. Non verrà mostrata di nuovo.</p>
+              <button onClick={() => { api.secureCopy?.(recoveryKey); toast?.success('Chiave copiata (auto-cancellazione in 30s)'); }}
+                className="w-full px-4 py-2 rounded-xl bg-primary-soft text-primary text-xs font-bold uppercase tracking-widest">
+                Copia negli Appunti
+              </button>
             </div>
+          ) : (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await api.generateRecoveryKey();
+                  if (res?.recovery_key) setRecoveryKey(res.recovery_key);
+                  else toast?.error(res?.error || 'Errore generazione chiave');
+                } catch (e) { toast?.error(String(e)); }
+              }}
+              className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
+              Genera Chiave di Emergenza
+            </button>
+          )}
+        </div>
+
+        <div className="border-t border-border" />
+
+        {/* Vault Health — auto-loaded, auto-refreshed */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Stato del Vault</label>
+            {vaultHealth && (
+              <span className="text-3xs text-emerald-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Live
+              </span>
             )}
-            {studioName && (
-            <div className="space-y-2">
-              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
-              <div className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
-                {studioName}
-              </div>
+          </div>
+          {vaultHealth ? (
+            <div className="grid gap-2 sm:grid-cols-2 text-xs">
+              {Object.entries(vaultHealth).map(([k, v]) => {
+                const label = {
+                  version: 'Versione Vault', vault_format: 'Formato',
+                  kdf_algorithm: 'Algoritmo KDF', kdf_memory_mb: 'Memoria KDF',
+                  kdf_iterations: 'Iterazioni KDF', kdf_parallelism: 'Parallelismo KDF',
+                  record_count: 'N° Record', total_writes: 'Scritture Totali',
+                  dek_created: 'DEK Creata', rotation_due: 'Rotazione',
+                  cipher: 'Cifratura', compressed: 'Compressione',
+                }[k] || k;
+                const displayVal = typeof v === 'object' ? JSON.stringify(v)
+                  : typeof v === 'boolean' ? (v ? '✓ Attiva' : '✗ No')
+                  : String(v);
+                return (
+                  <div key={k} className="flex justify-between bg-surface rounded-lg px-3 py-2 border border-border">
+                    <span className="text-text-dim">{label}</span>
+                    <span className="text-text font-mono">{displayVal}</span>
+                  </div>
+                );
+              })}
             </div>
-            )}
-          </div>
-          <p className="text-2xs text-text-dim">Il titolo e lo studio vengono utilizzati nell&apos;intestazione dei report PDF e in tutta l&apos;app.</p>
-        </section>
-        )}
+          ) : (
+            <div className="text-xs text-text-dim text-center py-4">Caricamento stato vault...</div>
+          )}
+        </div>
+      </section>
 
-        {/* SEZIONE NOTIFICHE (AGGIUNTA) */}
-        <section className="glass-card p-6 space-y-6">
-          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-            <Bell className="text-text-muted" size={20} />
-            <h2 className="text-lg font-bold text-text">Notifiche di Sistema</h2>
-          </div>
-
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  {notifyEnabled ? <Bell size={16} className="text-primary" /> : <BellOff size={16} className="text-text-dim" />}
-                  <span className="font-medium text-text">Avvisi Agenda e Scadenze</span>
-                </div>
-                <p className="text-xs text-text-muted max-w-md">
-                  Ricevi notifiche desktop per udienze, scadenze e impegni in agenda.
-                </p>
-              </div>
-              <Toggle checked={notifyEnabled} onChange={(val) => { setNotifyEnabled(val); saveNotifySettings({ notifyEnabled: val }); }} />
-            </div>
-
-            {notifyEnabled && (
-              <div className="pt-4 border-t border-border">
-                <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
-                <div className="flex flex-wrap gap-2">
-                  {PREAVVISO_OPTIONS.map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => {
-                        setNotificationTime(opt.value);
-                        saveNotifySettings({ notificationTime: opt.value, preavviso: opt.value });
-                      }}
-                      className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors border ${
-                        notificationTime === opt.value
-                          ? 'bg-primary text-black border-primary'
-                          : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {!notifyEnabled && (
-              <div className="pt-4 border-t border-border">
-                <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
-                <div className="flex flex-wrap gap-2 opacity-40 pointer-events-none">
-                  {PREAVVISO_OPTIONS.map(opt => (
-                    <div
-                      key={opt.value}
-                      className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-not-allowed ${
-                        notificationTime === opt.value
-                          ? 'bg-card text-text-dim border-border'
-                          : 'bg-surface text-text-muted border-border'
-                      }`}
-                    >
-                      {opt.label}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
 
         {/* Sezione Sicurezza */}
         <section className="glass-card p-6 space-y-6">
@@ -884,6 +879,123 @@ export default function SettingsPage({ onLock }) {
           </div>
         </section>
 
+        {/* SEZIONE NOTIFICHE (AGGIUNTA) */}
+        <section className="glass-card p-6 space-y-6">
+          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
+            <Bell className="text-text-muted" size={20} />
+            <h2 className="text-lg font-bold text-text">Notifiche di Sistema</h2>
+          </div>
+
+          <div className="flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  {notifyEnabled ? <Bell size={16} className="text-primary" /> : <BellOff size={16} className="text-text-dim" />}
+                  <span className="font-medium text-text">Avvisi Agenda e Scadenze</span>
+                </div>
+                <p className="text-xs text-text-muted max-w-md">
+                  Ricevi notifiche desktop per udienze, scadenze e impegni in agenda.
+                </p>
+              </div>
+              <Toggle checked={notifyEnabled} onChange={(val) => { setNotifyEnabled(val); saveNotifySettings({ notifyEnabled: val }); }} />
+            </div>
+
+            {notifyEnabled && (
+              <div className="pt-4 border-t border-border">
+                <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
+                <div className="flex flex-wrap gap-2">
+                  {PREAVVISO_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setNotificationTime(opt.value);
+                        saveNotifySettings({ notificationTime: opt.value, preavviso: opt.value });
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors border ${
+                        notificationTime === opt.value
+                          ? 'bg-primary text-black border-primary'
+                          : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!notifyEnabled && (
+              <div className="pt-4 border-t border-border">
+                <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
+                <div className="flex flex-wrap gap-2 opacity-40 pointer-events-none">
+                  {PREAVVISO_OPTIONS.map(opt => (
+                    <div
+                      key={opt.value}
+                      className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-not-allowed ${
+                        notificationTime === opt.value
+                          ? 'bg-card text-text-dim border-border'
+                          : 'bg-surface text-text-muted border-border'
+                      }`}
+                    >
+                      {opt.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        
+        {/* SEZIONE PROFILO STUDIO */}
+        {(lawyerName || studioName) && (
+        <section className="glass-card p-6 space-y-6">
+          <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
+            <Briefcase className="text-text-muted" size={20} />
+            <h2 className="text-lg font-bold text-text">Profilo Studio</h2>
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            {lawyerName && (
+            <div className="space-y-2">
+              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Titolo e Nome</label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={lawyerTitle}
+                  onChange={async (e) => {
+                    const newTitle = e.target.value;
+                    setLawyerTitle(newTitle);
+                    try {
+                      await api.saveSettings({ ...buildFullSettings(), lawyerTitle: newTitle });
+                      toast.success(`Titolo aggiornato: ${newTitle}`);
+                    } catch {
+                      toast.error('Errore salvataggio');
+                    }
+                  }}
+                  className="bg-surface border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors appearance-none cursor-pointer"
+                >
+                  <option value="Avv.">Avv.</option>
+                  <option value="Praticante">Praticante</option>
+                </select>
+                <div className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
+                  {lawyerName}
+                </div>
+              </div>
+            </div>
+            )}
+            {studioName && (
+            <div className="space-y-2">
+              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
+              <div className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
+                {studioName}
+              </div>
+            </div>
+            )}
+          </div>
+          <p className="text-2xs text-text-dim">Il titolo e lo studio vengono utilizzati nell&apos;intestazione dei report PDF e in tutta l&apos;app.</p>
+        </section>
+        )}
+
         {/* Sezione Dati */}
         <section className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
@@ -953,119 +1065,9 @@ export default function SettingsPage({ onLock }) {
         </section>
       </div>
 
+
       {/* License information card inserted at the end of settings */}
       <LicenseSettings />
-
-      {/* ── Sicurezza: Cambio Password + Recovery Key + Vault Health ── */}
-      <section className="glass-card p-6 space-y-6">
-        <div className="flex items-center gap-3">
-          <ShieldCheck size={20} className="text-primary" />
-          <h2 className="text-lg font-bold text-text">Sicurezza Vault</h2>
-        </div>
-
-        {/* Cambio Password */}
-        <div className="space-y-3">
-          <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Cambia Password Master</label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input type="password" placeholder="Password attuale"
-              value={changePwdCurrent} onChange={e => setChangePwdCurrent(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary" />
-            <input type="password" placeholder="Nuova password (min 12 car.)"
-              value={changePwdNew} onChange={e => setChangePwdNew(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary" />
-          </div>
-          {changePwdError && <p className="text-xs text-danger">{changePwdError}</p>}
-          {changePwdSuccess && <p className="text-xs text-emerald-400">{changePwdSuccess}</p>}
-          <button
-            onClick={async () => {
-              setChangePwdError(''); setChangePwdSuccess('');
-              if (!changePwdCurrent || !changePwdNew) { setChangePwdError('Compila entrambi i campi'); return; }
-              if (changePwdNew.length < 12) { setChangePwdError('La nuova password deve avere almeno 12 caratteri'); return; }
-              try {
-                const res = await api.changePassword(changePwdCurrent, changePwdNew);
-                if (res?.success) {
-                  setChangePwdSuccess('Password cambiata con successo');
-                  setChangePwdCurrent(''); setChangePwdNew('');
-                } else {
-                  setChangePwdError(res?.error || 'Errore cambio password');
-                }
-              } catch (e) { setChangePwdError(String(e)); }
-            }}
-            className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
-            Cambia Password
-          </button>
-        </div>
-
-        <div className="border-t border-border" />
-
-        {/* Recovery Key */}
-        <div className="space-y-3">
-          <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Chiave di Emergenza</label>
-          <p className="text-xs text-text-dim">Genera una chiave di recupero per sbloccare il vault se dimentichi la password. Conservala in un luogo sicuro.</p>
-          {recoveryKey ? (
-            <div className="bg-surface border border-primary-soft rounded-xl p-4 space-y-2">
-              <p className="text-center font-mono text-lg tracking-[4px] text-primary font-bold select-all">{recoveryKey}</p>
-              <p className="text-xs text-text-dim text-center">Copia e conserva questa chiave. Non verrà mostrata di nuovo.</p>
-              <button onClick={() => { api.secureCopy?.(recoveryKey); toast?.success('Chiave copiata (auto-cancellazione in 30s)'); }}
-                className="w-full px-4 py-2 rounded-xl bg-primary-soft text-primary text-xs font-bold uppercase tracking-widest">
-                Copia negli Appunti
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={async () => {
-                try {
-                  const res = await api.generateRecoveryKey();
-                  if (res?.recovery_key) setRecoveryKey(res.recovery_key);
-                  else toast?.error(res?.error || 'Errore generazione chiave');
-                } catch (e) { toast?.error(String(e)); }
-              }}
-              className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
-              Genera Chiave di Emergenza
-            </button>
-          )}
-        </div>
-
-        <div className="border-t border-border" />
-
-        {/* Vault Health — auto-loaded, auto-refreshed */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Stato del Vault</label>
-            {vaultHealth && (
-              <span className="text-3xs text-emerald-400 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live
-              </span>
-            )}
-          </div>
-          {vaultHealth ? (
-            <div className="grid gap-2 sm:grid-cols-2 text-xs">
-              {Object.entries(vaultHealth).map(([k, v]) => {
-                const label = {
-                  version: 'Versione Vault', vault_format: 'Formato',
-                  kdf_algorithm: 'Algoritmo KDF', kdf_memory_mb: 'Memoria KDF',
-                  kdf_iterations: 'Iterazioni KDF', kdf_parallelism: 'Parallelismo KDF',
-                  record_count: 'N° Record', total_writes: 'Scritture Totali',
-                  dek_created: 'DEK Creata', rotation_due: 'Rotazione',
-                  cipher: 'Cifratura', compressed: 'Compressione',
-                }[k] || k;
-                const displayVal = typeof v === 'object' ? JSON.stringify(v)
-                  : typeof v === 'boolean' ? (v ? '✓ Attiva' : '✗ No')
-                  : String(v);
-                return (
-                  <div key={k} className="flex justify-between bg-surface rounded-lg px-3 py-2 border border-border">
-                    <span className="text-text-dim">{label}</span>
-                    <span className="text-text font-mono">{displayVal}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-xs text-text-dim text-center py-4">Caricamento stato vault...</div>
-          )}
-        </div>
-      </section>
 
       <div className="pt-12 text-center">
         <button
