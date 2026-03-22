@@ -7,10 +7,17 @@ export default function ReportPage({ practices = [] }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.loadTimeLogs?.().then(t => {
-      setTimeLogs(t || []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    const load = () => {
+      api.loadTimeLogs?.().then(t => {
+        setTimeLogs(t || []);
+        setLoading(false);
+      }).catch(() => setLoading(false));
+    };
+    load();
+    // Reload when page becomes visible (navigating back)
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, []);
 
   const stats = useMemo(() => {
@@ -23,15 +30,16 @@ export default function ReportPage({ practices = [] }) {
     const weekStart = new Date(now);
     weekStart.setDate(now.getDate() - now.getDay());
     weekStart.setHours(0, 0, 0, 0);
+    // timeLogs stores minutes, convert to hours for display
     const weekHours = (timeLogs || [])
-      .filter(l => new Date(l.date) >= weekStart)
-      .reduce((sum, l) => sum + (l.hours || 0), 0);
+      .filter(l => new Date(l.date || l.createdAt) >= weekStart)
+      .reduce((sum, l) => sum + ((l.minutes || 0) / 60), 0);
 
     // Hours by day of week
     const dayHours = [0, 0, 0, 0, 0, 0, 0];
     (timeLogs || []).forEach(l => {
-      const d = new Date(l.date);
-      if (d >= weekStart) dayHours[d.getDay()] += (l.hours || 0);
+      const d = new Date(l.date || l.createdAt);
+      if (d >= weekStart) dayHours[d.getDay()] += ((l.minutes || 0) / 60);
     });
 
     // Type distribution
