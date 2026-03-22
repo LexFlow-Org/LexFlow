@@ -503,8 +503,8 @@ export default function App() {
           <WindowControls />
           <TccLocationBanner />
           <Toaster
-            position="bottom-right"
-            containerClassName="!bottom-6 !right-6 !z-[99999]"
+            position="top-right"
+            containerClassName="!top-16 !right-6 !z-[99999]"
             gutter={10}
             toastOptions={{
               className: 'lexflow-toast',

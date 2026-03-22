@@ -57,15 +57,10 @@ export default function OnboardingWizard({ currentStep = 0, onComplete }) {
           )}
         </div>
 
-        {/* Skip */}
-        {step < steps.length - 1 && (
-          <button
-            onClick={onComplete}
-            className="block mx-auto text-xs text-[var(--text-dim)] hover:text-[var(--text)] transition-colors"
-          >
-            Salta configurazione
-          </button>
-        )}
+        {/* Step indicator */}
+        <p className="text-center text-xs text-[var(--text-dim)]">
+          Passaggio {step + 1} di {steps.length}
+        </p>
       </div>
     </div>
   );
