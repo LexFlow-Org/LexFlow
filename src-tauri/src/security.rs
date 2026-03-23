@@ -85,21 +85,20 @@ pub(crate) fn mlock_buffer(_ptr: *const u8, _len: usize) -> bool {
 pub(crate) fn munlock_buffer(_ptr: *const u8, _len: usize) {}
 
 /// Secure overwrite + delete for temporary unencrypted files (PDF exports, etc.)
+/// SECURITY FIX: open file FIRST (via fd), then fstat the fd, then overwrite.
+/// This prevents TOCTOU symlink swap between exists()/metadata() and open().
 pub(crate) fn secure_delete_file(path: &std::path::Path) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
-    }
-    let len = std::fs::metadata(path)
-        .map(|m| m.len() as usize)
-        .unwrap_or(0);
+    use std::io::Write;
+    // Open first — if it fails, file doesn't exist or no permission
+    let mut f = match std::fs::OpenOptions::new().write(true).open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("Secure delete open failed: {}", e)),
+    };
+    // Get size from the OPEN fd (not from path — no TOCTOU)
+    let len = f.metadata().map(|m| m.len() as usize).unwrap_or(0);
     if len > 0 {
-        // Overwrite in chunks to avoid OOM on large files
-        use std::io::Write;
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .open(path)
-            .map_err(|e| format!("Secure delete open failed: {}", e))?;
-        const CHUNK: usize = 65536; // 64KB chunks
+        const CHUNK: usize = 65536;
         let mut remaining = len;
         let mut buf = vec![0u8; CHUNK.min(len)];
         while remaining > 0 {
@@ -112,5 +111,6 @@ pub(crate) fn secure_delete_file(path: &std::path::Path) -> Result<(), String> {
         f.sync_all()
             .map_err(|e| format!("Secure delete sync failed: {}", e))?;
     }
+    drop(f); // close fd before unlink
     std::fs::remove_file(path).map_err(|e| format!("Secure delete failed: {}", e))
 }

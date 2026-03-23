@@ -8,10 +8,28 @@ use serde_json::Value;
 use tauri::State;
 
 fn escape_csv(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
-        format!("\"{}\"", s.replace('"', "\"\""))
+    // SECURITY: prefix dangerous characters to prevent CSV formula injection
+    // when opened in Excel/LibreOffice. Characters =, +, -, @, \t, \0 at the
+    // start of a cell are interpreted as formulas.
+    let sanitized = if s.starts_with('=')
+        || s.starts_with('+')
+        || s.starts_with('-')
+        || s.starts_with('@')
+        || s.starts_with('\t')
+        || s.starts_with('\0')
+    {
+        format!("'{}", s) // single-quote prefix neutralizes formula
     } else {
         s.to_string()
+    };
+    if sanitized.contains(',')
+        || sanitized.contains('"')
+        || sanitized.contains('\n')
+        || sanitized.contains('\r')
+    {
+        format!("\"{}\"", sanitized.replace('"', "\"\""))
+    } else {
+        sanitized
     }
 }
 

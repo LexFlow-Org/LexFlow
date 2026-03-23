@@ -89,9 +89,10 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    // Use the same unlock flow as manual password (handles v2 + v4)
-    let result = unlock_vault_with_password(state, saved_pwd.clone());
-    zeroize_password(saved_pwd);
+    // Use the same unlock flow as manual password (handles v4)
+    // Pass ownership directly — no clone needed. unlock_vault_with_password
+    // takes ownership and zeroizes internally.
+    let result = unlock_vault_with_password(state, saved_pwd);
 
     // If unlock succeeded, return success
     if result

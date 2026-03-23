@@ -16,7 +16,12 @@ pub struct SecureKey(pub(crate) Zeroizing<Vec<u8>>);
 impl SecureKey {
     pub(crate) fn new(key: Zeroizing<Vec<u8>>) -> Self {
         // mlock the buffer to prevent it from being swapped to disk
-        crate::security::mlock_buffer(key.as_ptr(), key.len());
+        if !crate::security::mlock_buffer(key.as_ptr(), key.len()) {
+            eprintln!(
+                "[SECURITY] WARNING: mlock failed — key may be swappable to disk. \
+                       Check RLIMIT_MEMLOCK (ulimit -l)."
+            );
+        }
         Self(key)
     }
 }

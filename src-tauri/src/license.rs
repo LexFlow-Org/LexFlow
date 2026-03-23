@@ -255,9 +255,13 @@ fn write_license_sentinel(
         <Hmac<Sha256> as Mac>::new_from_slice(&enc_key).expect("HMAC can take key of any size");
     mac.update(sentinel_data.as_bytes());
     let sentinel_hmac = hex::encode(mac.finalize().into_bytes());
-    let encrypted_key_id = encrypt_data(&enc_key, key_id.as_bytes())
-        .map(hex::encode)
-        .unwrap_or_default();
+    let encrypted_key_id = match encrypt_data(&enc_key, key_id.as_bytes()) {
+        Ok(enc) => hex::encode(enc),
+        Err(e) => {
+            eprintln!("[SECURITY] Failed to encrypt sentinel key_id: {}", e);
+            return; // SECURITY FIX: don't write sentinel without encrypted key ID
+        }
+    };
     let sentinel_content = format!("{}\n{}", sentinel_hmac, encrypted_key_id);
     let _ = atomic_write_with_sync(sentinel_path, sentinel_content.as_bytes());
 }
@@ -455,7 +459,13 @@ fn perform_license_activation(
         "hardwareLocked": hardware_locked,
     });
 
-    let encrypted = match encrypt_data(&enc_key, &serde_json::to_vec(&record).unwrap_or_default()) {
+    let record_bytes = match serde_json::to_vec(&record) {
+        Ok(b) => b,
+        Err(e) => {
+            return json!({"success": false, "error": format!("Errore serializzazione: {}", e)})
+        }
+    };
+    let encrypted = match encrypt_data(&enc_key, &record_bytes) {
         Ok(enc) => enc,
         Err(e) => return json!({"success": false, "error": format!("Errore cifratura: {}", e)}),
     };

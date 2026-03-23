@@ -172,8 +172,12 @@ pub(crate) async fn write_pdf_to_path(path: String, data: Vec<u8>) -> Result<boo
         );
     }
     {
+        // SECURITY FIX: write to canonical_parent + filename, not the original path.
+        // Prevents path traversal via ".." segments that pass parent check but resolve elsewhere.
+        let filename = p.file_name().ok_or("Nessun nome file")?;
+        let safe_path = canonical_parent.join(filename);
         use std::io::Write;
-        let mut file = fs::File::create(&path).map_err(|e| format!("Create failed: {}", e))?;
+        let mut file = fs::File::create(&safe_path).map_err(|e| format!("Create failed: {}", e))?;
         file.write_all(&data)
             .map_err(|e| format!("Write failed: {}", e))?;
         file.sync_all().map_err(|e| format!("Sync failed: {}", e))?;

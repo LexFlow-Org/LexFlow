@@ -178,6 +178,7 @@ pub(crate) async fn import_vault(
         zeroize_password(pwd);
         Ok(json!({"success": true}))
     } else {
+        zeroize_password(pwd); // SECURITY FIX: zeroize even on cancel
         Ok(json!({"success": false, "cancelled": true}))
     }
 }

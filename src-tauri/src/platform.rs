@@ -20,10 +20,11 @@ use crate::io::{atomic_write_with_sync, secure_write};
 fn get_platform_uid() -> String {
     #[cfg(target_os = "windows")]
     {
-        let domain = std::env::var("USERDOMAIN").unwrap_or_else(|_| "WORKGROUP".to_string());
-        let profile = std::env::var("USERPROFILE")
-            .unwrap_or_else(|_| std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "0".to_string()));
-        format!("{}:{}", domain, profile)
+        // SECURITY FIX: use whoami crate instead of env vars (USERDOMAIN/USERPROFILE
+        // are user-controllable and can be spoofed to derive a different encryption key).
+        let username = whoami::username();
+        let hostname = whoami::fallible::hostname().unwrap_or_else(|_| "WORKGROUP".to_string());
+        format!("{}:{}", hostname, username)
     }
     #[cfg(not(target_os = "windows"))]
     {

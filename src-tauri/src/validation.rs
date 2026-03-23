@@ -69,7 +69,24 @@ pub(crate) fn validate_contacts(data: &Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate agenda array.
+/// Check string fields don't exceed MAX_STRING_LEN.
+fn check_record_strings(item: &Value, fields: &[&str]) -> Result<(), String> {
+    for &f in fields {
+        if let Some(s) = item.get(f).and_then(|v| v.as_str()) {
+            if s.len() > MAX_STRING_LEN {
+                return Err(format!(
+                    "Campo '{}' troppo lungo ({} > {})",
+                    f,
+                    s.len(),
+                    MAX_STRING_LEN
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Validate agenda array — per-record field checks.
 pub(crate) fn validate_agenda(data: &Value) -> Result<(), String> {
     let arr = data.as_array().ok_or("agenda deve essere un array")?;
     if arr.len() > MAX_ARRAY_LEN {
@@ -79,19 +96,45 @@ pub(crate) fn validate_agenda(data: &Value) -> Result<(), String> {
             MAX_ARRAY_LEN
         ));
     }
+    for (i, item) in arr.iter().enumerate() {
+        if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+            if id.len() > 200 {
+                return Err(format!("Evento {}: id troppo lungo", i));
+            }
+        }
+        check_record_strings(
+            item,
+            &[
+                "title",
+                "text",
+                "notes",
+                "location",
+                "category",
+                "practiceId",
+            ],
+        )?;
+    }
     Ok(())
 }
 
-/// Validate time logs array.
+/// Validate time logs array — per-record field checks.
 pub(crate) fn validate_time_logs(data: &Value) -> Result<(), String> {
     let arr = data.as_array().ok_or("timeLogs deve essere un array")?;
     if arr.len() > MAX_ARRAY_LEN {
         return Err(format!("Troppi log: {} (max {})", arr.len(), MAX_ARRAY_LEN));
     }
+    for (i, item) in arr.iter().enumerate() {
+        if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+            if id.len() > 200 {
+                return Err(format!("Log {}: id troppo lungo", i));
+            }
+        }
+        check_record_strings(item, &["description", "practiceId", "date"])?;
+    }
     Ok(())
 }
 
-/// Validate invoices array.
+/// Validate invoices array — per-record field checks.
 pub(crate) fn validate_invoices(data: &Value) -> Result<(), String> {
     let arr = data.as_array().ok_or("invoices deve essere un array")?;
     if arr.len() > MAX_ARRAY_LEN {
@@ -100,6 +143,17 @@ pub(crate) fn validate_invoices(data: &Value) -> Result<(), String> {
             arr.len(),
             MAX_ARRAY_LEN
         ));
+    }
+    for (i, item) in arr.iter().enumerate() {
+        if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+            if id.len() > 200 {
+                return Err(format!("Fattura {}: id troppo lungo", i));
+            }
+        }
+        check_record_strings(
+            item,
+            &["number", "client", "description", "status", "notes"],
+        )?;
     }
     Ok(())
 }
