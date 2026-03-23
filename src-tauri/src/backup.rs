@@ -59,7 +59,13 @@ fn rotate_backups(bak_dir: &std::path::Path) -> Result<(), String> {
     // Remove oldest if over limit
     while entries.len() > MAX_BACKUPS {
         if let Some(oldest) = entries.first() {
-            let _ = fs::remove_file(oldest.path());
+            if let Err(e) = fs::remove_file(oldest.path()) {
+                eprintln!(
+                    "[LexFlow] Backup rotation: failed to remove {:?}: {}",
+                    oldest.path(),
+                    e
+                );
+            }
             entries.remove(0);
         }
     }

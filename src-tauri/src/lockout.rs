@@ -22,7 +22,7 @@ use tauri::State;
 const BACKOFF_DELAYS: &[u64] = &[5, 15, 30, 60, 300, 900];
 
 /// After this many failed attempts, wipe DEK from native keystore.
-const DEK_WIPE_THRESHOLD: u32 = 10;
+pub(crate) const DEK_WIPE_THRESHOLD: u32 = 10;
 
 fn lockout_hmac(data: &str) -> String {
     let key = get_local_encryption_key();
@@ -37,7 +37,12 @@ pub(crate) fn lockout_load(data_dir: &std::path::Path) -> (u32, Option<SystemTim
     let path = data_dir.join(LOCKOUT_FILE);
     let text = match fs::read_to_string(&path) {
         Ok(t) => t,
-        Err(_) => return (0, None),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (0, None),
+        Err(_) => {
+            // SECURITY FIX: non-NotFound error = fail-closed (don't reset counter)
+            eprintln!("[SECURITY] Lockout file read error (not NotFound) — fail-closed");
+            return (DEK_WIPE_THRESHOLD, None);
+        }
     };
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -153,7 +158,7 @@ pub(crate) fn check_lockout(
                 .unwrap_or_else(|e| e.into_inner());
             return Err(json!({
                 "success": false, "valid": false, "locked": true,
-                "remaining": (until - Instant::now()).as_secs(),
+                "remaining": until.checked_duration_since(Instant::now()).unwrap_or(Duration::ZERO).as_secs(),
                 "attempts": att,
                 "maxAttempts": DEK_WIPE_THRESHOLD,
             }));
@@ -210,7 +215,9 @@ fn wipe_dek_from_keystore() {
     {
         let user = whoami::username();
         if let Ok(entry) = keyring::Entry::new(BIO_SERVICE, &user) {
-            let _ = entry.delete_credential();
+            if let Err(e) = entry.delete_credential() {
+                eprintln!("[SECURITY] WARNING: failed to wipe DEK from keystore: {:?}. Biometric bypass may remain active!", e);
+            }
         }
         eprintln!(
             "[SECURITY] DEK wiped from keystore after {} failed attempts",

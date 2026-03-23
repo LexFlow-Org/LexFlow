@@ -62,10 +62,10 @@ pub(crate) fn init_machine_id() -> Result<String, String> {
     })?;
     let id_path = security_dir.join(MACHINE_ID_FILE);
     // FIX: bounded read — machine-id should be exactly 64 hex chars
-    if let Ok(existing) = fs::read_to_string(&id_path) {
-        let trimmed = existing.trim().to_string();
-        if !trimmed.is_empty() && trimmed.len() <= 128 {
-            return Ok(trimmed);
+    if let Ok(bytes) = crate::io::safe_bounded_read(&id_path, 1024) {
+        let existing = String::from_utf8_lossy(&bytes).trim().to_string();
+        if !existing.is_empty() && existing.len() <= 128 {
+            return Ok(existing);
         }
     }
     let mut id_bytes = [0u8; 32];

@@ -25,7 +25,7 @@ mod setup;
 mod state;
 mod validation;
 mod vault;
-pub mod vault_v4;
+pub(crate) mod vault_v4;
 mod vault_v4_tests;
 mod window;
 

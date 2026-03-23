@@ -283,7 +283,7 @@ fn escape_typst(input: &str) -> String {
     let mut out = String::with_capacity(input.len() + 16);
     for ch in input.chars() {
         match ch {
-            '#' | '$' | '*' | '@' | '[' | ']' | '\\' | '_' | '~' | '<' | '>' => {
+            '#' | '$' | '*' | '@' | '[' | ']' | '\\' | '_' | '~' | '<' | '>' | '{' | '}' => {
                 out.push('\\');
                 out.push(ch);
             }

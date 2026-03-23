@@ -100,7 +100,7 @@ pub(crate) fn verify_binary_integrity() {
     integrity_seed.extend_from_slice(&ARGON2_T_COST.to_le_bytes());
     integrity_seed.extend_from_slice(&ARGON2_P_COST.to_le_bytes());
     integrity_seed.extend_from_slice(&PUBLIC_KEY_BYTES);
-    integrity_seed.extend_from_slice(&10u32.to_le_bytes()); // DEK_WIPE_THRESHOLD
+    integrity_seed.extend_from_slice(&crate::lockout::DEK_WIPE_THRESHOLD.to_le_bytes());
 
     // Self-referential HMAC: key = SHA-256(seed), msg = seed
     let hmac_key = <Sha256 as Digest>::digest(&integrity_seed);
@@ -115,7 +115,12 @@ pub(crate) fn verify_binary_integrity() {
     // optimization level, target, or platform.
     let expected = env!("LEXFLOW_INTEGRITY_HMAC");
 
-    if computed_hex != expected {
+    // SECURITY FIX: constant-time comparison via HMAC verify instead of string !=
+    let expected_bytes = hex::decode(expected).unwrap_or_default();
+    let mut verify_mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(&hmac_key).expect("HMAC can take key of any size");
+    verify_mac.update(&integrity_seed);
+    if verify_mac.verify_slice(&expected_bytes).is_err() {
         eprintln!("[SECURITY] Binary integrity HMAC mismatch!");
         eprintln!("  Expected (build.rs): {}", expected);
         eprintln!("  Computed (runtime):  {}", computed_hex);
@@ -353,7 +358,8 @@ fn check_tcc_location(app: &tauri::App) {
     let path_str = exe.to_string_lossy();
 
     // Canonical check: /Applications/ or ~/Applications/
-    let in_applications = path_str.contains("/Applications/");
+    let in_applications = path_str.starts_with("/Applications/")
+        || path_str.contains("/Users/") && path_str.contains("/Applications/");
 
     // Also reject DMG / Translocation paths
     let in_transient = path_str.contains("/Volumes/")

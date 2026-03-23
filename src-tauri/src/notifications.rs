@@ -342,7 +342,9 @@ fn parse_item_datetime(item: &Value) -> Option<chrono::DateTime<chrono::Local>> 
 fn hash_notification_id(seed: &str) -> i32 {
     let hash = <Sha256 as Digest>::digest(seed.as_bytes());
     let raw = i32::from_le_bytes([hash[0], hash[1], hash[2], hash[3]]);
-    raw.wrapping_abs().max(1)
+    // SECURITY FIX: wrapping_abs on i32::MIN returns i32::MIN (negative).
+    // Use bitmask to ensure positive without collision.
+    (raw & 0x7FFF_FFFF).max(1)
 }
 
 // ═══════════════════════════════════════════════════════════

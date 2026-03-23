@@ -162,7 +162,7 @@ fn write_vault_v4(state: &State<AppState>, data: &Value) -> Result<(), String> {
 
     // Load existing vault or create fresh
     let mut vault = if path.exists() {
-        let raw = fs::read(&path).map_err(|e| e.to_string())?;
+        let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
         vault_v4::deserialize_vault(&raw)?
     } else {
         // Should not normally happen (vault created at unlock), but handle gracefully
@@ -345,7 +345,7 @@ pub(crate) fn vault_exists(state: State<AppState>) -> bool {
     // v4 vault exists if vault.lex starts with V4 magic, or v2 if salt exists
     let vault_path = dir.join(VAULT_FILE);
     if vault_path.exists() {
-        if let Ok(data) = fs::read(&vault_path) {
+        if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
             if data.starts_with(vault_v4::VAULT_V4_MAGIC) {
                 return true;
             }
@@ -412,7 +412,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
 
     // Existing vault — detect version
     if vault_path.exists() {
-        let raw = match fs::read(&vault_path) {
+        let raw = match crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
             Ok(r) => r,
             Err(e) => {
                 zeroize_password(password);
@@ -549,7 +549,7 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
     let vault_path = dir.join(VAULT_FILE);
     if vault_path.exists() {
         // Verify password before reset
-        if let Ok(data) = fs::read(&vault_path) {
+        if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
             if vault_v4::open_vault_v4(&password, &data).is_err() {
                 zeroize_password(password);
                 return json!({"success": false, "error": "Password errata"});
@@ -645,7 +645,7 @@ fn change_password_v4(
     new_password: &str,
 ) -> Result<Value, String> {
     let vault_path = dir.join(VAULT_FILE);
-    let raw = fs::read(&vault_path).map_err(|e| e.to_string())?;
+    let raw = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024)?;
 
     // Verify current password by opening vault
     let (mut vault, _dek) = vault_v4::open_vault_v4(current_password, &raw)
@@ -725,7 +725,7 @@ pub(crate) fn verify_vault_password(state: State<AppState>, pwd: String) -> Resu
     }
 
     let vault_path = dir.join(VAULT_FILE);
-    let valid = if let Ok(raw) = fs::read(&vault_path) {
+    let valid = if let Ok(raw) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
         vault_v4::open_vault_v4(&pwd, &raw).is_ok()
     } else {
         false
@@ -871,7 +871,7 @@ pub(crate) fn get_vault_index(state: State<AppState>) -> Result<Value, String> {
     if !path.exists() {
         return Ok(json!([]));
     }
-    let raw = fs::read(&path).map_err(|e| e.to_string())?;
+    let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
     let vault = vault_v4::deserialize_vault(&raw)?;
     let index = vault_v4::decrypt_index(&dek, &vault.index)?;
 
@@ -925,7 +925,7 @@ pub(crate) fn load_record_detail(
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let path = dir.join(VAULT_FILE);
-    let raw = fs::read(&path).map_err(|e| e.to_string())?;
+    let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
     let vault = vault_v4::deserialize_vault(&raw)?;
 
     let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
@@ -944,7 +944,7 @@ pub(crate) fn load_record_history(
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let raw = fs::read(dir.join(VAULT_FILE)).map_err(|e| e.to_string())?;
+    let raw = crate::io::safe_bounded_read(&dir.join(VAULT_FILE), 500 * 1024 * 1024)?;
     let vault = vault_v4::deserialize_vault(&raw)?;
 
     let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
@@ -1109,7 +1109,7 @@ pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, Str
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let path = dir.join(VAULT_FILE);
-    let raw = fs::read(&path).map_err(|e| e.to_string())?;
+    let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
     let mut vault = vault_v4::deserialize_vault(&raw)?;
 
     let display_key = vault_v4::generate_recovery_key(&mut vault, &dek)?;
@@ -1197,7 +1197,7 @@ pub(crate) fn get_vault_health(state: State<AppState>) -> Result<Value, String> 
     if !path.exists() {
         return Ok(json!({"version": 4, "error": "Vault file not found"}));
     }
-    let raw = fs::read(&path).map_err(|e| e.to_string())?;
+    let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
     let vault = vault_v4::deserialize_vault(&raw)?;
 
     let rotation_due = vault_v4::needs_rotation(&vault.rotation);

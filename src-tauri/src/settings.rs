@@ -7,7 +7,6 @@ use crate::crypto::{decrypt_data, encrypt_data};
 use crate::io::{atomic_write_with_sync, safe_bounded_read};
 use crate::platform::get_local_encryption_key;
 use serde_json::{json, Value};
-use std::fs;
 use tauri::{AppHandle, Emitter, State};
 use zeroize::Zeroizing;
 
@@ -57,7 +56,7 @@ pub(crate) fn get_settings(state: State<AppState>, app: AppHandle) -> Value {
     // File corrotto
     let ts = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
     let backup_path = path.with_extension(format!("json.corrupt.{}", ts));
-    let _ = fs::write(&backup_path, &file_data);
+    let _ = crate::io::secure_write(&backup_path, &file_data);
     eprintln!(
         "[LexFlow] Settings file corrotto — backup salvato in {:?}",
         backup_path
