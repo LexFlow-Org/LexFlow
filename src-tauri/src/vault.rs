@@ -1126,6 +1126,18 @@ pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, Str
 /// Unlock vault using recovery key (when password is forgotten).
 #[tauri::command]
 pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String) -> Value {
+    let sec_dir = state
+        .security_dir
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+
+    // SECURITY FIX: apply rate limiting to recovery unlock too.
+    // Recovery key is 128-bit random (brute-force infeasible), but defense-in-depth.
+    if let Err(locked_json) = crate::lockout::check_lockout(&state, &sec_dir) {
+        return locked_json;
+    }
+
     let dir = state
         .data_dir
         .read()
@@ -1137,7 +1149,7 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
         return json!({"success": false, "error": "Nessun vault trovato"});
     }
 
-    let raw = match fs::read(&vault_path) {
+    let raw = match crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
         Ok(r) => r,
         Err(e) => return json!({"success": false, "error": format!("Errore lettura: {}", e)}),
     };
@@ -1154,10 +1166,14 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
                 .last_activity
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = Instant::now();
+            crate::lockout::clear_lockout(&state, &sec_dir);
             let _ = append_audit_log(&state, "Sblocco Vault via recovery key");
             json!({"success": true})
         }
-        Err(e) => json!({"success": false, "error": e}),
+        Err(e) => {
+            crate::lockout::record_failed_attempt(&state, &sec_dir);
+            json!({"success": false, "error": e})
+        }
     }
 }
 

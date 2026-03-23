@@ -109,6 +109,14 @@ pub(crate) fn get_vault_version(state: &State<AppState>) -> u32 {
         .unwrap_or_else(|e| e.into_inner())
 }
 
+/// Zeroize the password String's heap buffer.
+///
+/// KNOWN LIMITATION: This zeroizes the final owned String, but Tauri's IPC
+/// deserializer (serde_json) may have created intermediate String copies during
+/// JSON parsing that are already freed without zeroization. This is an inherent
+/// limitation of the Rust/Tauri architecture — the IPC layer is outside our
+/// control. The real protection is Argon2id key derivation (password never
+/// stored, only the derived key) + mlock on the derived key + core dump disabled.
 pub(crate) fn zeroize_password(password: String) {
     let mut pwd_bytes = password.into_bytes();
     pwd_bytes.zeroize();

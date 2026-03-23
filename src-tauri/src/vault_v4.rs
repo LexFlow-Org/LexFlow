@@ -787,6 +787,15 @@ pub(crate) fn open_vault_with_recovery(
     let recovery_kek = derive_kek_raw(&hex::encode(&recovery_bytes), &recovery_salt, 16384, 3, 1)?;
 
     let dek = unwrap_dek(&recovery_kek, wrapped, iv)?;
+
+    // SECURITY FIX: verify vault integrity via DEK.
+    // We can't verify header_mac (computed with password KEK, which we don't have).
+    // Instead, try decrypting the index — if it succeeds, the DEK is valid and the
+    // vault data is intact. AES-GCM-SIV authentication guarantees integrity.
+    let _ = decrypt_index(&dek, &vault.index).map_err(|_| {
+        "Recovery failed: vault data integrity check failed. The vault may be corrupted."
+    })?;
+
     Ok((vault, dek))
 }
 
