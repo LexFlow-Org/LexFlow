@@ -185,6 +185,7 @@ pub(crate) fn autolock_loop(ah: AppHandle) {
             // Lock now
             let state2 = ah.state::<AppState>();
             *state2.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *state2.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
             let _ = ah.emit("lf-vault-locked", ());
             continue;
         }
@@ -717,7 +718,7 @@ pub(crate) fn setup_desktop(
     #[cfg(target_os = "macos")]
     {
         let bundle_id = app.config().identifier.clone();
-        let _ = std::process::Command::new("defaults")
+        let _ = std::process::Command::new("/usr/bin/defaults")
             .args(["write", &bundle_id, "NSAppSleepDisabled", "-bool", "YES"])
             .output();
         eprintln!("[LexFlow] macOS App Nap disabled via defaults write ✓");

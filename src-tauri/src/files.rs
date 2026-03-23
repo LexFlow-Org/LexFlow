@@ -443,7 +443,8 @@ pub(crate) async fn generate_typst_pdf(
     let file_typst = temp_dir.join(format!("lexflow_{}.typ", run_id));
     let file_pdf = temp_dir.join(format!("lexflow_{}.pdf", run_id));
 
-    std::fs::write(&file_typst, &document).map_err(|e| format!("Cannot write temp .typ: {}", e))?;
+    crate::io::secure_write(&file_typst, document.as_bytes())
+        .map_err(|e| format!("Cannot write temp .typ: {}", e))?;
 
     let font_path = app
         .path()

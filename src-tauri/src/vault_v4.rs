@@ -749,17 +749,13 @@ pub(crate) fn generate_recovery_key(vault: &mut VaultV4, dek: &[u8]) -> Result<S
     let mut recovery_salt = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut recovery_salt);
 
-    let recovery_hex = hex::encode(recovery_bytes);
-    // LOW FIX: zeroize recovery_bytes after encoding (prevent lingering on stack)
+    let mut recovery_hex = hex::encode(recovery_bytes);
+    // FIX A2: zeroize recovery_bytes and recovery_hex after use
     recovery_bytes.zeroize();
 
-    let recovery_kek = derive_kek_raw(
-        &recovery_hex, // use hex of bytes as "password"
-        &recovery_salt,
-        16384, // lower params for recovery (it's a 128-bit random key, not a password)
-        3,
-        1,
-    )?;
+    let recovery_kek = derive_kek_raw(&recovery_hex, &recovery_salt, 16384, 3, 1)?;
+    // Zeroize hex string after KEK derivation (no longer needed)
+    recovery_hex.zeroize();
 
     // Wrap DEK with recovery KEK
     let (wrapped, iv) = wrap_dek(&recovery_kek, dek)?;

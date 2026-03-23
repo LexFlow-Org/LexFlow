@@ -448,7 +448,8 @@ pub(crate) fn search_vault(
     if !vault_path.exists() {
         return Ok(json!([]));
     }
-    let raw = fs::read(&vault_path).map_err(|e| e.to_string())?;
+    let raw =
+        crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024).map_err(|e| e.to_string())?;
     let vault = vault_v4::deserialize_vault(&raw)?;
     let vault_index = vault_v4::decrypt_index(&dek, &vault.index)?;
 
@@ -493,7 +494,8 @@ pub(crate) fn rebuild_search_index(state: State<AppState>) -> Result<Value, Stri
         .clone();
 
     let vault_path = dir.join(crate::constants::VAULT_FILE);
-    let raw = fs::read(&vault_path).map_err(|e| e.to_string())?;
+    let raw =
+        crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024).map_err(|e| e.to_string())?;
     let vault = vault_v4::deserialize_vault(&raw)?;
     let vault_index = vault_v4::decrypt_index(&dek, &vault.index)?;
 

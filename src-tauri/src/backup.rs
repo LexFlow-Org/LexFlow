@@ -32,7 +32,8 @@ pub(crate) fn create_backup(data_dir: &std::path::Path) -> Result<String, String
     let bak_path = bak_dir.join(&bak_name);
 
     // Copy vault file (already encrypted — no need to re-encrypt)
-    let vault_data = fs::read(&vault_path).map_err(|e| format!("Errore lettura vault: {}", e))?;
+    let vault_data = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024)
+        .map_err(|e| format!("Errore lettura vault: {}", e))?;
     atomic_write_with_sync(&bak_path, &vault_data)
         .map_err(|e| format!("Errore scrittura backup: {}", e))?;
 

@@ -11,12 +11,13 @@ fn escape_csv(s: &str) -> String {
     // SECURITY: prefix dangerous characters to prevent CSV formula injection
     // when opened in Excel/LibreOffice. Characters =, +, -, @, \t, \0 at the
     // start of a cell are interpreted as formulas.
-    let sanitized = if s.starts_with('=')
-        || s.starts_with('+')
-        || s.starts_with('-')
-        || s.starts_with('@')
-        || s.starts_with('\t')
-        || s.starts_with('\0')
+    let trimmed = s.trim_start();
+    let sanitized = if trimmed.starts_with('=')
+        || trimmed.starts_with('+')
+        || trimmed.starts_with('-')
+        || trimmed.starts_with('@')
+        || trimmed.starts_with('\t')
+        || trimmed.starts_with('\0')
     {
         format!("'{}", s) // single-quote prefix neutralizes formula
     } else {
