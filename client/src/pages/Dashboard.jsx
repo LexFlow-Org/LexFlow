@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect, memo } from 'react';
 import PropTypes from 'prop-types';
-import { FolderOpen, CalendarDays, CalendarClock, Coffee, Sun, Sunrise, ChevronDown } from 'lucide-react';
+import { FolderOpen, CalendarDays, CalendarClock, Coffee, Sun, Sunrise, ChevronDown, Clock } from 'lucide-react';
 import { catDotClass, catPillClass, getHeroColor } from '../theme';
 
 const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavigate }) {
@@ -57,7 +57,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
             {ev._period && (i === 0 || relevant[i - 1]?._period !== ev._period) && (
               <div className="flex items-center gap-2 mb-2 mt-1">
                 <span className="text-2xs font-bold uppercase tracking-wider text-white/50">
-                  {ev._period === 'oggi' ? '📌 Ancora oggi' : '☀️ Domani'}
+                  {ev._period === 'oggi' ? <><Clock size={10} className="inline mr-1" />Ancora oggi</> : <><Sunrise size={10} className="inline mr-1" />Domani</>}
                 </span>
                 <div className="flex-1 h-px bg-white/10" />
               </div>
