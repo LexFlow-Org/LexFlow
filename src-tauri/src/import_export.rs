@@ -33,8 +33,10 @@ pub(crate) async fn export_vault(
             .clone();
         let vault_path = dir.join(VAULT_FILE);
         if vault_path.exists() {
-            let raw = fs::read(&vault_path).map_err(|e| e.to_string())?;
+            let raw = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024)
+                .map_err(|e| e.to_string())?;
             if vault_v4::open_vault_v4(&pwd, &raw).is_err() {
+                zeroize_password(pwd);
                 return Ok(json!({"success": false, "error": "Password errata."}));
             }
         }
@@ -47,10 +49,13 @@ pub(crate) async fn export_vault(
             .clone();
         let salt_path = dir.join(VAULT_SALT_FILE);
         if salt_path.exists() {
-            let vault_salt = fs::read(&salt_path).map_err(|e| e.to_string())?;
+            let vault_salt =
+                crate::io::safe_bounded_read(&salt_path, 1024).map_err(|e| e.to_string())?;
             let vault_key_check = derive_secure_key(&pwd, &vault_salt)?;
-            let stored_verify = fs::read(dir.join(VAULT_VERIFY_FILE)).unwrap_or_default();
+            let stored_verify = crate::io::safe_bounded_read(&dir.join(VAULT_VERIFY_FILE), 1024)
+                .unwrap_or_default();
             if !verify_hash_matches(&vault_key_check, &stored_verify) {
+                zeroize_password(pwd);
                 return Ok(json!({"success": false, "error": "Password errata."}));
             }
         }

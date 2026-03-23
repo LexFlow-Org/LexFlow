@@ -314,7 +314,7 @@ fn load_search_index(data_dir: &std::path::Path, dek: &[u8]) -> SearchIndex {
     if !path.exists() {
         return SearchIndex::new();
     }
-    let raw = match fs::read(&path) {
+    let raw = match crate::io::safe_bounded_read(&path, 100 * 1024 * 1024) {
         Ok(r) => r,
         Err(_) => return SearchIndex::new(),
     };

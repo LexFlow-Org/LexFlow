@@ -46,6 +46,11 @@ pub(crate) fn get_settings(state: State<AppState>, app: AppHandle) -> Value {
     // Migration: old plaintext format
     if let Ok(text) = std::str::from_utf8(&file_data) {
         if let Ok(val) = serde_json::from_str::<Value>(text) {
+            // M5 FIX: schema check — only accept JSON objects (not arrays, strings, etc.)
+            if !val.is_object() {
+                eprintln!("[LexFlow] Settings migration rejected: not a JSON object");
+                return json!({});
+            }
             if let Ok(re_enc) = encrypt_data(&key, &serde_json::to_vec(&val).unwrap_or_default()) {
                 let _ = atomic_write_with_sync(&path, &re_enc);
                 eprintln!("[LexFlow] Migrazione settings plaintext -> cifrato completata.");

@@ -489,8 +489,8 @@ pub(crate) async fn generate_typst_pdf(
         }
     }
 
-    let pdf_bytes =
-        std::fs::read(&file_pdf).map_err(|e| format!("Cannot read generated PDF: {}", e))?;
+    let pdf_bytes = crate::io::safe_bounded_read(&file_pdf, 50 * 1024 * 1024)
+        .map_err(|e| format!("Cannot read generated PDF: {}", e))?;
     let _ = crate::security::secure_delete_file(&file_typst);
     let _ = crate::security::secure_delete_file(&file_pdf);
 
