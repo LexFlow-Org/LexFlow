@@ -53,6 +53,22 @@ pub struct VaultV4 {
     pub records: BTreeMap<String, RecordEntry>,
 }
 
+// Custom Debug that redacts wrapped_dek and header_mac (security-sensitive fields)
+impl std::fmt::Debug for VaultV4 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VaultV4")
+            .field("version", &self.version)
+            .field("kdf", &self.kdf)
+            .field("wrapped_dek", &"[REDACTED]")
+            .field("dek_iv", &"[REDACTED]")
+            .field("dek_alg", &self.dek_alg)
+            .field("header_mac", &"[REDACTED]")
+            .field("rotation", &self.rotation)
+            .field("records_count", &self.records.len())
+            .finish()
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct KdfParams {
     pub alg: String,
