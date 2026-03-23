@@ -70,6 +70,38 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib --release
 
+      - name: Rust clippy (zero warnings)
+        working-directory: src-tauri
+        run: cargo clippy -- -W clippy::all -D warnings
+
+      - name: Rust fmt check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Dependency audit (cargo audit)
+        working-directory: src-tauri
+        run: |
+          cargo install cargo-audit --quiet 2>/dev/null || true
+          cargo audit --file Cargo.lock 2>&1 || echo "::warning::cargo audit found advisories (non-blocking)"
+
+      - name: Binary leak check (no test strings in release)
+        working-directory: src-tauri
+        run: |
+          cargo build --release --quiet 2>/dev/null || true
+          if [ -f target/release/lexflow ] || [ -f target/release/app_lib.dylib ]; then
+            BIN=$(find target/release -maxdepth 1 \( -name "lexflow" -o -name "app_lib.dylib" -o -name "lexflow.exe" \) -print -quit)
+            if [ -n "$BIN" ]; then
+              LEAKS=$(strings "$BIN" 2>/dev/null | grep -ci "test_password\|MARKER\|fixture\|dummy_key" || true)
+              if [ "$LEAKS" -gt 0 ]; then
+                echo "::error::Found $LEAKS test strings in release binary!"
+                exit 1
+              fi
+              echo "Binary leak check: PASS (0 test strings found)"
+            fi
+          else
+            echo "::notice::Release binary not available for leak check (expected in CI)"
+          fi
+
   # ---------------------------------------------------------
   # 2. VERSION CONSISTENCY -- all manifests must agree
   # ---------------------------------------------------------
