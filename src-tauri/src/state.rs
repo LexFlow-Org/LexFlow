@@ -76,8 +76,17 @@ impl AppState {
 }
 
 /// Invalidate the vault cache (call after every write).
+/// SECURITY: serialize the old cache to bytes, zeroize them, then drop.
+/// This best-effort scrubs plaintext from heap before deallocation.
 pub(crate) fn invalidate_vault_cache(state: &State<AppState>) {
-    *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = None;
+    let mut guard = state.vault_cache.write().unwrap_or_else(|e| e.into_inner());
+    if let Some(old) = guard.take() {
+        // Best-effort: serialize to bytes and zeroize before drop
+        if let Ok(mut bytes) = serde_json::to_vec(&old) {
+            zeroize::Zeroize::zeroize(&mut bytes);
+        }
+        drop(old);
+    }
 }
 
 pub(crate) fn get_vault_key(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>>, String> {

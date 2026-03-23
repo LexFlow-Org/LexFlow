@@ -22,21 +22,36 @@ function safeInvoke(cmd, args = {}) {
   });
 }
 
+// SECURITY: Pre-hash passwords in the frontend before sending over IPC.
+// This ensures the plaintext password never crosses the Tauri bridge —
+// only the SHA-256 hash is sent. The backend uses this hash as input to
+// Argon2id (which accepts any byte string). This mitigates the serde
+// deserialization copy issue where plaintext lingers in heap memory.
+async function hashPwd(pwd) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pwd);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  // Clear the original encoded data (best-effort in JS)
+  data.fill(0);
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // Vault / Auth
 export const vaultExists = () => safeInvoke('vault_exists');
-export const unlockVault = (pwd) => safeInvoke('unlock_vault', { password: pwd });
+export const unlockVault = async (pwd) => safeInvoke('unlock_vault', { password: await hashPwd(pwd) });
 export const lockVault = () => safeInvoke('lock_vault');
-export const resetVault = (password) => safeInvoke('reset_vault', { password });
-export const exportVault = (pwd) => safeInvoke('export_vault', { pwd });
-export const importVault = (pwd) => safeInvoke('import_vault', { pwd });
-export const changePassword = (currentPassword, newPassword) =>
-  safeInvoke('change_password', { currentPassword, newPassword });
-export const verifyVaultPassword = (pwd) => safeInvoke('verify_vault_password', { pwd });
+export const resetVault = async (password) => safeInvoke('reset_vault', { password: await hashPwd(password) });
+export const exportVault = async (pwd) => safeInvoke('export_vault', { pwd: await hashPwd(pwd) });
+export const importVault = async (pwd) => safeInvoke('import_vault', { pwd: await hashPwd(pwd) });
+export const changePassword = async (currentPassword, newPassword) =>
+  safeInvoke('change_password', { currentPassword: await hashPwd(currentPassword), newPassword: await hashPwd(newPassword) });
+export const verifyVaultPassword = async (pwd) => safeInvoke('verify_vault_password', { pwd: await hashPwd(pwd) });
 
-// Biometrics
+// Biometrics — saveBio stores the HASHED password in keychain
 export const checkBio = () => safeInvoke('check_bio');
 export const hasBioSaved = () => safeInvoke('has_bio_saved');
-export const saveBio = (pwd) => safeInvoke('save_bio', { pwd });
+export const saveBio = async (pwd) => safeInvoke('save_bio', { pwd: await hashPwd(pwd) });
 export const clearBio = () => safeInvoke('clear_bio');
 // SECURITY FIX (Gemini Audit Chunk 01): wrap in try/catch so callers
 // get null on bio failure instead of an unhandled throw from safeInvoke

@@ -534,7 +534,7 @@ pub(crate) fn lock_vault(state: State<AppState>) -> bool {
         .write()
         .unwrap_or_else(|e| e.into_inner()) = 0;
     // SECURITY: clear plaintext cache on lock
-    *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = None;
+    invalidate_vault_cache(&state);
     true
 }
 
@@ -586,7 +586,7 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
         .vault_version
         .write()
         .unwrap_or_else(|e| e.into_inner()) = 0;
-    *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = None;
+    invalidate_vault_cache(&state);
     zeroize_password(password);
     json!({"success": true})
 }
