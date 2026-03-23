@@ -22,7 +22,7 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::collections::BTreeMap;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -33,7 +33,7 @@ pub(crate) const MAX_RECORD_VERSIONS: usize = 5;
 
 // ─── Types ──────────────────────────────────────────────────
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct VaultV4 {
     pub version: u32,
     pub kdf: KdfParams,
@@ -407,7 +407,18 @@ pub(crate) fn decrypt_record(dek: &[u8], block: &EncryptedBlock) -> Result<Vec<u
 
     // PERF: decompress if compressed flag is set
     if block.compressed {
-        zstd::decode_all(decrypted.as_slice()).map_err(|e| format!("Decompression failed: {}", e))
+        // LOW FIX: cap decompression output at 100MB to prevent zip-bomb OOM
+        // (data is AES-GCM-SIV authenticated, so attacker needs DEK — defense-in-depth)
+        let mut decoder = zstd::Decoder::new(decrypted.as_slice())
+            .map_err(|e| format!("Decompression init failed: {}", e))?;
+        let mut output = Vec::new();
+        use std::io::Read;
+        decoder
+            .by_ref()
+            .take(100 * 1024 * 1024) // 100MB cap
+            .read_to_end(&mut output)
+            .map_err(|e| format!("Decompression failed: {}", e))?;
+        Ok(output)
     } else {
         Ok(decrypted)
     }
@@ -436,7 +447,7 @@ pub(crate) fn append_record_version(
     plaintext: &[u8],
 ) -> Result<(), String> {
     let block = encrypt_record(dek, plaintext)?;
-    let new_v = entry.current + 1;
+    let new_v = entry.current.checked_add(1).unwrap_or(entry.current); // saturate instead of wrap
     let version = RecordVersion {
         v: new_v,
         ts: chrono::Utc::now().to_rfc3339(),
@@ -516,9 +527,10 @@ pub(crate) fn rotate_dek(vault: &mut VaultV4, kek: &[u8]) -> Result<Zeroizing<Ve
         }
     }
 
-    // Re-encrypt index
+    // Re-encrypt index (entries contain titles/tags — lower sensitivity than record content)
     let index_entries = decrypt_index(&old_dek, &vault.index)?;
     vault.index = encrypt_index(&new_dek, &index_entries)?;
+    drop(index_entries); // explicit drop to minimize plaintext lifetime
 
     // Wrap new DEK with KEK
     let (wrapped, iv) = wrap_dek(kek, &new_dek)?;
@@ -737,8 +749,12 @@ pub(crate) fn generate_recovery_key(vault: &mut VaultV4, dek: &[u8]) -> Result<S
     let mut recovery_salt = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut recovery_salt);
 
+    let recovery_hex = hex::encode(recovery_bytes);
+    // LOW FIX: zeroize recovery_bytes after encoding (prevent lingering on stack)
+    recovery_bytes.zeroize();
+
     let recovery_kek = derive_kek_raw(
-        &hex::encode(recovery_bytes), // use hex of bytes as "password"
+        &recovery_hex, // use hex of bytes as "password"
         &recovery_salt,
         16384, // lower params for recovery (it's a 128-bit random key, not a password)
         3,

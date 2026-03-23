@@ -343,9 +343,10 @@ pub(crate) fn vault_exists(state: State<AppState>) -> bool {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     // v4 vault exists if vault.lex starts with V4 magic, or v2 if salt exists
+    // LOW FIX: only read first 10 bytes (magic prefix), not entire vault
     let vault_path = dir.join(VAULT_FILE);
     if vault_path.exists() {
-        if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
+        if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 10) {
             if data.starts_with(vault_v4::VAULT_V4_MAGIC) {
                 return true;
             }
@@ -555,9 +556,6 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
                 return json!({"success": false, "error": "Password errata"});
             }
         }
-    } else if false {
-        zeroize_password(password);
-        return json!({"success": false, "error": "Password errata"});
     }
     {
         for sensitive_file in &[
