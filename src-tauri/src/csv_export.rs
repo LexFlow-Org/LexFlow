@@ -7,7 +7,7 @@ use crate::vault::read_vault_internal;
 use serde_json::Value;
 use tauri::State;
 
-fn escape_csv(s: &str) -> String {
+pub(crate) fn escape_csv(s: &str) -> String {
     // SECURITY: prefix dangerous characters to prevent CSV formula injection
     // when opened in Excel/LibreOffice. Characters =, +, -, @, \t, \0 at the
     // start of a cell are interpreted as formulas.

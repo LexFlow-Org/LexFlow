@@ -9,7 +9,7 @@
 //  - Stored as search_index.enc, no fsync (rebuilt on corruption)
 
 use crate::state::{get_vault_dek, get_vault_version, AppState};
-use crate::vault_v4;
+use crate::vault_engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -33,7 +33,7 @@ const STOP_WORDS: &[&str] = &[
 // ─── Types ──────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
-struct SearchIndex {
+pub(crate) struct SearchIndex {
     /// trigram → set of record IDs containing this trigram
     trigrams: HashMap<String, HashSet<String>>,
     /// term → list of (record_id, term_frequency)
@@ -131,11 +131,11 @@ fn extract_searchable_text(record: &Value, field: &str) -> String {
 // ─── Index building ─────────────────────────────────────────
 
 impl SearchIndex {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    fn add_document(&mut self, record_id: &str, text: &str, gen: u64) {
+    pub(crate) fn add_document(&mut self, record_id: &str, text: &str, gen: u64) {
         let tokens = tokenize(text);
         let doc_len = tokens.len() as u32;
 
@@ -235,7 +235,7 @@ impl SearchIndex {
     }
 
     /// Search with trigram fuzzy matching + BM25 ranking
-    fn search(&self, query: &str, limit: usize) -> Vec<(String, f64)> {
+    pub(crate) fn search(&self, query: &str, limit: usize) -> Vec<(String, f64)> {
         let query_lower = query.to_lowercase();
         let query_tokens = tokenize(&query_lower);
 
@@ -318,12 +318,12 @@ fn load_search_index(data_dir: &std::path::Path, dek: &[u8]) -> SearchIndex {
         Ok(r) => r,
         Err(_) => return SearchIndex::new(),
     };
-    // Decrypt using vault_v4 record encryption (includes zstd decompression)
-    let block: vault_v4::EncryptedBlock = match serde_json::from_slice(&raw) {
+    // Decrypt using vault_engine record encryption (includes zstd decompression)
+    let block: vault_engine::EncryptedBlock = match serde_json::from_slice(&raw) {
         Ok(b) => b,
         Err(_) => return SearchIndex::new(), // corrupted → rebuild
     };
-    let plaintext = match vault_v4::decrypt_record(dek, &block) {
+    let plaintext = match vault_engine::decrypt_record(dek, &block) {
         Ok(p) => p,
         Err(_) => return SearchIndex::new(), // corrupted → rebuild
     };
@@ -337,7 +337,7 @@ fn save_search_index(
 ) -> Result<(), String> {
     let plaintext =
         serde_json::to_vec(index).map_err(|e| format!("Search index serialize: {}", e))?;
-    let block = vault_v4::encrypt_record(dek, &plaintext)?;
+    let block = vault_engine::encrypt_record(dek, &plaintext)?;
     let encrypted =
         serde_json::to_vec(&block).map_err(|e| format!("Search block serialize: {}", e))?;
     // No fsync — search index is a derived cache, rebuilt on corruption
@@ -350,8 +350,8 @@ fn save_search_index(
 fn ensure_index_consistent(
     data_dir: &std::path::Path,
     dek: &[u8],
-    vault_index: &[vault_v4::IndexEntry],
-    vault: &vault_v4::VaultV4,
+    vault_index: &[vault_engine::IndexEntry],
+    vault: &vault_engine::VaultData,
 ) -> SearchIndex {
     let mut search_idx = load_search_index(data_dir, dek);
 
@@ -402,7 +402,7 @@ fn ensure_index_consistent(
 
             // Decrypt record
             if let Some(record_entry) = vault.records.get(id) {
-                if let Ok(plaintext) = vault_v4::read_current_version(record_entry, dek) {
+                if let Ok(plaintext) = vault_engine::read_current_version(record_entry, dek) {
                     if let Ok(record) = serde_json::from_slice::<Value>(&plaintext) {
                         let text = extract_searchable_text(&record, field);
                         let gen = record_entry.current as u64;
@@ -450,8 +450,8 @@ pub(crate) fn search_vault(
     }
     let raw =
         crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024).map_err(|e| e.to_string())?;
-    let vault = vault_v4::deserialize_vault(&raw)?;
-    let vault_index = vault_v4::decrypt_index(&dek, &vault.index)?;
+    let vault = vault_engine::deserialize_vault(&raw)?;
+    let vault_index = vault_engine::decrypt_index(&dek, &vault.index)?;
 
     // Ensure consistency and get search index
     let search_idx = ensure_index_consistent(&dir, &dek, &vault_index, &vault);
@@ -496,14 +496,14 @@ pub(crate) fn rebuild_search_index(state: State<AppState>) -> Result<Value, Stri
     let vault_path = dir.join(crate::constants::VAULT_FILE);
     let raw =
         crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024).map_err(|e| e.to_string())?;
-    let vault = vault_v4::deserialize_vault(&raw)?;
-    let vault_index = vault_v4::decrypt_index(&dek, &vault.index)?;
+    let vault = vault_engine::deserialize_vault(&raw)?;
+    let vault_index = vault_engine::decrypt_index(&dek, &vault.index)?;
 
     let mut search_idx = SearchIndex::new();
 
     for entry in &vault_index {
         if let Some(record_entry) = vault.records.get(&entry.id) {
-            if let Ok(plaintext) = vault_v4::read_current_version(record_entry, &dek) {
+            if let Ok(plaintext) = vault_engine::read_current_version(record_entry, &dek) {
                 if let Ok(record) = serde_json::from_slice::<Value>(&plaintext) {
                     let text = extract_searchable_text(&record, &entry.field);
                     let gen = record_entry.current as u64;

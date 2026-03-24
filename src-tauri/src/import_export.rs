@@ -7,7 +7,7 @@ use crate::constants::*;
 use crate::crypto::{decrypt_data, derive_secure_key, encrypt_data, verify_hash_matches};
 use crate::io::atomic_write_with_sync;
 use crate::state::{zeroize_password, AppState, SecureKey};
-use crate::vault_v4;
+use crate::vault_engine;
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Read;
@@ -35,7 +35,7 @@ pub(crate) async fn export_vault(
         if vault_path.exists() {
             let raw = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024)
                 .map_err(|e| e.to_string())?;
-            if vault_v4::open_vault_v4(&pwd, &raw).is_err() {
+            if vault_engine::open_vault(&pwd, &raw).is_err() {
                 zeroize_password(pwd);
                 return Ok(json!({"success": false, "error": "Password errata."}));
             }
@@ -160,13 +160,14 @@ pub(crate) async fn import_vault(
             .clone();
 
         // Import as v4 vault
-        let (vault, dek) = vault_v4::create_vault_v4(&pwd)
-            .map_err(|e| format!("Impossibile creare il database durante l'importazione. Riprova."))?;
+        let (vault, dek) = vault_engine::create_vault(&pwd).map_err(|_e| {
+            "Impossibile creare il database durante l'importazione. Riprova.".to_string()
+        })?;
 
         // Write imported data into the new v4 vault
         // First write the empty v4 vault, then set state, then write data via write_vault_internal
-        let serialized = vault_v4::serialize_vault(&vault)
-            .map_err(|e| format!("Errore durante l'importazione. Riprova."))?;
+        let serialized = vault_engine::serialize_vault(&vault)
+            .map_err(|_e| "Errore durante l'importazione. Riprova.".to_string())?;
         atomic_write_with_sync(&dir.join(VAULT_FILE), &serialized)?;
 
         *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =

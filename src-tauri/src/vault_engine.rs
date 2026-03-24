@@ -2,7 +2,7 @@
 //  VAULT V4 — Envelope encryption, per-record crypto, rotation
 // ═══════════════════════════════════════════════════════════
 //
-//  Format: VAULT_V4_MAGIC + JSON { version:4, kdf, wrapped_dek, ... }
+//  Format: VAULT_MAGIC_V4 + JSON { version:4, kdf, wrapped_dek, ... }
 //  KEK = Argon2id(password, salt, adaptive params)
 //  DEK = random 256-bit, wrapped with AES-256-GCM-SIV(KEK)
 //  Each record: AES-256-GCM-SIV(DEK, record_data) — nonce-misuse resistant
@@ -26,7 +26,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 // ─── Constants ──────────────────────────────────────────────
 
-pub(crate) const VAULT_V4_MAGIC: &[u8] = b"LEXFLOW_V4";
+pub(crate) const VAULT_MAGIC_V4: &[u8] = b"LEXFLOW_V4";
 const AES_KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
 pub(crate) const MAX_RECORD_VERSIONS: usize = 5;
@@ -34,7 +34,7 @@ pub(crate) const MAX_RECORD_VERSIONS: usize = 5;
 // ─── Types ──────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct VaultV4 {
+pub struct VaultData {
     pub version: u32,
     pub kdf: KdfParams,
     pub wrapped_dek: String,
@@ -59,9 +59,9 @@ pub struct VaultV4 {
 }
 
 // Custom Debug that redacts wrapped_dek and header_mac (security-sensitive fields)
-impl std::fmt::Debug for VaultV4 {
+impl std::fmt::Debug for VaultData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VaultV4")
+        f.debug_struct("VaultData")
             .field("version", &self.version)
             .field("kdf", &self.kdf)
             .field("wrapped_dek", &"[REDACTED]")
@@ -109,6 +109,9 @@ pub struct RecordVersion {
     pub data: String,
     #[serde(default)] // backward compat: false if missing
     pub compressed: bool,
+    /// V7: serialization format. "json" (legacy/default) or "msgpack"
+    #[serde(default)]
+    pub format: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -124,6 +127,11 @@ pub struct IndexEntry {
     pub title: String,      // searchable summary
     pub tags: Vec<String>,  // category, status, etc.
     pub updated_at: String, // ISO8601
+    /// V5 PERF: summary fields for lazy list rendering.
+    /// Contains type-specific metadata (client, status, type, court, etc.)
+    /// so the frontend renders complete lists WITHOUT decrypting each record.
+    #[serde(default)]
+    pub summary: Option<serde_json::Value>,
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -327,7 +335,7 @@ pub(crate) const CURRENT_MAC_VERSION: u32 = 2;
 /// Compute canonical bytes for a given MAC version.
 /// v1 (legacy): included rotation in canonical header
 /// v2 (current): excludes rotation (writes changes on every save, KEK unavailable)
-fn canonical_header_bytes(vault: &VaultV4, mac_ver: u32) -> Vec<u8> {
+fn canonical_header_bytes(vault: &VaultData, mac_ver: u32) -> Vec<u8> {
     let canonical = if mac_ver <= 1 {
         // Legacy v1: included rotation
         serde_json::json!({
@@ -353,7 +361,7 @@ fn canonical_header_bytes(vault: &VaultV4, mac_ver: u32) -> Vec<u8> {
 
 /// Compute HMAC-SHA256(KEK, canonical_header) for tamper detection.
 /// Always uses CURRENT_MAC_VERSION for new writes.
-pub(crate) fn compute_header_mac(kek: &[u8], vault: &VaultV4) -> String {
+pub(crate) fn compute_header_mac(kek: &[u8], vault: &VaultData) -> String {
     let canonical_bytes = canonical_header_bytes(vault, CURRENT_MAC_VERSION);
     let mut mac =
         <Hmac<Sha256> as Mac>::new_from_slice(kek).expect("HMAC can take key of any size");
@@ -366,10 +374,10 @@ pub(crate) fn compute_header_mac(kek: &[u8], vault: &VaultV4) -> String {
 /// ANY past version of the app can always be opened.
 /// Returns Ok(needs_migration) where true = HMAC was verified with a legacy
 /// version and the vault should be re-saved with CURRENT_MAC_VERSION.
-pub fn verify_header_mac(kek: &[u8], vault: &VaultV4) -> Result<bool, String> {
+pub fn verify_header_mac(kek: &[u8], vault: &VaultData) -> Result<bool, String> {
     let stored_bytes = B64
         .decode(&vault.header_mac)
-        .map_err(|_| "Stored header MAC decode failed")?;
+        .map_err(|_| "Il database non è verificabile. Potrebbe essere stato modificato o è di una versione incompatibile.")?;
 
     // Try the declared version first (fast path)
     let declared_ver = vault.mac_version.unwrap_or(1); // missing = legacy v1
@@ -467,7 +475,9 @@ pub(crate) fn decrypt_record(dek: &[u8], block: &EncryptedBlock) -> Result<Vec<u
                 aad: b"LEXFLOW-RECORD",
             },
         )
-        .map_err(|_| "Impossibile leggere questo fascicolo. Il dato potrebbe essere danneggiato.".to_string())?;
+        .map_err(|_| {
+            "Impossibile leggere questo fascicolo. Il dato potrebbe essere danneggiato.".to_string()
+        })?;
 
     // PERF: decompress if compressed flag is set
     if block.compressed {
@@ -519,6 +529,7 @@ pub(crate) fn append_record_version(
         tag: block.tag,
         data: block.data,
         compressed: block.compressed,
+        format: Some("msgpack".to_string()),
     };
     entry.versions.push(version);
     entry.current = new_v;
@@ -565,7 +576,7 @@ pub(crate) fn needs_rotation(rotation: &RotationMeta) -> bool {
 /// Perform key rotation: generate new DEK, re-encrypt all records + index.
 /// Called when needs_rotation() returns true (>90 days or >10k writes).
 /// Triggered automatically at unlock in vault.rs.
-pub(crate) fn rotate_dek(vault: &mut VaultV4, kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
+pub(crate) fn rotate_dek(vault: &mut VaultData, kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
     // Unwrap old DEK
     let old_dek = unwrap_dek(kek, &vault.wrapped_dek, &vault.dek_iv)?;
 
@@ -619,25 +630,25 @@ pub(crate) fn rotate_dek(vault: &mut VaultV4, kek: &[u8]) -> Result<Zeroizing<Ve
 //  High-level Vault I/O
 // ═══════════════════════════════════════════════════════════
 
-/// Serialize VaultV4 to bytes for disk storage.
-pub fn serialize_vault(vault: &VaultV4) -> Result<Vec<u8>, String> {
+/// Serialize VaultData to bytes for disk storage.
+pub fn serialize_vault(vault: &VaultData) -> Result<Vec<u8>, String> {
     let json = serde_json::to_vec(vault).map_err(|e| format!("Vault serialize: {}", e))?;
-    let mut out = VAULT_V4_MAGIC.to_vec();
+    let mut out = VAULT_MAGIC_V4.to_vec();
     out.extend_from_slice(&json);
     Ok(out)
 }
 
-/// Deserialize VaultV4 from bytes read from disk.
-pub fn deserialize_vault(data: &[u8]) -> Result<VaultV4, String> {
-    if !data.starts_with(VAULT_V4_MAGIC) {
+/// Deserialize VaultData from bytes read from disk.
+pub fn deserialize_vault(data: &[u8]) -> Result<VaultData, String> {
+    if !data.starts_with(VAULT_MAGIC_V4) {
         return Err("Not a v4 vault file".into());
     }
-    let json_bytes = &data[VAULT_V4_MAGIC.len()..];
+    let json_bytes = &data[VAULT_MAGIC_V4.len()..];
     serde_json::from_slice(json_bytes).map_err(|e| format!("Vault deserialize: {}", e))
 }
 
 /// Create a brand new v4 vault from password. Returns (vault, dek).
-pub fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
+pub fn create_vault(password: &str) -> Result<(VaultData, Zeroizing<Vec<u8>>), String> {
     // Benchmark and generate KDF params
     let mut kdf = benchmark_argon2_params();
     let mut salt = [0u8; 32];
@@ -658,7 +669,7 @@ pub fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<u8>>), 
     let index = encrypt_index(&dek, &empty_index)?;
 
     // Build vault
-    let mut vault = VaultV4 {
+    let mut vault = VaultData {
         version: 4,
         kdf,
         wrapped_dek,
@@ -687,7 +698,7 @@ pub fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<u8>>), 
 
 /// Open an existing v4 vault: derive KEK, verify header MAC, unwrap DEK.
 /// Anti-rollback: verify write counter against stored maximum.
-pub fn open_vault_v4(password: &str, data: &[u8]) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
+pub fn open_vault(password: &str, data: &[u8]) -> Result<(VaultData, Zeroizing<Vec<u8>>), String> {
     let mut vault = deserialize_vault(data)?;
 
     if vault.version != 4 {
@@ -723,7 +734,7 @@ pub fn open_vault_v4(password: &str, data: &[u8]) -> Result<(VaultV4, Zeroizing<
 
 /// Detect vault format by examining the first bytes.
 pub(crate) fn detect_vault_version(data: &[u8]) -> u32 {
-    if data.starts_with(VAULT_V4_MAGIC) {
+    if data.starts_with(VAULT_MAGIC_V4) {
         return 4;
     }
     if data.starts_with(crate::constants::VAULT_MAGIC) {
@@ -744,6 +755,60 @@ pub(crate) fn extract_record_title_pub(item: &serde_json::Value, field: &str) ->
 /// Extract tags from a record (pub for vault.rs).
 pub(crate) fn extract_record_tags_pub(item: &serde_json::Value, field: &str) -> Vec<String> {
     extract_record_tags(item, field)
+}
+
+/// V5 PERF: Extract summary fields for lazy list rendering.
+/// Returns a JSON object with type-specific metadata so the frontend
+/// can render complete lists WITHOUT decrypting each record.
+pub(crate) fn extract_record_summary(
+    item: &serde_json::Value,
+    field: &str,
+) -> Option<serde_json::Value> {
+    let s = |key: &str| {
+        item.get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    match field {
+        "practices" => Some(serde_json::json!({
+            "client": s("client"),
+            "counterparty": s("counterparty"),
+            "object": s("object"),
+            "court": s("court"),
+            "type": s("type"),
+            "status": s("status"),
+            "code": s("code"),
+            "createdAt": s("createdAt"),
+        })),
+        "contacts" => Some(serde_json::json!({
+            "name": s("name"),
+            "role": s("role"),
+            "email": s("email"),
+            "phone": s("phone"),
+            "type": s("type"),
+        })),
+        "agenda" => Some(serde_json::json!({
+            "title": s("title"),
+            "date": s("date"),
+            "time": s("time"),
+            "type": s("type"),
+            "completed": item.get("completed").and_then(|v| v.as_bool()).unwrap_or(false),
+        })),
+        "timeLogs" => Some(serde_json::json!({
+            "description": s("description"),
+            "date": s("date"),
+            "minutes": item.get("minutes").and_then(|v| v.as_u64()).unwrap_or(0),
+            "practiceId": s("practiceId"),
+        })),
+        "invoices" => Some(serde_json::json!({
+            "number": s("number"),
+            "client": s("client"),
+            "status": s("status"),
+            "total": item.get("total").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        })),
+        _ => None,
+    }
 }
 
 fn extract_record_title(item: &serde_json::Value, field: &str) -> String {
@@ -807,7 +872,7 @@ fn extract_record_tags(item: &serde_json::Value, field: &str) -> Vec<String> {
 
 /// Generate a human-readable recovery key and wrap the DEK with it.
 /// Returns the display string (e.g., "KBQW-E3TF-MZXG-K3DP") to show to user ONCE.
-pub(crate) fn generate_recovery_key(vault: &mut VaultV4, dek: &[u8]) -> Result<String, String> {
+pub(crate) fn generate_recovery_key(vault: &mut VaultData, dek: &[u8]) -> Result<String, String> {
     // Generate 16 random bytes for recovery key
     let mut recovery_bytes = [0u8; 16];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut recovery_bytes);
@@ -847,7 +912,7 @@ pub(crate) fn generate_recovery_key(vault: &mut VaultV4, dek: &[u8]) -> Result<S
 pub(crate) fn open_vault_with_recovery(
     recovery_display: &str,
     data: &[u8],
-) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
+) -> Result<(VaultData, Zeroizing<Vec<u8>>), String> {
     let vault = deserialize_vault(data)?;
     if vault.version != 4 {
         return Err("Unsupported vault version".into());
@@ -924,4 +989,248 @@ pub(crate) fn base32_decode(s: &str) -> Option<Vec<u8>> {
         }
     }
     Some(result)
+}
+
+// ═══════════════════════════════════════════════════════════
+//  V6: SPLIT-FILE VAULT LAYOUT
+// ═══════════════════════════════════════════════════════════
+
+use crate::constants::{VAULT_DIR, VAULT_HEADER_FILE, VAULT_INDEX_FILE, VAULT_RECORDS_DIR};
+
+/// V6 header: everything except index and records (serialized as JSON).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct VaultHeader {
+    pub version: u32,
+    pub kdf: KdfParams,
+    pub wrapped_dek: String,
+    pub dek_iv: String,
+    pub dek_alg: String,
+    pub header_mac: String,
+    #[serde(default)]
+    pub mac_version: Option<u32>,
+    pub rotation: RotationMeta,
+    #[serde(default)]
+    pub wrapped_dek_recovery: Option<String>,
+    #[serde(default)]
+    pub recovery_iv: Option<String>,
+    #[serde(default)]
+    pub recovery_salt: Option<String>,
+    /// V6 format marker
+    #[serde(default)]
+    pub split_format: Option<u32>,
+}
+
+impl VaultHeader {
+    /// Convert from monolithic VaultData (drop index/records)
+    pub fn from_vault(v: &VaultData) -> Self {
+        Self {
+            version: v.version,
+            kdf: v.kdf.clone(),
+            wrapped_dek: v.wrapped_dek.clone(),
+            dek_iv: v.dek_iv.clone(),
+            dek_alg: v.dek_alg.clone(),
+            header_mac: v.header_mac.clone(),
+            mac_version: v.mac_version,
+            rotation: v.rotation.clone(),
+            wrapped_dek_recovery: v.wrapped_dek_recovery.clone(),
+            recovery_iv: v.recovery_iv.clone(),
+            recovery_salt: v.recovery_salt.clone(),
+            split_format: Some(6),
+        }
+    }
+
+    /// Convert back to VaultData by attaching index + records
+    pub fn into_vault(
+        self,
+        index: EncryptedBlock,
+        records: BTreeMap<String, RecordEntry>,
+    ) -> VaultData {
+        VaultData {
+            version: self.version,
+            kdf: self.kdf,
+            wrapped_dek: self.wrapped_dek,
+            dek_iv: self.dek_iv,
+            dek_alg: self.dek_alg,
+            header_mac: self.header_mac,
+            mac_version: self.mac_version,
+            rotation: self.rotation,
+            wrapped_dek_recovery: self.wrapped_dek_recovery,
+            recovery_iv: self.recovery_iv,
+            recovery_salt: self.recovery_salt,
+            index,
+            records,
+        }
+    }
+}
+
+/// Check if vault uses V6 split format (directory exists)
+pub fn is_split_vault(data_dir: &std::path::Path) -> bool {
+    data_dir.join(VAULT_DIR).join(VAULT_HEADER_FILE).exists()
+}
+
+/// Write vault in V6 split format
+pub fn write_split_vault(
+    data_dir: &std::path::Path,
+    vault: &VaultData,
+    dek: &[u8],
+) -> Result<(), String> {
+    let vault_dir = data_dir.join(VAULT_DIR);
+    let records_dir = vault_dir.join(VAULT_RECORDS_DIR);
+    std::fs::create_dir_all(&records_dir)
+        .map_err(|_| "Impossibile creare la cartella del database.".to_string())?;
+
+    // 1. Write header
+    let header = VaultHeader::from_vault(vault);
+    let header_bytes = serde_json::to_vec(&header)
+        .map_err(|_| "Errore nella serializzazione dell'header.".to_string())?;
+    let header_enc = crate::crypto::encrypt_data(dek, &header_bytes)?;
+    crate::io::atomic_write_with_sync(&vault_dir.join(VAULT_HEADER_FILE), &header_enc)?;
+
+    // 2. Write index
+    let index_bytes = serde_json::to_vec(&vault.index)
+        .map_err(|_| "Errore nella serializzazione dell'indice.".to_string())?;
+    let index_enc = crate::crypto::encrypt_data(dek, &index_bytes)?;
+    crate::io::atomic_write_with_sync(&vault_dir.join(VAULT_INDEX_FILE), &index_enc)?;
+
+    // 3. Write each record as a separate file
+    for (id, entry) in &vault.records {
+        let rec_bytes = serde_json::to_vec(entry)
+            .map_err(|_| "Errore nella serializzazione del record.".to_string())?;
+        let rec_enc = crate::crypto::encrypt_data(dek, &rec_bytes)?;
+        let safe_id = id.replace(['/', '\\', '.'], "_");
+        crate::io::atomic_write_with_sync(&records_dir.join(format!("{}.enc", safe_id)), &rec_enc)?;
+    }
+
+    // 4. Remove records that no longer exist
+    if let Ok(entries) = std::fs::read_dir(&records_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(id) = name.strip_suffix(".enc") {
+                if !vault.records.contains_key(id) {
+                    let _ = crate::security::secure_delete_file(&entry.path());
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Read vault from V6 split format
+pub fn read_split_vault(data_dir: &std::path::Path, dek: &[u8]) -> Result<VaultData, String> {
+    let vault_dir = data_dir.join(VAULT_DIR);
+
+    // 1. Read + decrypt header
+    let header_enc =
+        crate::io::safe_bounded_read(&vault_dir.join(VAULT_HEADER_FILE), 10 * 1024 * 1024)?;
+    let header_bytes = crate::crypto::decrypt_data(dek, &header_enc)?;
+    let header: VaultHeader = serde_json::from_slice(&header_bytes)
+        .map_err(|_| "Impossibile leggere l'header del database.".to_string())?;
+
+    // 2. Read + decrypt index
+    let index_path = vault_dir.join(VAULT_INDEX_FILE);
+    let index = if index_path.exists() {
+        let index_enc = crate::io::safe_bounded_read(&index_path, 100 * 1024 * 1024)?;
+        let index_bytes = crate::crypto::decrypt_data(dek, &index_enc)?;
+        serde_json::from_slice(&index_bytes)
+            .map_err(|_| "Impossibile leggere l'indice del database.".to_string())?
+    } else {
+        EncryptedBlock {
+            iv: String::new(),
+            tag: String::new(),
+            data: String::new(),
+            compressed: false,
+        }
+    };
+
+    // 3. Read each record file
+    let mut records = BTreeMap::new();
+    let records_dir = vault_dir.join(VAULT_RECORDS_DIR);
+    if records_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&records_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if let Some(id) = name.strip_suffix(".enc") {
+                    let rec_enc = crate::io::safe_bounded_read(&entry.path(), 50 * 1024 * 1024)?;
+                    match crate::crypto::decrypt_data(dek, &rec_enc) {
+                        Ok(rec_bytes) => {
+                            if let Ok(entry_data) =
+                                serde_json::from_slice::<RecordEntry>(&rec_bytes)
+                            {
+                                records.insert(id.to_string(), entry_data);
+                            } else {
+                                eprintln!(
+                                    "[SECURITY] Record {} has invalid structure, skipping",
+                                    id
+                                );
+                            }
+                        }
+                        Err(_) => {
+                            eprintln!("[SECURITY] Record {} failed decryption, skipping (isolated corruption)", id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(header.into_vault(index, records))
+}
+
+/// Migrate monolithic vault.lex to V6 split format
+pub fn migrate_to_split(
+    data_dir: &std::path::Path,
+    vault: &VaultData,
+    dek: &[u8],
+) -> Result<(), String> {
+    eprintln!("[MIGRATION] Migrating vault from monolithic to V6 split format...");
+
+    // Write split format
+    write_split_vault(data_dir, vault, dek)?;
+
+    // Rename old monolithic file as backup (don't delete — keep for 30 days)
+    let old_path = data_dir.join(crate::constants::VAULT_FILE);
+    if old_path.exists() {
+        let backup = data_dir.join("vault.lex.v4-backup");
+        let _ = std::fs::rename(&old_path, &backup);
+        eprintln!("[MIGRATION] Old vault.lex backed up as vault.lex.v4-backup");
+    }
+
+    eprintln!(
+        "[MIGRATION] V6 split migration complete. {} records.",
+        vault.records.len()
+    );
+    Ok(())
+}
+
+/// Write a single record file (V6 incremental save)
+#[allow(dead_code)]
+pub fn write_single_record(
+    data_dir: &std::path::Path,
+    record_id: &str,
+    entry: &RecordEntry,
+    dek: &[u8],
+) -> Result<(), String> {
+    let records_dir = data_dir.join(VAULT_DIR).join(VAULT_RECORDS_DIR);
+    std::fs::create_dir_all(&records_dir)
+        .map_err(|_| "Impossibile creare la cartella records.".to_string())?;
+    let rec_bytes =
+        serde_json::to_vec(entry).map_err(|_| "Errore serializzazione record.".to_string())?;
+    let rec_enc = crate::crypto::encrypt_data(dek, &rec_bytes)?;
+    let safe_id = record_id.replace(['/', '\\', '.'], "_");
+    crate::io::atomic_write_with_sync(&records_dir.join(format!("{}.enc", safe_id)), &rec_enc)
+}
+
+/// Write index file only (V6 incremental)
+#[allow(dead_code)]
+pub fn write_split_index(
+    data_dir: &std::path::Path,
+    index: &EncryptedBlock,
+    dek: &[u8],
+) -> Result<(), String> {
+    let vault_dir = data_dir.join(VAULT_DIR);
+    let index_bytes =
+        serde_json::to_vec(index).map_err(|_| "Errore serializzazione indice.".to_string())?;
+    let index_enc = crate::crypto::encrypt_data(dek, &index_bytes)?;
+    crate::io::atomic_write_with_sync(&vault_dir.join(VAULT_INDEX_FILE), &index_enc)
 }

@@ -25,7 +25,8 @@ pub(crate) fn create_backup(data_dir: &std::path::Path) -> Result<String, String
     }
 
     let bak_dir = backup_dir(data_dir);
-    fs::create_dir_all(&bak_dir).map_err(|e| format!("Impossibile creare la cartella di backup."))?;
+    fs::create_dir_all(&bak_dir)
+        .map_err(|_e| "Impossibile creare la cartella di backup.".to_string())?;
 
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
     let bak_name = format!("vault_{}.lex.bak", timestamp);
@@ -33,9 +34,9 @@ pub(crate) fn create_backup(data_dir: &std::path::Path) -> Result<String, String
 
     // Copy vault file (already encrypted — no need to re-encrypt)
     let vault_data = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024)
-        .map_err(|e| format!("Impossibile leggere il database per il backup."))?;
+        .map_err(|_e| "Impossibile leggere il database per il backup.".to_string())?;
     atomic_write_with_sync(&bak_path, &vault_data)
-        .map_err(|e| format!("Impossibile salvare il backup. Verifica lo spazio su disco."))?;
+        .map_err(|_e| "Impossibile salvare il backup. Verifica lo spazio su disco.".to_string())?;
 
     // Rotate: keep only last MAX_BACKUPS
     rotate_backups(&bak_dir)?;

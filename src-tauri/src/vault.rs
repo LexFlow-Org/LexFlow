@@ -14,7 +14,7 @@ use crate::state::{
     get_vault_dek, get_vault_key, get_vault_version, invalidate_vault_cache, zeroize_password,
     AppState, SecureKey,
 };
-use crate::vault_v4;
+use crate::vault_engine;
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde_json::{json, Value};
 use std::fs;
@@ -39,7 +39,7 @@ pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, Stri
 
     let version = get_vault_version(state);
     let result = if version == 4 {
-        read_vault_v4(state)?
+        read_vault_engine(state)?
     } else {
         // v2 legacy path
         let key = get_vault_key(state)?;
@@ -64,7 +64,7 @@ pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, Stri
 }
 
 /// v4: read vault by decrypting index + all records, reassemble into monolithic JSON.
-fn read_vault_v4(state: &State<AppState>) -> Result<Value, String> {
+fn read_vault_engine(state: &State<AppState>) -> Result<Value, String> {
     let dek = get_vault_dek(state)?;
     let dir = state
         .data_dir
@@ -77,30 +77,33 @@ fn read_vault_v4(state: &State<AppState>) -> Result<Value, String> {
     }
     // FIX: bounded read (500MB cap)
     let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let vault = vault_v4::deserialize_vault(&raw)?;
+    let vault = vault_engine::deserialize_vault(&raw)?;
 
-    let index = vault_v4::decrypt_index(&dek, &vault.index)?;
+    let index = vault_engine::decrypt_index(&dek, &vault.index)?;
 
     let mut result =
         json!({"practices":[], "agenda":[], "contacts":[], "timeLogs":[], "invoices":[]});
     for idx_entry in &index {
         if let Some(record_entry) = vault.records.get(&idx_entry.id) {
-            match vault_v4::read_current_version(record_entry, &dek) {
+            match vault_engine::read_current_version(record_entry, &dek) {
                 Ok(plaintext) => {
-                    match serde_json::from_slice::<Value>(&plaintext) {
-                        Ok(val) => {
+                    // V7: try msgpack first, fallback to JSON (legacy)
+                    let val: Option<Value> = rmp_serde::from_slice(&plaintext)
+                        .ok()
+                        .or_else(|| serde_json::from_slice(&plaintext).ok());
+                    match val {
+                        Some(v) => {
                             if let Some(arr) = result
                                 .get_mut(&idx_entry.field)
                                 .and_then(|v| v.as_array_mut())
                             {
-                                arr.push(val);
+                                arr.push(v);
                             }
                         }
-                        Err(e) => {
-                            // FIX: log malformed JSON instead of silent skip
+                        None => {
                             eprintln!(
-                                "[LexFlow] WARNING: record {} has malformed JSON: {}. Skipping.",
-                                idx_entry.id, e
+                                "[LexFlow] WARNING: record {} unreadable (neither msgpack nor JSON). Skipping.",
+                                idx_entry.id
                             );
                         }
                     }
@@ -127,7 +130,7 @@ pub(crate) fn write_vault_internal(state: &State<AppState>, data: &Value) -> Res
 
     let version = get_vault_version(state);
     if version == 4 {
-        let result = write_vault_v4(state, data);
+        let result = write_vault_engine(state, data);
         // PERF: update cache with new data on success
         if result.is_ok() {
             *state.vault_cache.write().unwrap_or_else(|e| e.into_inner()) = Some(data.clone());
@@ -151,7 +154,7 @@ pub(crate) fn write_vault_internal(state: &State<AppState>, data: &Value) -> Res
 }
 
 /// v4: write vault by encrypting individual records and updating the index.
-fn write_vault_v4(state: &State<AppState>, data: &Value) -> Result<(), String> {
+fn write_vault_engine(state: &State<AppState>, data: &Value) -> Result<(), String> {
     let dek = get_vault_dek(state)?;
     let dir = state
         .data_dir
@@ -160,17 +163,18 @@ fn write_vault_v4(state: &State<AppState>, data: &Value) -> Result<(), String> {
         .clone();
     let path = dir.join(VAULT_FILE);
 
-    // Load existing vault or create fresh
-    let mut vault = if path.exists() {
+    // Load existing vault: try V6 split first, then monolithic
+    let mut vault = if vault_engine::is_split_vault(&dir) {
+        vault_engine::read_split_vault(&dir, &dek)?
+    } else if path.exists() {
         let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-        vault_v4::deserialize_vault(&raw)?
+        vault_engine::deserialize_vault(&raw)?
     } else {
-        // Should not normally happen (vault created at unlock), but handle gracefully
-        return Err("v4 vault file not found".into());
+        return Err("Nessun database trovato.".into());
     };
 
     let fields = ["practices", "agenda", "contacts", "timeLogs", "invoices"];
-    let mut new_index: Vec<vault_v4::IndexEntry> = Vec::new();
+    let mut new_index: Vec<vault_engine::IndexEntry> = Vec::new();
     let mut new_records = std::collections::BTreeMap::new();
 
     for field in &fields {
@@ -186,18 +190,19 @@ fn write_vault_v4(state: &State<AppState>, data: &Value) -> Result<(), String> {
                     continue;
                 }
                 let record_key = format!("{}_{}", field, id);
-                let item_bytes = serde_json::to_vec(item).map_err(|e| e.to_string())?;
+                // V7: serialize with MessagePack (30-40% smaller than JSON)
+                let item_bytes = rmp_serde::to_vec(item).map_err(|e| e.to_string())?;
 
                 // Check if record exists and data changed
                 let mut entry = if let Some(existing) = vault.records.remove(&record_key) {
                     // Check if content changed by comparing plaintext
-                    if let Ok(old_plain) = vault_v4::read_current_version(&existing, &dek) {
+                    if let Ok(old_plain) = vault_engine::read_current_version(&existing, &dek) {
                         if old_plain == item_bytes {
                             // Unchanged — keep existing entry
                             new_records.insert(record_key.clone(), existing);
-                            let title = vault_v4::extract_record_title_pub(item, field);
-                            let tags = vault_v4::extract_record_tags_pub(item, field);
-                            new_index.push(vault_v4::IndexEntry {
+                            let title = vault_engine::extract_record_title_pub(item, field);
+                            let tags = vault_engine::extract_record_tags_pub(item, field);
+                            new_index.push(vault_engine::IndexEntry {
                                 id: record_key,
                                 field: field.to_string(),
                                 title,
@@ -208,25 +213,26 @@ fn write_vault_v4(state: &State<AppState>, data: &Value) -> Result<(), String> {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("")
                                     .to_string(),
+                                summary: vault_engine::extract_record_summary(item, field),
                             });
                             continue;
                         }
                     }
                     existing
                 } else {
-                    vault_v4::RecordEntry {
+                    vault_engine::RecordEntry {
                         versions: vec![],
                         current: 0,
                     }
                 };
 
                 // Encrypt and append new version
-                vault_v4::append_record_version(&mut entry, &dek, &item_bytes)?;
+                vault_engine::append_record_version(&mut entry, &dek, &item_bytes)?;
                 new_records.insert(record_key.clone(), entry);
 
-                let title = vault_v4::extract_record_title_pub(item, field);
-                let tags = vault_v4::extract_record_tags_pub(item, field);
-                new_index.push(vault_v4::IndexEntry {
+                let title = vault_engine::extract_record_title_pub(item, field);
+                let tags = vault_engine::extract_record_tags_pub(item, field);
+                new_index.push(vault_engine::IndexEntry {
                     id: record_key,
                     field: field.to_string(),
                     title,
@@ -237,17 +243,18 @@ fn write_vault_v4(state: &State<AppState>, data: &Value) -> Result<(), String> {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
+                    summary: vault_engine::extract_record_summary(item, field),
                 });
             }
         }
     }
 
     vault.records = new_records;
-    vault.index = vault_v4::encrypt_index(&dek, &new_index)?;
+    vault.index = vault_engine::encrypt_index(&dek, &new_index)?;
     vault.rotation.writes += 1;
 
-    let serialized = vault_v4::serialize_vault(&vault)?;
-    atomic_write_with_sync(&path, &serialized)
+    // V6: write as split files (header + index + individual records)
+    vault_engine::write_split_vault(&dir, &vault, &dek)
 }
 
 // ─── Password validation ────────────────────────────────────
@@ -279,23 +286,23 @@ fn validate_password_strength(password: &str) -> Result<(), Value> {
 // ─── v4 vault creation ──────────────────────────────────────
 
 /// Create a brand new v4 vault and store DEK in state.
-fn init_new_vault_v4(
+fn init_new_vault_engine(
     state: &State<AppState>,
     password: &str,
     dir: &std::path::Path,
 ) -> Result<(), Value> {
     validate_password_strength(password)?;
 
-    let (vault, dek) = vault_v4::create_vault_v4(password).map_err(
-        |e| json!({"success": false, "error": format!("Impossibile creare il database sicuro. Riprova o contatta il supporto.")}),
+    let (vault, dek) = vault_engine::create_vault(password).map_err(
+        |_e| json!({"success": false, "error": format!("Impossibile creare il database sicuro. Riprova o contatta il supporto.")}),
     )?;
 
-    let serialized = vault_v4::serialize_vault(&vault).map_err(
-        |e| json!({"success": false, "error": format!("Errore interno durante il salvataggio. Riprova.")}),
+    let serialized = vault_engine::serialize_vault(&vault).map_err(
+        |_e| json!({"success": false, "error": format!("Errore interno durante il salvataggio. Riprova.")}),
     )?;
 
     atomic_write_with_sync(&dir.join(VAULT_FILE), &serialized).map_err(
-        |e| json!({"success": false, "error": format!("Impossibile salvare il database. Verifica lo spazio su disco.")}),
+        |_e| json!({"success": false, "error": format!("Impossibile salvare il database. Verifica lo spazio su disco.")}),
     )?;
 
     // Store DEK in state
@@ -357,7 +364,7 @@ pub(crate) fn vault_exists(state: State<AppState>) -> bool {
     let vault_path = dir.join(VAULT_FILE);
     if vault_path.exists() {
         if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 10) {
-            if data.starts_with(vault_v4::VAULT_V4_MAGIC) {
+            if data.starts_with(vault_engine::VAULT_MAGIC_V4) {
                 return true;
             }
         }
@@ -404,7 +411,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
 
     if is_new {
         // Create new vault in v4 format
-        match init_new_vault_v4(state, &password, &dir) {
+        match init_new_vault_engine(state, &password, &dir) {
             Ok(()) => {}
             Err(e) => {
                 zeroize_password(password);
@@ -425,17 +432,17 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
     if vault_path.exists() {
         let raw = match crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
             Ok(r) => r,
-            Err(e) => {
+            Err(_e) => {
                 zeroize_password(password);
                 return json!({"success": false, "error": format!("Impossibile leggere il database. Il file potrebbe essere danneggiato.")});
             }
         };
 
-        let version = vault_v4::detect_vault_version(&raw);
+        let version = vault_engine::detect_vault_version(&raw);
 
         if version == 4 {
             // Open v4 vault directly
-            match vault_v4::open_vault_v4(&password, &raw) {
+            match vault_engine::open_vault(&password, &raw) {
                 Ok((vault, dek)) => {
                     // SECURITY: anti-rollback check
                     let counter_path = sec_dir.join(".vault-writes-counter");
@@ -466,12 +473,19 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                         .write()
                         .unwrap_or_else(|e| e.into_inner()) = 4;
 
+                    // V6: migrate monolithic vault to split format if needed
+                    if !vault_engine::is_split_vault(&dir) {
+                        if let Err(e) = vault_engine::migrate_to_split(&dir, &vault, &dek) {
+                            eprintln!("[LexFlow] V6 split migration failed (non-fatal): {}", e);
+                        }
+                    }
+
                     // Perform key rotation if needed (>90 days or >10k writes)
-                    if vault_v4::needs_rotation(&vault.rotation) {
+                    if vault_engine::needs_rotation(&vault.rotation) {
                         eprintln!(
                             "[LexFlow] Key rotation triggered — re-encrypting all records..."
                         );
-                        let kek = match vault_v4::derive_kek(&password, &vault.kdf) {
+                        let kek = match vault_engine::derive_kek(&password, &vault.kdf) {
                             Ok(k) => k,
                             Err(e) => {
                                 eprintln!("[LexFlow] KEK re-derive for rotation failed: {}", e);
@@ -481,11 +495,12 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                         };
                         if !kek.is_empty() {
                             let mut vault_mut = vault;
-                            match vault_v4::rotate_dek(&mut vault_mut, &kek) {
+                            match vault_engine::rotate_dek(&mut vault_mut, &kek) {
                                 Ok(new_dek) => {
-                                    // Write rotated vault
-                                    if let Ok(serialized) = vault_v4::serialize_vault(&vault_mut) {
-                                        let _ = atomic_write_with_sync(&vault_path, &serialized);
+                                    // Write rotated vault (V6 split)
+                                    if vault_engine::write_split_vault(&dir, &vault_mut, &dek)
+                                        .is_ok()
+                                    {
                                         // Update DEK in state
                                         *state
                                             .vault_dek
@@ -561,7 +576,7 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
     if vault_path.exists() {
         // Verify password before reset
         if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
-            if vault_v4::open_vault_v4(&password, &data).is_err() {
+            if vault_engine::open_vault(&password, &data).is_err() {
                 zeroize_password(password);
                 return json!({"success": false, "error": "Password non corretta. Riprova."});
             }
@@ -656,33 +671,33 @@ fn change_password_v4(
     let raw = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024)?;
 
     // Verify current password by opening vault
-    let (mut vault, _dek) = vault_v4::open_vault_v4(current_password, &raw)
+    let (mut vault, _dek) = vault_engine::open_vault(current_password, &raw)
         .map_err(|_| "Password attuale errata".to_string())?;
 
     // Get existing DEK from state
     let dek = get_vault_dek(state)?;
 
     // Generate new KDF params with benchmark
-    let mut new_kdf = vault_v4::benchmark_argon2_params();
+    let mut new_kdf = vault_engine::benchmark_argon2_params();
     let mut salt = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
     new_kdf.salt = B64.encode(salt);
 
     // Derive new KEK
-    let new_kek = vault_v4::derive_kek(new_password, &new_kdf)?;
+    let new_kek = vault_engine::derive_kek(new_password, &new_kdf)?;
 
     // Re-wrap DEK with new KEK
-    let (wrapped, iv) = vault_v4::wrap_dek(&new_kek, &dek)?;
+    let (wrapped, iv) = vault_engine::wrap_dek(&new_kek, &dek)?;
 
     // Update vault header
     vault.kdf = new_kdf;
     vault.wrapped_dek = wrapped;
     vault.dek_iv = iv;
-    vault.mac_version = Some(vault_v4::CURRENT_MAC_VERSION);
-    vault.header_mac = vault_v4::compute_header_mac(&new_kek, &vault);
+    vault.mac_version = Some(vault_engine::CURRENT_MAC_VERSION);
+    vault.header_mac = vault_engine::compute_header_mac(&new_kek, &vault);
 
     // Write updated vault
-    let serialized = vault_v4::serialize_vault(&vault)?;
+    let serialized = vault_engine::serialize_vault(&vault)?;
     atomic_write_with_sync(&vault_path, &serialized)?;
 
     update_bio_password_if_needed(state, new_password);
@@ -735,7 +750,7 @@ pub(crate) fn verify_vault_password(state: State<AppState>, pwd: String) -> Resu
 
     let vault_path = dir.join(VAULT_FILE);
     let valid = if let Ok(raw) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
-        vault_v4::open_vault_v4(&pwd, &raw).is_ok()
+        vault_engine::open_vault(&pwd, &raw).is_ok()
     } else {
         false
     };
@@ -881,20 +896,25 @@ pub(crate) fn get_vault_index(state: State<AppState>) -> Result<Value, String> {
         return Ok(json!([]));
     }
     let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let vault = vault_v4::deserialize_vault(&raw)?;
-    let index = vault_v4::decrypt_index(&dek, &vault.index)?;
+    let vault = vault_engine::deserialize_vault(&raw)?;
+    let index = vault_engine::decrypt_index(&dek, &vault.index)?;
 
-    // Convert to JSON array
+    // Convert to JSON array with summary for lazy list rendering
     let entries: Vec<Value> = index
         .iter()
         .map(|e| {
-            json!({
+            let mut entry = json!({
                 "id": e.id,
                 "field": e.field,
                 "title": e.title,
                 "tags": e.tags,
                 "updatedAt": e.updated_at,
-            })
+            });
+            // V5: include summary if available (for lazy list rendering)
+            if let Some(ref summary) = e.summary {
+                entry["summary"] = summary.clone();
+            }
+            entry
         })
         .collect();
 
@@ -935,10 +955,10 @@ pub(crate) fn load_record_detail(
         .clone();
     let path = dir.join(VAULT_FILE);
     let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let vault = vault_v4::deserialize_vault(&raw)?;
+    let vault = vault_engine::deserialize_vault(&raw)?;
 
     let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
-    let plaintext = vault_v4::read_current_version(entry, &dek)?;
+    let plaintext = vault_engine::read_current_version(entry, &dek)?;
     serde_json::from_slice(&plaintext).map_err(|e| e.to_string())
 }
 
@@ -954,19 +974,19 @@ pub(crate) fn load_record_history(
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let raw = crate::io::safe_bounded_read(&dir.join(VAULT_FILE), 500 * 1024 * 1024)?;
-    let vault = vault_v4::deserialize_vault(&raw)?;
+    let vault = vault_engine::deserialize_vault(&raw)?;
 
     let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
 
     let mut history = Vec::new();
     for ver in &entry.versions {
-        let block = vault_v4::EncryptedBlock {
+        let block = vault_engine::EncryptedBlock {
             iv: ver.iv.clone(),
             tag: ver.tag.clone(),
             data: ver.data.clone(),
             compressed: ver.compressed,
         };
-        if let Ok(plaintext) = vault_v4::decrypt_record(&dek, &block) {
+        if let Ok(plaintext) = vault_engine::decrypt_record(&dek, &block) {
             if let Ok(val) = serde_json::from_slice::<Value>(&plaintext) {
                 history.push(json!({
                     "version": ver.v,
@@ -1119,13 +1139,13 @@ pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, Str
         .clone();
     let path = dir.join(VAULT_FILE);
     let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let mut vault = vault_v4::deserialize_vault(&raw)?;
+    let mut vault = vault_engine::deserialize_vault(&raw)?;
 
-    let display_key = vault_v4::generate_recovery_key(&mut vault, &dek)?;
+    let display_key = vault_engine::generate_recovery_key(&mut vault, &dek)?;
 
     // Recovery fields are NOT in header MAC scope — they're optional add-ons
     // protected by their own AES-GCM-SIV authentication (wrap_dek).
-    let serialized = vault_v4::serialize_vault(&vault)?;
+    let serialized = vault_engine::serialize_vault(&vault)?;
     crate::io::atomic_write_with_sync(&path, &serialized)?;
     invalidate_vault_cache(&state);
 
@@ -1160,10 +1180,12 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
 
     let raw = match crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
         Ok(r) => r,
-        Err(e) => return json!({"success": false, "error": format!("Impossibile leggere i dati. Riprova.")}),
+        Err(_e) => {
+            return json!({"success": false, "error": format!("Impossibile leggere i dati. Riprova.")})
+        }
     };
 
-    match vault_v4::open_vault_with_recovery(&recovery_key, &raw) {
+    match vault_engine::open_vault_with_recovery(&recovery_key, &raw) {
         Ok((_vault, dek)) => {
             *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
                 Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
@@ -1207,9 +1229,9 @@ pub(crate) fn get_vault_health(state: State<AppState>) -> Result<Value, String> 
         return Ok(json!({"version": 4, "error": "Nessun database trovato. Crea un nuovo vault."}));
     }
     let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let vault = vault_v4::deserialize_vault(&raw)?;
+    let vault = vault_engine::deserialize_vault(&raw)?;
 
-    let rotation_due = vault_v4::needs_rotation(&vault.rotation);
+    let rotation_due = vault_engine::needs_rotation(&vault.rotation);
 
     Ok(json!({
         "version": 4,

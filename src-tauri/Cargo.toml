@@ -1,6 +1,6 @@
 [package]
 name = "lexflow"
-version = "2.7.4"
+version = "2.8.0"
 description = "LexFlow -- Gestionale Studio Legale con Crittografia Zero-Knowledge"
 authors = ["Pietro Longo"]
 edition = "2021"
@@ -37,6 +37,7 @@ dirs = "5"
 whoami = "1"
 rand = "0.8"
 zstd = "0.13"
+rmp-serde = "1.3"
 hex = "0.4"
 tokio = { version = "1", features = ["sync", "time"] }
 

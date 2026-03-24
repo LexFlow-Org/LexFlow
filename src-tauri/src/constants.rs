@@ -23,6 +23,12 @@ pub(crate) const MACHINE_ID_FILE: &str = ".machine-id";
 pub(crate) const BIO_SERVICE: &str = "LexFlow_Bio";
 
 pub(crate) const VAULT_MAGIC: &[u8] = b"LEXFLOW_V2_SECURE";
+
+// V6: Split-file vault layout
+pub(crate) const VAULT_DIR: &str = "vault-data";
+pub(crate) const VAULT_HEADER_FILE: &str = "header.enc";
+pub(crate) const VAULT_INDEX_FILE: &str = "index.enc";
+pub(crate) const VAULT_RECORDS_DIR: &str = "records";
 pub(crate) const AES_KEY_LEN: usize = 32;
 pub(crate) const NONCE_LEN: usize = 12;
 

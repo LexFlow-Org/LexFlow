@@ -25,8 +25,8 @@ mod setup;
 mod state;
 mod validation;
 mod vault;
-pub(crate) mod vault_v4;
-mod vault_v4_tests;
+pub(crate) mod vault_engine;
+mod vault_engine_tests;
 mod window;
 
 use state::AppState;
