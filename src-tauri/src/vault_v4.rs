@@ -41,6 +41,11 @@ pub struct VaultV4 {
     pub dek_iv: String,
     pub dek_alg: String,
     pub header_mac: String,
+    /// HMAC computation version — determines which fields are included in the MAC.
+    /// Missing (None) = legacy v1 (included rotation). Current = 2 (excludes rotation).
+    /// The app READS all versions but always WRITES the latest.
+    #[serde(default)]
+    pub mac_version: Option<u32>,
     pub rotation: RotationMeta,
     /// Recovery key: second DEK wrapper (optional, set via generate_recovery_key)
     #[serde(default)]
@@ -316,46 +321,89 @@ pub(crate) fn unwrap_dek(
     Ok(Zeroizing::new(plaintext))
 }
 
+/// Current HMAC version — always used for new writes.
+pub(crate) const CURRENT_MAC_VERSION: u32 = 2;
+
+/// Compute canonical bytes for a given MAC version.
+/// v1 (legacy): included rotation in canonical header
+/// v2 (current): excludes rotation (writes changes on every save, KEK unavailable)
+fn canonical_header_bytes(vault: &VaultV4, mac_ver: u32) -> Vec<u8> {
+    let canonical = if mac_ver <= 1 {
+        // Legacy v1: included rotation
+        serde_json::json!({
+            "dek_alg": vault.dek_alg,
+            "dek_iv": vault.dek_iv,
+            "kdf": vault.kdf,
+            "rotation": vault.rotation,
+            "version": vault.version,
+            "wrapped_dek": vault.wrapped_dek,
+        })
+    } else {
+        // v2+: rotation excluded (changes on every save)
+        serde_json::json!({
+            "dek_alg": vault.dek_alg,
+            "dek_iv": vault.dek_iv,
+            "kdf": vault.kdf,
+            "version": vault.version,
+            "wrapped_dek": vault.wrapped_dek,
+        })
+    };
+    serde_json::to_vec(&canonical).expect("canonical header serialization cannot fail")
+}
+
 /// Compute HMAC-SHA256(KEK, canonical_header) for tamper detection.
-/// The canonical header covers immutable security fields only.
-/// NOTE: `rotation` is excluded because `rotation.writes` changes on every save
-/// and the KEK is not available at write-time (only DEK is stored after unlock).
+/// Always uses CURRENT_MAC_VERSION for new writes.
 pub(crate) fn compute_header_mac(kek: &[u8], vault: &VaultV4) -> String {
-    let canonical = serde_json::json!({
-        "version": vault.version,
-        "kdf": vault.kdf,
-        "wrapped_dek": vault.wrapped_dek,
-        "dek_iv": vault.dek_iv,
-        "dek_alg": vault.dek_alg,
-    });
-    // BTreeMap in serde_json ensures deterministic key ordering
-    let canonical_bytes =
-        serde_json::to_vec(&canonical).expect("canonical header serialization cannot fail");
+    let canonical_bytes = canonical_header_bytes(vault, CURRENT_MAC_VERSION);
     let mut mac =
         <Hmac<Sha256> as Mac>::new_from_slice(kek).expect("HMAC can take key of any size");
     mac.update(&canonical_bytes);
     B64.encode(mac.finalize().into_bytes())
 }
 
-/// Verify header HMAC before attempting decrypt (constant-time via HMAC verify_slice).
-pub fn verify_header_mac(kek: &[u8], vault: &VaultV4) -> Result<(), String> {
+/// Verify header HMAC — tries the vault's declared mac_version first,
+/// then falls back to ALL known versions. This ensures vaults created by
+/// ANY past version of the app can always be opened.
+/// Returns Ok(needs_migration) where true = HMAC was verified with a legacy
+/// version and the vault should be re-saved with CURRENT_MAC_VERSION.
+pub fn verify_header_mac(kek: &[u8], vault: &VaultV4) -> Result<bool, String> {
     let stored_bytes = B64
         .decode(&vault.header_mac)
         .map_err(|_| "Stored header MAC decode failed")?;
-    let canonical = serde_json::json!({
-        "version": vault.version,
-        "kdf": vault.kdf,
-        "wrapped_dek": vault.wrapped_dek,
-        "dek_iv": vault.dek_iv,
-        "dek_alg": vault.dek_alg,
-    });
-    let mut mac =
-        <Hmac<Sha256> as Mac>::new_from_slice(kek).expect("HMAC can take key of any size");
-    mac.update(
-        &serde_json::to_vec(&canonical).expect("canonical header serialization cannot fail"),
-    );
-    mac.verify_slice(&stored_bytes)
-        .map_err(|_| "Header MAC verification failed — vault may be tampered".to_string())
+
+    // Try the declared version first (fast path)
+    let declared_ver = vault.mac_version.unwrap_or(1); // missing = legacy v1
+    {
+        let canonical_bytes = canonical_header_bytes(vault, declared_ver);
+        let mut mac =
+            <Hmac<Sha256> as Mac>::new_from_slice(kek).expect("HMAC can take key of any size");
+        mac.update(&canonical_bytes);
+        if mac.verify_slice(&stored_bytes).is_ok() {
+            // MAC valid — check if migration needed
+            return Ok(declared_ver != CURRENT_MAC_VERSION);
+        }
+    }
+
+    // Fast path failed — try ALL known versions as fallback.
+    // This handles the case where mac_version field is wrong/missing.
+    for ver in [1, 2] {
+        if ver == declared_ver {
+            continue; // already tried
+        }
+        let canonical_bytes = canonical_header_bytes(vault, ver);
+        let mut mac =
+            <Hmac<Sha256> as Mac>::new_from_slice(kek).expect("HMAC can take key of any size");
+        mac.update(&canonical_bytes);
+        if mac.verify_slice(&stored_bytes).is_ok() {
+            eprintln!(
+                "[SECURITY] Header MAC verified with fallback version {} (declared: {}). Will migrate.",
+                ver, declared_ver
+            );
+            return Ok(true); // needs migration
+        }
+    }
+
+    Err("Header MAC verification failed — vault may be tampered".to_string())
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -617,6 +665,7 @@ pub fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<u8>>), 
         dek_iv,
         dek_alg: "aes-256-gcm-siv".to_string(),
         header_mac: String::new(),
+        mac_version: Some(CURRENT_MAC_VERSION),
         wrapped_dek_recovery: None,
         recovery_iv: None,
         recovery_salt: None,
@@ -639,7 +688,7 @@ pub fn create_vault_v4(password: &str) -> Result<(VaultV4, Zeroizing<Vec<u8>>), 
 /// Open an existing v4 vault: derive KEK, verify header MAC, unwrap DEK.
 /// Anti-rollback: verify write counter against stored maximum.
 pub fn open_vault_v4(password: &str, data: &[u8]) -> Result<(VaultV4, Zeroizing<Vec<u8>>), String> {
-    let vault = deserialize_vault(data)?;
+    let mut vault = deserialize_vault(data)?;
 
     if vault.version != 4 {
         return Err(format!("Unsupported vault version: {}", vault.version));
@@ -648,11 +697,22 @@ pub fn open_vault_v4(password: &str, data: &[u8]) -> Result<(VaultV4, Zeroizing<
     // Derive KEK from password + stored params
     let kek = derive_kek(password, &vault.kdf)?;
 
-    // Verify header MAC (constant-time)
-    verify_header_mac(&kek, &vault)?;
+    // Verify header MAC (constant-time) — supports all past MAC versions
+    let needs_mac_migration = verify_header_mac(&kek, &vault)?;
 
     // Unwrap DEK
     let dek = unwrap_dek(&kek, &vault.wrapped_dek, &vault.dek_iv)?;
+
+    // If MAC was verified with a legacy version, re-compute with current version
+    if needs_mac_migration {
+        vault.header_mac = compute_header_mac(&kek, &vault);
+        vault.mac_version = Some(CURRENT_MAC_VERSION);
+        eprintln!(
+            "[SECURITY] Vault header MAC migrated to version {}",
+            CURRENT_MAC_VERSION
+        );
+        // Caller (vault.rs) will persist the updated vault on next write
+    }
 
     Ok((vault, dek))
 }

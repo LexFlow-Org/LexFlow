@@ -678,6 +678,7 @@ fn change_password_v4(
     vault.kdf = new_kdf;
     vault.wrapped_dek = wrapped;
     vault.dek_iv = iv;
+    vault.mac_version = Some(vault_v4::CURRENT_MAC_VERSION);
     vault.header_mac = vault_v4::compute_header_mac(&new_kek, &vault);
 
     // Write updated vault
