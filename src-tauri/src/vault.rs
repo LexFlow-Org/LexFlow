@@ -252,7 +252,17 @@ fn write_vault_v4(state: &State<AppState>, data: &Value) -> Result<(), String> {
 
 // ─── Password validation ────────────────────────────────────
 
+/// Validate password/hash strength.
+/// Since v2.7.0 the frontend pre-hashes passwords with SHA-256 before sending.
+/// The backend receives a 64-char hex hash, so we only validate it's a valid hash.
+/// The actual password strength check (12+ chars, upper, lower, digit, symbol)
+/// is done in the frontend BEFORE hashing.
 fn validate_password_strength(password: &str) -> Result<(), Value> {
+    // Accept SHA-256 hex hashes (64 lowercase hex chars) from frontend pre-hash
+    if password.len() == 64 && password.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Ok(()); // Frontend validated strength before hashing
+    }
+    // Fallback: validate raw password (CLI, tests, direct calls)
     let pwd_strong = password.len() >= 12
         && password.chars().any(|c| c.is_uppercase())
         && password.chars().any(|c| c.is_lowercase())

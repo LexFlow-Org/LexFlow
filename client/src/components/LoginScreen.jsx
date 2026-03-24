@@ -293,7 +293,17 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         : '';
       setError(`Troppi tentativi falliti${attemptsInfo}. Riprova tra ${mm}:${ss}`);
     } else {
-      setError(result.error || 'Password errata');
+      // Translate technical backend errors to user-friendly messages
+      const rawErr = result.error || 'Password errata';
+      if (rawErr.includes('Header MAC verification failed') || rawErr.includes('tampered')) {
+        setError('Il database non è compatibile con questa versione. Esegui un Factory Reset dalle Impostazioni o reinstalla l\'app.');
+      } else if (rawErr.includes('Password troppo debole')) {
+        setError('La password deve avere almeno 12 caratteri, con maiuscole, minuscole, numeri e simboli.');
+      } else if (rawErr.includes('Password errata')) {
+        setError('Password errata. Riprova.');
+      } else {
+        setError(rawErr);
+      }
     }
     setLoading(false);
   };
