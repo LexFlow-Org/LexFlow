@@ -211,7 +211,7 @@ fn check_existing_license_blocks(path: &std::path::Path, new_key: &str) -> Optio
                 .map(|s| s.to_string());
             if existing_id != new_id {
                 return Some(
-                    json!({"success": false, "error": "Una licenza valida è già attiva. Non è possibile sostituirla."}),
+                    json!({"success": false, "error": "Una licenza è già attiva su questa installazione."}),
                 );
             }
         }
@@ -222,7 +222,7 @@ fn check_existing_license_blocks(path: &std::path::Path, new_key: &str) -> Optio
             && extract_key_id(existing_key) != new_id
         {
             return Some(
-                json!({"success": false, "error": "Una licenza valida è già attiva. Non è possibile sostituirla."}),
+                json!({"success": false, "error": "Una licenza è già attiva su questa installazione."}),
             );
         }
     }
@@ -273,7 +273,7 @@ fn check_burned_key_registry(
 ) -> Result<(), Value> {
     match is_key_burned(sec_dir, key, fingerprint) {
         Ok(true) => Err(
-            json!({"success": false, "error": "Questa chiave è già stata utilizzata e non può essere riattivata."}),
+            json!({"success": false, "error": "Questa chiave è già stata utilizzata. Ogni chiave è monouso."}),
         ),
         Err(e) => {
             eprintln!("[SECURITY] burned-keys registry unreadable: {}", e);

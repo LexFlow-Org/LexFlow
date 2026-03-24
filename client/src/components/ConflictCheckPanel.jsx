@@ -37,7 +37,7 @@ export default function ConflictCheckPanel({ onSelectPractice }) {
       setSearched(true);
     } catch (e) {
       console.error('Conflict check failed:', e);
-      toast.error('Errore verifica conflitti');
+      toast.error('Impossibile verificare i conflitti. Riprova.');
       setResults({ practiceMatches: [], contactMatches: [] });
       setSearched(true);
     }

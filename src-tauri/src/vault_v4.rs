@@ -317,7 +317,7 @@ pub(crate) fn unwrap_dek(
                 aad: b"LEXFLOW-DEK-WRAP",
             },
         )
-        .map_err(|_| "DEK unwrap failed — wrong password or corrupted vault")?;
+        .map_err(|_| "Password non corretta o database danneggiato.")?;
     Ok(Zeroizing::new(plaintext))
 }
 
@@ -403,7 +403,7 @@ pub fn verify_header_mac(kek: &[u8], vault: &VaultV4) -> Result<bool, String> {
         }
     }
 
-    Err("Header MAC verification failed — vault may be tampered".to_string())
+    Err("Il database non è verificabile. Potrebbe essere stato modificato o è di una versione incompatibile.".to_string())
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -467,7 +467,7 @@ pub(crate) fn decrypt_record(dek: &[u8], block: &EncryptedBlock) -> Result<Vec<u
                 aad: b"LEXFLOW-RECORD",
             },
         )
-        .map_err(|_| "Record decryption failed — corrupted or wrong key".to_string())?;
+        .map_err(|_| "Impossibile leggere questo fascicolo. Il dato potrebbe essere danneggiato.".to_string())?;
 
     // PERF: decompress if compressed flag is set
     if block.compressed {

@@ -287,15 +287,15 @@ fn init_new_vault_v4(
     validate_password_strength(password)?;
 
     let (vault, dek) = vault_v4::create_vault_v4(password).map_err(
-        |e| json!({"success": false, "error": format!("Errore creazione vault v4: {}", e)}),
+        |e| json!({"success": false, "error": format!("Impossibile creare il database sicuro. Riprova o contatta il supporto.")}),
     )?;
 
     let serialized = vault_v4::serialize_vault(&vault).map_err(
-        |e| json!({"success": false, "error": format!("Errore serializzazione: {}", e)}),
+        |e| json!({"success": false, "error": format!("Errore interno durante il salvataggio. Riprova.")}),
     )?;
 
     atomic_write_with_sync(&dir.join(VAULT_FILE), &serialized).map_err(
-        |e| json!({"success": false, "error": format!("Errore scrittura vault: {}", e)}),
+        |e| json!({"success": false, "error": format!("Impossibile salvare il database. Verifica lo spazio su disco.")}),
     )?;
 
     // Store DEK in state
@@ -427,7 +427,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
             Ok(r) => r,
             Err(e) => {
                 zeroize_password(password);
-                return json!({"success": false, "error": format!("Errore lettura vault: {}", e)});
+                return json!({"success": false, "error": format!("Impossibile leggere il database. Il file potrebbe essere danneggiato.")});
             }
         };
 
@@ -449,7 +449,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                             vault.rotation.writes, stored_counter
                         );
                         zeroize_password(password);
-                        return json!({"success": false, "error": "Possibile rollback del vault rilevato. Il file vault potrebbe essere stato sostituito con una versione precedente. Contattare il supporto."});
+                        return json!({"success": false, "error": "Rilevata un'anomalia nel database. Per sicurezza, contatta il supporto tecnico."});
                     }
                     // Update stored counter
                     if vault.rotation.writes > stored_counter {
@@ -532,7 +532,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
 
     // No vault file found
     zeroize_password(password);
-    json!({"success": false, "error": "Vault non trovato"})
+    json!({"success": false, "error": "Nessun database trovato."})
 }
 
 #[tauri::command]
@@ -563,7 +563,7 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
         if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
             if vault_v4::open_vault_v4(&password, &data).is_err() {
                 zeroize_password(password);
-                return json!({"success": false, "error": "Password errata"});
+                return json!({"success": false, "error": "Password non corretta. Riprova."});
             }
         }
     }
@@ -1155,12 +1155,12 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
     let vault_path = dir.join(VAULT_FILE);
 
     if !vault_path.exists() {
-        return json!({"success": false, "error": "Nessun vault trovato"});
+        return json!({"success": false, "error": "Nessun database trovato."});
     }
 
     let raw = match crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
         Ok(r) => r,
-        Err(e) => return json!({"success": false, "error": format!("Errore lettura: {}", e)}),
+        Err(e) => return json!({"success": false, "error": format!("Impossibile leggere i dati. Riprova.")}),
     };
 
     match vault_v4::open_vault_with_recovery(&recovery_key, &raw) {
@@ -1204,7 +1204,7 @@ pub(crate) fn get_vault_health(state: State<AppState>) -> Result<Value, String> 
         .clone();
     let path = dir.join(VAULT_FILE);
     if !path.exists() {
-        return Ok(json!({"version": 4, "error": "Vault file not found"}));
+        return Ok(json!({"version": 4, "error": "Nessun database trovato. Crea un nuovo vault."}));
     }
     let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
     let vault = vault_v4::deserialize_vault(&raw)?;

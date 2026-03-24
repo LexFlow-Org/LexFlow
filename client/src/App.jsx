@@ -395,7 +395,7 @@ export default function App() {
         ]);
       } catch (e) {
         console.error('[App] savePractices pipeline error:', e);
-        toast.error('Errore salvataggio fascicoli');
+        toast.error('Impossibile salvare i fascicoli. Riprova.');
       }
     }
   };
@@ -411,7 +411,7 @@ export default function App() {
       ]);
     } catch (e) {
       console.error('[App] saveAgenda error:', e);
-      toast.error('Errore salvataggio agenda');
+      toast.error('Impossibile salvare l\'agenda. Riprova.');
     }
   };
 

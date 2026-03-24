@@ -70,10 +70,10 @@ function BiometricLockScreen({ practice, onBack, onUnlock }) {
     try {
       const result = await api.bioLogin();
       if (result) { onUnlock(); return; }
-      toast.error('Autenticazione non riuscita');
+      toast.error('Verifica biometrica non riuscita. Riprova.');
     } catch (err) {
       console.debug('[PracticeDetail] Biometric retry failed', err);
-      toast.error('Autenticazione fallita');
+      toast.error('Verifica biometrica fallita. Usa la password.');
     }
   };
 
@@ -298,7 +298,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
         await update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
         toast.success('Cartella collegata');
       } catch {
-        toast.error('Errore collegamento cartella');
+        toast.error('Impossibile collegare la cartella. Verifica i permessi.');
       }
     }
   };
@@ -309,7 +309,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       await update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
       toast.success('Cartella scollegata');
     } catch {
-      toast.error('Errore rimozione cartella');
+      toast.error('Impossibile rimuovere il collegamento alla cartella.');
     }
   };
 
@@ -325,7 +325,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
     try {
       await api.openPath(path);
     } catch {
-      toast.error('Impossibile aprire la cartella');
+      toast.error('Impossibile aprire la cartella. Verifica che esista ancora.');
     }
   };
 
@@ -352,15 +352,15 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       } else if (result?.error) {
         console.warn('[PracticeDetail] PDF export returned error:', result.error);
         const msg = result.error?.message || String(result.error);
-        toast.error(`Errore export: ${msg}`);
+        toast.error('Errore durante l\'esportazione. Riprova.');
       } else {
         console.warn('[PracticeDetail] PDF export returned failure:', result);
-        toast.error('Errore durante la generazione del PDF');
+        toast.error('Impossibile generare il PDF. Riprova.');
       }
     } catch (err) {
       console.error('[PracticeDetail] PDF export failed:', err);
       toast.dismiss(toastId);
-      toast.error(`Errore export: ${err?.message || 'errore sconosciuto'}`);
+      toast.error('Impossibile esportare il fascicolo. Riprova.');
     }
   };
 
@@ -392,13 +392,13 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
     try {
       const result = await api.verifyVaultPassword(exportPwd);
       if (!result?.valid) {
-        toast.error('Password errata — esportazione negata');
+        toast.error('Password non corretta. Esportazione non autorizzata.');
         setExportPwd('');
         return;
       }
     } catch (err) {
       console.error('[PracticeDetail] Export password verification failed:', err);
-      toast.error('Errore verifica password');
+      toast.error('Impossibile verificare la password. Riprova.');
       setExportPwd('');
       return;
     }
@@ -417,7 +417,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       }
     } catch (err) {
       console.error('[PracticeDetail] File upload failed:', err);
-      toast.error('Errore nel caricamento');
+      toast.error('Impossibile caricare il documento.');
     }
   };
 
@@ -427,7 +427,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       await update({ attachments });
       toast.success('Documento rimosso');
     } catch {
-      toast.error('Errore rimozione documento');
+      toast.error('Impossibile rimuovere il documento.');
     }
   };
 
@@ -448,7 +448,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       setNewNote('');
       toast.success('Nota aggiunta');
     } catch {
-      toast.error('Errore salvataggio nota');
+      toast.error('Impossibile salvare la nota. Riprova.');
     }
   };
 
@@ -458,7 +458,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       await update({ diary: updatedDiary });
       toast.success('Nota eliminata');
     } catch {
-      toast.error('Errore eliminazione nota');
+      toast.error('Impossibile eliminare la nota.');
     }
   };
 
@@ -499,7 +499,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       setNewDeadlineCustomTime('08:00');
       toast.success('Scadenza aggiunta');
     } catch {
-      toast.error('Errore salvataggio scadenza');
+      toast.error('Impossibile salvare la scadenza. Riprova.');
     }
   };
 
@@ -509,7 +509,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       await update({ deadlines });
       toast.success('Scadenza eliminata');
     } catch {
-      toast.error('Errore eliminazione scadenza');
+      toast.error('Impossibile eliminare la scadenza.');
     }
   };
 
@@ -557,7 +557,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 await update({ status: newStatus });
                 toast.success(newStatus === 'active' ? 'Fascicolo riaperto' : 'Fascicolo archiviato');
               } catch {
-                toast.error('Errore cambio stato fascicolo');
+                toast.error('Impossibile aggiornare lo stato del fascicolo.');
               }
             }}
           />

@@ -47,7 +47,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
       setShowResetModal(false);
       setIsNew(true); setPassword(''); setConfirm(''); setError(''); setBioSaved(false);
     } else {
-      setResetError(result?.error || 'Password errata.');
+      setResetError(result?.error || 'Password non corretta.');
     }
   }, [resetPassword]);
 
@@ -89,9 +89,9 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     setShowPasswordField(true);
 
     if (nextFailed >= MAX_BIO_ATTEMPTS) {
-      setError('Troppi tentativi falliti. Usa la password.');
+      setError('Troppi tentativi biometrici falliti. Inserisci la password manualmente.');
     } else if (!isAutomatic && !isAndroidHandoff) {
-      setError('Riconoscimento fallito o annullato.');
+      setError('Riconoscimento biometrico non riuscito. Riprova o usa la password.');
     }
   };
 
@@ -182,7 +182,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         await initBiometrics();
       } catch (err) {
         console.error("Errore inizializzazione vault:", err);
-        setError("Errore critico di sistema");
+        setError("Si è verificato un errore di sistema. Riavvia l'applicazione.");
       }
     };
 
@@ -293,14 +293,22 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         : '';
       setError(`Troppi tentativi falliti${attemptsInfo}. Riprova tra ${mm}:${ss}`);
     } else {
-      // Translate technical backend errors to user-friendly messages
-      const rawErr = result.error || 'Password errata';
-      if (rawErr.includes('Header MAC verification failed') || rawErr.includes('tampered')) {
-        setError('Il database non è compatibile con questa versione. Esegui un Factory Reset dalle Impostazioni o reinstalla l\'app.');
-      } else if (rawErr.includes('Password troppo debole')) {
-        setError('La password deve avere almeno 12 caratteri, con maiuscole, minuscole, numeri e simboli.');
-      } else if (rawErr.includes('Password errata')) {
-        setError('Password errata. Riprova.');
+      // Translate backend errors to user-friendly messages with suggested actions
+      const rawErr = result.error || 'Password non corretta.';
+      if (rawErr.includes('non è verificabile') || rawErr.includes('tampered') || rawErr.includes('incompatibile')) {
+        setError('Il database non è compatibile con questa versione. Vai in Impostazioni e usa Factory Reset per ricominciare.');
+      } else if (rawErr.includes('Password troppo debole') || rawErr.includes('12 caratteri')) {
+        setError('La password deve avere almeno 12 caratteri, con maiuscole, minuscole, numeri e un simbolo.');
+      } else if (rawErr.includes('Password non corretta') || rawErr.includes('Password errata')) {
+        setError('Password non corretta. Riprova.');
+      } else if (rawErr.includes('danneggiato')) {
+        setError('Il database risulta danneggiato. Prova a importare un backup dalle Impostazioni.');
+      } else if (rawErr.includes('spazio su disco')) {
+        setError('Spazio su disco insufficiente. Libera spazio e riprova.');
+      } else if (rawErr.includes('Nessun database')) {
+        setError('Nessun database trovato. Crea un nuovo vault con una password sicura.');
+      } else if (rawErr.includes('anomalia')) {
+        setError('Rilevata un\'anomalia di sicurezza. Contatta il supporto tecnico.');
       } else {
         setError(rawErr);
       }

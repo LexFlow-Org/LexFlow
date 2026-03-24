@@ -161,12 +161,12 @@ pub(crate) async fn import_vault(
 
         // Import as v4 vault
         let (vault, dek) = vault_v4::create_vault_v4(&pwd)
-            .map_err(|e| format!("Errore creazione vault v4: {}", e))?;
+            .map_err(|e| format!("Impossibile creare il database durante l'importazione. Riprova."))?;
 
         // Write imported data into the new v4 vault
         // First write the empty v4 vault, then set state, then write data via write_vault_internal
         let serialized = vault_v4::serialize_vault(&vault)
-            .map_err(|e| format!("Errore serializzazione: {}", e))?;
+            .map_err(|e| format!("Errore durante l'importazione. Riprova."))?;
         atomic_write_with_sync(&dir.join(VAULT_FILE), &serialized)?;
 
         *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
