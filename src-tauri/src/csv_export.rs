@@ -34,6 +34,106 @@ pub(crate) fn escape_csv(s: &str) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_escape_csv_simple() {
+        assert_eq!(escape_csv("hello"), "hello");
+        assert_eq!(escape_csv("Mario Rossi"), "Mario Rossi");
+    }
+
+    #[test]
+    fn test_escape_csv_comma() {
+        assert_eq!(escape_csv("Rossi, Mario"), "\"Rossi, Mario\"");
+    }
+
+    #[test]
+    fn test_escape_csv_quotes() {
+        assert_eq!(escape_csv("Detto \"il capo\""), "\"Detto \"\"il capo\"\"\"");
+    }
+
+    #[test]
+    fn test_escape_csv_newline() {
+        assert_eq!(escape_csv("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn test_escape_csv_carriage_return() {
+        assert_eq!(escape_csv("a\rb"), "\"a\rb\"");
+    }
+
+    #[test]
+    fn test_escape_csv_formula_injection_equals() {
+        let result = escape_csv("=CMD(\"calc\")");
+        // Result is quoted because of inner ", but the ' prefix neutralizes the formula
+        assert!(result.contains("'=CMD"), "Formula starting with = must contain ' prefix: got {}", result);
+    }
+
+    #[test]
+    fn test_escape_csv_formula_injection_plus() {
+        let result = escape_csv("+1+1");
+        assert!(result.starts_with("'"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_escape_csv_formula_injection_minus() {
+        let result = escape_csv("-1-1");
+        assert!(result.starts_with("'"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_escape_csv_formula_injection_at() {
+        let result = escape_csv("@SUM(A1:A10)");
+        assert!(result.starts_with("'"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_escape_csv_formula_injection_tab() {
+        let result = escape_csv("\t=evil");
+        assert!(result.starts_with("'"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_escape_csv_formula_injection_null() {
+        let result = escape_csv("\0=evil");
+        assert!(result.starts_with("'"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_escape_csv_formula_with_leading_spaces() {
+        // trim_start is used, so "  =CMD" should still be caught
+        let result = escape_csv("  =CMD(\"calc\")");
+        // Contains ' prefix for formula neutralization (may also be quoted due to ")
+        assert!(result.contains("'"), "Formula with spaces must contain ' prefix: got {}", result);
+    }
+
+    #[test]
+    fn test_escape_csv_empty() {
+        assert_eq!(escape_csv(""), "");
+    }
+
+    #[test]
+    fn test_escape_csv_formula_plus_comma() {
+        // Formula injection + comma → both prefix and quoting
+        let result = escape_csv("+1,2");
+        assert!(result.contains("'"), "Must contain ' prefix: got {}", result);
+        assert!(result.contains("\""), "Must be quoted due to comma: got {}", result);
+    }
+
+    #[test]
+    fn test_escape_csv_realistic_legal_text() {
+        let text = "Avv. Mario Rossi — Studio Legale \"Rossi & Partners\", Via Roma 42";
+        let escaped = escape_csv(text);
+        // Should be quoted (contains comma and quotes)
+        assert!(escaped.starts_with("\""));
+        assert!(escaped.ends_with("\""));
+        // Inner quotes should be doubled
+        assert!(escaped.contains("\"\"Rossi"));
+    }
+}
+
 fn value_to_str(v: &Value, field: &str) -> String {
     v.get(field)
         .and_then(|f| f.as_str())

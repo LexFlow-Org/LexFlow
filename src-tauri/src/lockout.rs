@@ -234,3 +234,178 @@ pub(crate) fn clear_lockout(state: &State<AppState>, sec_dir: &std::path::Path) 
     *state.locked_until.lock().unwrap_or_else(|e| e.into_inner()) = None;
     lockout_clear(sec_dir);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("lexflow_lockout_test_{}", rand::random::<u64>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn ensure_machine_id() {
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        {
+            let _ = crate::platform::MACHINE_ID_CACHE.set("test_machine_id_for_lockout".to_string());
+        }
+    }
+
+    #[test]
+    fn test_lockout_save_load_roundtrip() {
+        ensure_machine_id();
+        let dir = test_dir();
+        lockout_save(&dir, 5, None);
+        let (attempts, locked_until) = lockout_load(&dir);
+        assert_eq!(attempts, 5);
+        assert!(locked_until.is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_lockout_save_load_with_time() {
+        ensure_machine_id();
+        let dir = test_dir();
+        let future = SystemTime::now() + Duration::from_secs(300);
+        lockout_save(&dir, 7, Some(future));
+        let (attempts, locked_until) = lockout_load(&dir);
+        assert_eq!(attempts, 7);
+        assert!(locked_until.is_some());
+        // Locked until should be roughly 300s from now
+        let remaining = locked_until
+            .unwrap()
+            .duration_since(SystemTime::now())
+            .unwrap()
+            .as_secs();
+        assert!(remaining > 290 && remaining <= 300);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_lockout_load_missing_file() {
+        ensure_machine_id();
+        let dir = test_dir();
+        let (attempts, locked_until) = lockout_load(&dir);
+        assert_eq!(attempts, 0);
+        assert!(locked_until.is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_lockout_load_tampered_hmac() {
+        ensure_machine_id();
+        let dir = test_dir();
+        lockout_save(&dir, 3, None);
+        // Tamper the file
+        let path = dir.join(LOCKOUT_FILE);
+        let content = std::fs::read_to_string(&path).unwrap();
+        let tampered = format!("{}TAMPERED", content);
+        std::fs::write(&path, tampered).unwrap();
+        let (attempts, _) = lockout_load(&dir);
+        assert_eq!(attempts, DEK_WIPE_THRESHOLD, "Tampered HMAC → fail-closed");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_lockout_load_invalid_format() {
+        ensure_machine_id();
+        let dir = test_dir();
+        let path = dir.join(LOCKOUT_FILE);
+        std::fs::write(&path, "garbage data without colons").unwrap();
+        let (attempts, _) = lockout_load(&dir);
+        assert_eq!(attempts, DEK_WIPE_THRESHOLD, "Invalid format → fail-closed");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_lockout_load_empty_file() {
+        ensure_machine_id();
+        let dir = test_dir();
+        let path = dir.join(LOCKOUT_FILE);
+        std::fs::write(&path, "").unwrap();
+        let (attempts, _) = lockout_load(&dir);
+        assert_eq!(attempts, 0);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_lockout_clear() {
+        ensure_machine_id();
+        let dir = test_dir();
+        lockout_save(&dir, 5, None);
+        assert!(dir.join(LOCKOUT_FILE).exists());
+        lockout_clear(&dir);
+        assert!(!dir.join(LOCKOUT_FILE).exists());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_compute_backoff_no_delay_first_3() {
+        assert!(compute_backoff_duration(0).is_none());
+        assert!(compute_backoff_duration(1).is_none());
+        assert!(compute_backoff_duration(2).is_none());
+    }
+
+    #[test]
+    fn test_compute_backoff_exponential() {
+        assert_eq!(compute_backoff_duration(3), Some(5));
+        assert_eq!(compute_backoff_duration(4), Some(15));
+        assert_eq!(compute_backoff_duration(5), Some(30));
+        assert_eq!(compute_backoff_duration(6), Some(60));
+        assert_eq!(compute_backoff_duration(7), Some(300));
+        assert_eq!(compute_backoff_duration(8), Some(900));
+    }
+
+    #[test]
+    fn test_compute_backoff_saturates() {
+        // Beyond BACKOFF_DELAYS length → stays at last value
+        assert_eq!(compute_backoff_duration(100), Some(900));
+        assert_eq!(compute_backoff_duration(255), Some(900));
+    }
+
+    #[test]
+    fn test_lockout_hmac_deterministic() {
+        ensure_machine_id();
+        let h1 = lockout_hmac("5:0");
+        let h2 = lockout_hmac("5:0");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_lockout_hmac_different_data() {
+        ensure_machine_id();
+        let h1 = lockout_hmac("5:0");
+        let h2 = lockout_hmac("6:0");
+        assert_ne!(h1, h2);
+    }
+
+    // ─── Attacker simulation: file replacement ───────────────
+
+    #[test]
+    fn test_attacker_resets_counter_to_zero() {
+        ensure_machine_id();
+        let dir = test_dir();
+        lockout_save(&dir, 9, None);
+        // Attacker writes a fake lockout file with 0 attempts
+        let path = dir.join(LOCKOUT_FILE);
+        std::fs::write(&path, "0:0:fakehash").unwrap();
+        let (attempts, _) = lockout_load(&dir);
+        // HMAC mismatch → fail-closed at max
+        assert_eq!(attempts, DEK_WIPE_THRESHOLD);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_attacker_deletes_lockout_file() {
+        ensure_machine_id();
+        let dir = test_dir();
+        lockout_save(&dir, 8, Some(SystemTime::now() + Duration::from_secs(900)));
+        // Attacker deletes the file
+        std::fs::remove_file(dir.join(LOCKOUT_FILE)).unwrap();
+        let (attempts, _) = lockout_load(&dir);
+        // File missing → resets to 0 (attacker wins this one, but in-memory state persists)
+        assert_eq!(attempts, 0);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}

@@ -84,6 +84,68 @@ pub(crate) fn mlock_buffer(_ptr: *const u8, _len: usize) -> bool {
 #[cfg(not(unix))]
 pub(crate) fn munlock_buffer(_ptr: *const u8, _len: usize) {}
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sensitive_debug_redacted() {
+        let s = Sensitive("my_secret_key_12345");
+        let debug = format!("{:?}", s);
+        assert_eq!(debug, "[REDACTED]");
+        assert!(!debug.contains("secret"));
+    }
+
+    #[test]
+    fn test_sensitive_display_redacted() {
+        let s = Sensitive(vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        let display = format!("{}", s);
+        assert_eq!(display, "[REDACTED]");
+    }
+
+    #[test]
+    fn test_sensitive_inner_accessible() {
+        let s = Sensitive(42);
+        assert_eq!(s.0, 42);
+    }
+
+    #[test]
+    fn test_secure_delete_nonexistent() {
+        let path = std::path::Path::new("/tmp/lexflow_test_nonexistent_file_xyz");
+        assert!(secure_delete_file(path).is_ok());
+    }
+
+    #[test]
+    fn test_secure_delete_existing_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("lexflow_sec_del_test_{}", rand::random::<u64>()));
+        std::fs::write(&path, b"sensitive data that must be wiped").unwrap();
+        assert!(path.exists());
+        secure_delete_file(&path).unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_secure_delete_empty_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("lexflow_sec_del_empty_{}", rand::random::<u64>()));
+        std::fs::write(&path, b"").unwrap();
+        secure_delete_file(&path).unwrap();
+        assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_mlock_munlock() {
+        let data = vec![0xAAu8; 64];
+        let locked = mlock_buffer(data.as_ptr(), data.len());
+        // mlock may fail if RLIMIT_MEMLOCK is too low — both outcomes are valid
+        if locked {
+            munlock_buffer(data.as_ptr(), data.len());
+        }
+    }
+}
+
 /// Secure overwrite + delete for temporary unencrypted files (PDF exports, etc.)
 /// SECURITY FIX: open file FIRST (via fd), then fstat the fd, then overwrite.
 /// This prevents TOCTOU symlink swap between exists()/metadata() and open().

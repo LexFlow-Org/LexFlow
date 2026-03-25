@@ -477,6 +477,270 @@ pub(crate) fn search_vault(
     Ok(json!(enriched))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── Tokenization ────────────────────────────────────────
+
+    #[test]
+    fn test_tokenize_basic() {
+        let tokens = tokenize("avvocato difensore civile");
+        assert!(tokens.contains(&"avvocato".to_string()));
+        assert!(tokens.contains(&"difensore".to_string()));
+        assert!(tokens.contains(&"civile".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_removes_stop_words() {
+        let tokens = tokenize("il fascicolo della causa");
+        assert!(!tokens.contains(&"il".to_string()));
+        assert!(!tokens.contains(&"della".to_string()));
+        assert!(tokens.contains(&"fascicolo".to_string()));
+        assert!(tokens.contains(&"causa".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_filters_short_words() {
+        let tokens = tokenize("io la di un me");
+        assert!(tokens.is_empty(), "All words < 3 chars or stop words should be filtered");
+    }
+
+    #[test]
+    fn test_tokenize_case_insensitive() {
+        let tokens = tokenize("TRIBUNALE Avvocato MiLaNo");
+        assert!(tokens.contains(&"tribunale".to_string()));
+        assert!(tokens.contains(&"avvocato".to_string()));
+        assert!(tokens.contains(&"milano".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_special_chars() {
+        let tokens = tokenize("art. 1218 c.c. — responsabilità");
+        assert!(tokens.contains(&"1218".to_string()) || tokens.contains(&"responsabilità".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_empty() {
+        assert!(tokenize("").is_empty());
+    }
+
+    #[test]
+    fn test_tokenize_legal_stop_words() {
+        let tokens = tokenize("articolo comma legge decreto norma");
+        // All are legal stop words
+        assert!(tokens.is_empty());
+    }
+
+    // ─── Trigrams ────────────────────────────────────────────
+
+    #[test]
+    fn test_trigrams_normal_word() {
+        let tris = trigrams("avvocato");
+        assert!(tris.contains(&"avv".to_string()));
+        assert!(tris.contains(&"vvo".to_string()));
+        assert!(tris.contains(&"voc".to_string()));
+        assert!(tris.contains(&"oca".to_string()));
+        assert!(tris.contains(&"cat".to_string()));
+        assert!(tris.contains(&"ato".to_string()));
+        assert_eq!(tris.len(), 6); // 8 chars - 2 = 6 trigrams
+    }
+
+    #[test]
+    fn test_trigrams_exactly_3_chars() {
+        let tris = trigrams("abc");
+        assert_eq!(tris, vec!["abc"]);
+    }
+
+    #[test]
+    fn test_trigrams_short_word() {
+        let tris = trigrams("ab");
+        assert_eq!(tris, vec!["ab"]); // used as-is
+    }
+
+    #[test]
+    fn test_trigrams_single_char() {
+        let tris = trigrams("a");
+        assert_eq!(tris, vec!["a"]);
+    }
+
+    // ─── SearchIndex ─────────────────────────────────────────
+
+    #[test]
+    fn test_search_index_add_and_find() {
+        let mut idx = SearchIndex::new();
+        idx.add_document("p_001", "Mario Rossi causa civile risarcimento danni", 1);
+        idx.add_document("p_002", "Anna Bianchi ricorso lavoro pensione", 1);
+
+        let results = idx.search("Rossi", 10);
+        assert!(!results.is_empty());
+        assert_eq!(results[0].0, "p_001");
+    }
+
+    #[test]
+    fn test_search_index_bm25_ranking() {
+        let mut idx = SearchIndex::new();
+        // Doc with more mentions of "risarcimento" should rank higher
+        idx.add_document("p_001", "risarcimento danni contrattuale", 1);
+        idx.add_document("p_002", "risarcimento risarcimento risarcimento danni enormi", 1);
+
+        let results = idx.search("risarcimento", 10);
+        assert!(results.len() >= 2);
+        // p_002 has higher TF for "risarcimento" → should score higher
+        assert_eq!(results[0].0, "p_002");
+    }
+
+    #[test]
+    fn test_search_index_no_results() {
+        let mut idx = SearchIndex::new();
+        idx.add_document("p_001", "Mario Rossi causa civile", 1);
+        let results = idx.search("penale", 10);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_index_remove_document() {
+        let mut idx = SearchIndex::new();
+        idx.add_document("p_001", "Mario Rossi", 1);
+        idx.add_document("p_002", "Anna Bianchi", 1);
+        idx.remove_document("p_001");
+
+        let results = idx.search("Mario", 10);
+        assert!(results.is_empty(), "Removed document should not appear in results");
+        assert_eq!(idx.total_docs, 1);
+    }
+
+    #[test]
+    fn test_search_index_fuzzy_trigram() {
+        let mut idx = SearchIndex::new();
+        idx.add_document("p_001", "risarcimento", 1);
+        // Search with partial match (same trigrams)
+        let results = idx.search("risarc", 10);
+        assert!(!results.is_empty(), "Trigram search should find partial matches");
+    }
+
+    #[test]
+    fn test_search_index_case_insensitive() {
+        let mut idx = SearchIndex::new();
+        idx.add_document("p_001", "TRIBUNALE CIVILE ROMA", 1);
+        let results = idx.search("tribunale", 10);
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_search_index_limit() {
+        let mut idx = SearchIndex::new();
+        for i in 0..20 {
+            idx.add_document(&format!("p_{:03}", i), &format!("fascicolo numero {}", i), 1);
+        }
+        let results = idx.search("fascicolo", 5);
+        assert_eq!(results.len(), 5);
+    }
+
+    #[test]
+    fn test_search_index_empty_query() {
+        let mut idx = SearchIndex::new();
+        idx.add_document("p_001", "Mario Rossi", 1);
+        // Empty query after tokenization (all stop words)
+        let results = idx.search("il la di", 10);
+        // Falls back to trigram search, might return results or not
+        // The important thing is it doesn't panic
+        let _ = results;
+    }
+
+    // ─── extract_searchable_text ─────────────────────────────
+
+    #[test]
+    fn test_extract_searchable_text_practices() {
+        let record = serde_json::json!({
+            "client": "Mario Rossi",
+            "counterparty": "INPS",
+            "object": "Ricorso",
+            "description": "Causa lavoro",
+            "court": "Tribunale Roma",
+            "code": "2026/001",
+            "diary": [
+                {"text": "Prima udienza fissata"},
+                {"text": "Depositate memorie"}
+            ]
+        });
+        let text = extract_searchable_text(&record, "practices");
+        assert!(text.contains("Mario Rossi"));
+        assert!(text.contains("INPS"));
+        assert!(text.contains("Prima udienza fissata"));
+        assert!(text.contains("Depositate memorie"));
+    }
+
+    #[test]
+    fn test_extract_searchable_text_contacts() {
+        let record = serde_json::json!({
+            "name": "Avv. Giuseppe Neri",
+            "email": "neri@studio.it",
+            "pec": "neri@pec.it",
+            "phone": "+39 02 1234567",
+            "fiscalCode": "NRSGPP80A01F205X",
+            "vatNumber": "12345678901",
+            "notes": "Controparte abituale"
+        });
+        let text = extract_searchable_text(&record, "contacts");
+        assert!(text.contains("Giuseppe Neri"));
+        assert!(text.contains("NRSGPP80A01F205X"));
+        assert!(text.contains("Controparte abituale"));
+    }
+
+    #[test]
+    fn test_extract_searchable_text_agenda() {
+        let record = serde_json::json!({
+            "title": "Udienza CTU",
+            "text": "Consulenza tecnica d'ufficio",
+            "notes": "Portare documentazione medica"
+        });
+        let text = extract_searchable_text(&record, "agenda");
+        assert!(text.contains("Udienza CTU"));
+        assert!(text.contains("Consulenza tecnica"));
+    }
+
+    // ─── Realistic scenario: lawyer searches across vault ────
+
+    #[test]
+    fn test_realistic_lawyer_search_workflow() {
+        let mut idx = SearchIndex::new();
+
+        // Populate with realistic Italian legal data
+        idx.add_document("practices_p001",
+            "Mario Rossi S.r.l. contro Bianchi & Associati risarcimento danni inadempimento contrattuale art 1218 codice civile Tribunale Civile Milano Sezione Nona", 1);
+        idx.add_document("practices_p002",
+            "Anna Verdi ricorso avverso INPS diniego pensione invalidità civile Tribunale Lavoro Roma", 1);
+        idx.add_document("practices_p003",
+            "Condominio Via Roma 42 opposizione decreto ingiuntivo pagamento spese straordinarie", 1);
+        idx.add_document("contacts_c001",
+            "Avvocato Giuseppe Neri neri@pec.ordineavvocati.mi.it studio legale Milano", 1);
+        idx.add_document("agenda_a001",
+            "Udienza di trattazione Rossi vs Bianchi Tribunale Milano Aula 7 ore 9:30", 1);
+
+        // Search for client name
+        let r = idx.search("Rossi", 10);
+        assert!(!r.is_empty());
+        assert!(r.iter().any(|(id, _)| id == "practices_p001"));
+
+        // Search for court
+        let r = idx.search("Tribunale Milano", 10);
+        assert!(r.iter().any(|(id, _)| id == "practices_p001"));
+
+        // Search for legal term
+        let r = idx.search("inadempimento", 10);
+        assert!(r.iter().any(|(id, _)| id == "practices_p001"));
+
+        // Search across types
+        let r = idx.search("Milano", 10);
+        assert!(r.len() >= 2, "Should find practices, contacts, and agenda in Milano");
+
+        // Typo-tolerant search (trigram match)
+        let r = idx.search("risarcim", 10); // partial
+        assert!(!r.is_empty(), "Partial search should find results via trigrams");
+    }
+}
+
 /// Rebuild the entire search index from scratch.
 /// Called manually or after detecting corruption.
 #[tauri::command]

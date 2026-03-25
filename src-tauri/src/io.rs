@@ -89,3 +89,138 @@ pub(crate) fn safe_now_ms() -> u64 {
         .unwrap_or(Duration::ZERO)
         .as_millis() as u64
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn test_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("lexflow_io_test_{}", rand::random::<u64>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_atomic_write_read_roundtrip() {
+        let dir = test_dir();
+        let path = dir.join("test.dat");
+        let data = b"Hello LexFlow atomic write";
+        atomic_write_with_sync(&path, data).unwrap();
+        let read_back = std::fs::read(&path).unwrap();
+        assert_eq!(read_back, data);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_atomic_write_overwrites() {
+        let dir = test_dir();
+        let path = dir.join("overwrite.dat");
+        atomic_write_with_sync(&path, b"first").unwrap();
+        atomic_write_with_sync(&path, b"second").unwrap();
+        let data = std::fs::read(&path).unwrap();
+        assert_eq!(data, b"second");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_atomic_write_no_orphan_tmp() {
+        let dir = test_dir();
+        let path = dir.join("clean.dat");
+        atomic_write_with_sync(&path, b"data").unwrap();
+        let entries: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".tmp."))
+            .collect();
+        assert!(entries.is_empty(), "No .tmp files should remain after successful write");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_secure_write_creates_file() {
+        let dir = test_dir();
+        let path = dir.join("secure.dat");
+        secure_write(&path, b"secure data").unwrap();
+        assert!(path.exists());
+        let data = std::fs::read(&path).unwrap();
+        assert_eq!(data, b"secure data");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_secure_write_permissions_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = test_dir();
+        let path = dir.join("perms.dat");
+        secure_write(&path, b"secret").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "File must have 0o600 permissions");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_safe_bounded_read_within_limit() {
+        let dir = test_dir();
+        let path = dir.join("small.dat");
+        std::fs::write(&path, b"small file").unwrap();
+        let data = safe_bounded_read(&path, 1024).unwrap();
+        assert_eq!(data, b"small file");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_safe_bounded_read_exceeds_limit() {
+        let dir = test_dir();
+        let path = dir.join("big.dat");
+        std::fs::write(&path, vec![0u8; 1000]).unwrap();
+        let result = safe_bounded_read(&path, 500);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("OOM"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_safe_bounded_read_exact_limit() {
+        let dir = test_dir();
+        let path = dir.join("exact.dat");
+        let data = vec![0xABu8; 100];
+        std::fs::write(&path, &data).unwrap();
+        let result = safe_bounded_read(&path, 100).unwrap();
+        assert_eq!(result, data);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_safe_bounded_read_nonexistent() {
+        let result = safe_bounded_read(std::path::Path::new("/nonexistent/path.dat"), 1024);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_safe_bounded_read_empty_file() {
+        let dir = test_dir();
+        let path = dir.join("empty.dat");
+        std::fs::write(&path, b"").unwrap();
+        let data = safe_bounded_read(&path, 1024).unwrap();
+        assert!(data.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_safe_now_ms_reasonable() {
+        let now = safe_now_ms();
+        // Must be after 2024-01-01 (1704067200000 ms)
+        assert!(now > 1_704_067_200_000, "Timestamp must be after 2024");
+        // Must be before 2100-01-01
+        assert!(now < 4_102_444_800_000, "Timestamp must be before 2100");
+    }
+
+    #[test]
+    fn test_safe_now_ms_monotonic() {
+        let t1 = safe_now_ms();
+        let t2 = safe_now_ms();
+        assert!(t2 >= t1, "Timestamps must be monotonically non-decreasing");
+    }
+}

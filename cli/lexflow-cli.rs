@@ -1,5 +1,5 @@
 #!/usr/bin/env rust
-//! LexFlow CLI v2.0 — Professional vault operations for testing, CI, and forensics.
+//! LexFlow CLI v1.0 — Professional vault operations for testing, CI, and forensics.
 //!
 //! USAGE:
 //!   lexflow-cli <COMMAND> [OPTIONS]

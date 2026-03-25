@@ -284,3 +284,117 @@ pub(crate) fn compute_machine_fingerprint() -> String {
         hex::encode(hash)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    fn ensure_machine_id() {
+        let _ = MACHINE_ID_CACHE.set("test_machine_id_for_platform_tests".to_string());
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_double_sha256_key_deterministic() {
+        let k1 = double_sha256_key("test seed");
+        let k2 = double_sha256_key("test seed");
+        assert_eq!(*k1, *k2);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_double_sha256_key_length() {
+        let key = double_sha256_key("any seed");
+        assert_eq!(key.len(), 32, "Key must be 32 bytes (SHA-256 output)");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_double_sha256_key_different_seeds() {
+        let k1 = double_sha256_key("seed_a");
+        let k2 = double_sha256_key("seed_b");
+        assert_ne!(*k1, *k2);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_machine_fingerprint_deterministic() {
+        ensure_machine_id();
+        let fp1 = compute_machine_fingerprint();
+        let fp2 = compute_machine_fingerprint();
+        assert_eq!(fp1, fp2);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_machine_fingerprint_hex_format() {
+        ensure_machine_id();
+        let fp = compute_machine_fingerprint();
+        assert_eq!(fp.len(), 64, "SHA-256 hex is 64 chars");
+        assert!(fp.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_local_encryption_key_deterministic() {
+        ensure_machine_id();
+        let k1 = get_local_encryption_key();
+        let k2 = get_local_encryption_key();
+        assert_eq!(*k1, *k2);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_local_encryption_key_length() {
+        ensure_machine_id();
+        let key = get_local_encryption_key();
+        assert_eq!(key.len(), 32);
+    }
+
+    #[test]
+    fn test_decrypt_local_with_migration_nonexistent() {
+        let result = decrypt_local_with_migration(std::path::Path::new("/tmp/nonexistent_lex_test"));
+        assert!(result.is_none());
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_decrypt_local_with_migration_roundtrip() {
+        ensure_machine_id();
+        let key = get_local_encryption_key();
+        let plaintext = b"test license data";
+        let encrypted = crate::crypto::encrypt_data(&key, plaintext).unwrap();
+
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("lexflow_platform_test_{}", rand::random::<u64>()));
+        std::fs::write(&path, &encrypted).unwrap();
+
+        let result = decrypt_local_with_migration(&path);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), plaintext);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_decrypt_local_with_migration_corrupted() {
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        ensure_machine_id();
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("lexflow_platform_corrupt_{}", rand::random::<u64>()));
+        std::fs::write(&path, b"totally corrupted garbage data").unwrap();
+
+        let result = decrypt_local_with_migration(&path);
+        assert!(result.is_none());
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_platform_uid_not_empty() {
+        ensure_machine_id();
+        let uid = get_platform_uid();
+        assert!(!uid.is_empty());
+        assert!(uid.contains(':'), "UID should have format 'x:username'");
+    }
+}
