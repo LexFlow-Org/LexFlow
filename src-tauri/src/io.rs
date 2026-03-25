@@ -133,7 +133,10 @@ mod tests {
             .filter_map(|e| e.ok())
             .filter(|e| e.file_name().to_string_lossy().contains(".tmp."))
             .collect();
-        assert!(entries.is_empty(), "No .tmp files should remain after successful write");
+        assert!(
+            entries.is_empty(),
+            "No .tmp files should remain after successful write"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

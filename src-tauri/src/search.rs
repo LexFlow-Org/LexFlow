@@ -503,7 +503,10 @@ mod tests {
     #[test]
     fn test_tokenize_filters_short_words() {
         let tokens = tokenize("io la di un me");
-        assert!(tokens.is_empty(), "All words < 3 chars or stop words should be filtered");
+        assert!(
+            tokens.is_empty(),
+            "All words < 3 chars or stop words should be filtered"
+        );
     }
 
     #[test]
@@ -517,7 +520,9 @@ mod tests {
     #[test]
     fn test_tokenize_special_chars() {
         let tokens = tokenize("art. 1218 c.c. — responsabilità");
-        assert!(tokens.contains(&"1218".to_string()) || tokens.contains(&"responsabilità".to_string()));
+        assert!(
+            tokens.contains(&"1218".to_string()) || tokens.contains(&"responsabilità".to_string())
+        );
     }
 
     #[test]
@@ -582,7 +587,11 @@ mod tests {
         let mut idx = SearchIndex::new();
         // Doc with more mentions of "risarcimento" should rank higher
         idx.add_document("p_001", "risarcimento danni contrattuale", 1);
-        idx.add_document("p_002", "risarcimento risarcimento risarcimento danni enormi", 1);
+        idx.add_document(
+            "p_002",
+            "risarcimento risarcimento risarcimento danni enormi",
+            1,
+        );
 
         let results = idx.search("risarcimento", 10);
         assert!(results.len() >= 2);
@@ -606,7 +615,10 @@ mod tests {
         idx.remove_document("p_001");
 
         let results = idx.search("Mario", 10);
-        assert!(results.is_empty(), "Removed document should not appear in results");
+        assert!(
+            results.is_empty(),
+            "Removed document should not appear in results"
+        );
         assert_eq!(idx.total_docs, 1);
     }
 
@@ -616,7 +628,10 @@ mod tests {
         idx.add_document("p_001", "risarcimento", 1);
         // Search with partial match (same trigrams)
         let results = idx.search("risarc", 10);
-        assert!(!results.is_empty(), "Trigram search should find partial matches");
+        assert!(
+            !results.is_empty(),
+            "Trigram search should find partial matches"
+        );
     }
 
     #[test]
@@ -631,7 +646,11 @@ mod tests {
     fn test_search_index_limit() {
         let mut idx = SearchIndex::new();
         for i in 0..20 {
-            idx.add_document(&format!("p_{:03}", i), &format!("fascicolo numero {}", i), 1);
+            idx.add_document(
+                &format!("p_{:03}", i),
+                &format!("fascicolo numero {}", i),
+                1,
+            );
         }
         let results = idx.search("fascicolo", 5);
         assert_eq!(results.len(), 5);
@@ -711,12 +730,21 @@ mod tests {
             "Mario Rossi S.r.l. contro Bianchi & Associati risarcimento danni inadempimento contrattuale art 1218 codice civile Tribunale Civile Milano Sezione Nona", 1);
         idx.add_document("practices_p002",
             "Anna Verdi ricorso avverso INPS diniego pensione invalidità civile Tribunale Lavoro Roma", 1);
-        idx.add_document("practices_p003",
-            "Condominio Via Roma 42 opposizione decreto ingiuntivo pagamento spese straordinarie", 1);
-        idx.add_document("contacts_c001",
-            "Avvocato Giuseppe Neri neri@pec.ordineavvocati.mi.it studio legale Milano", 1);
-        idx.add_document("agenda_a001",
-            "Udienza di trattazione Rossi vs Bianchi Tribunale Milano Aula 7 ore 9:30", 1);
+        idx.add_document(
+            "practices_p003",
+            "Condominio Via Roma 42 opposizione decreto ingiuntivo pagamento spese straordinarie",
+            1,
+        );
+        idx.add_document(
+            "contacts_c001",
+            "Avvocato Giuseppe Neri neri@pec.ordineavvocati.mi.it studio legale Milano",
+            1,
+        );
+        idx.add_document(
+            "agenda_a001",
+            "Udienza di trattazione Rossi vs Bianchi Tribunale Milano Aula 7 ore 9:30",
+            1,
+        );
 
         // Search for client name
         let r = idx.search("Rossi", 10);
@@ -733,11 +761,17 @@ mod tests {
 
         // Search across types
         let r = idx.search("Milano", 10);
-        assert!(r.len() >= 2, "Should find practices, contacts, and agenda in Milano");
+        assert!(
+            r.len() >= 2,
+            "Should find practices, contacts, and agenda in Milano"
+        );
 
         // Typo-tolerant search (trigram match)
         let r = idx.search("risarcim", 10); // partial
-        assert!(!r.is_empty(), "Partial search should find results via trigrams");
+        assert!(
+            !r.is_empty(),
+            "Partial search should find results via trigrams"
+        );
     }
 }
 

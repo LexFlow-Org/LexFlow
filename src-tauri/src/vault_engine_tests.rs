@@ -4422,7 +4422,10 @@ mod full_coverage_tests {
         });
         let practice1_bytes = rmp_serde::to_vec(&practice1).unwrap();
 
-        let mut entry1 = RecordEntry { versions: vec![], current: 0 };
+        let mut entry1 = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut entry1, &dek, &practice1_bytes).unwrap();
         vault.records.insert("practices_p001".to_string(), entry1);
 
@@ -4437,20 +4440,39 @@ mod full_coverage_tests {
             "court": "Tribunale del Lavoro di Roma",
         });
         let practice2_bytes = rmp_serde::to_vec(&practice2).unwrap();
-        let mut entry2 = RecordEntry { versions: vec![], current: 0 };
+        let mut entry2 = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut entry2, &dek, &practice2_bytes).unwrap();
         vault.records.insert("practices_p002".to_string(), entry2);
 
         // Update index
         let index = vec![
-            IndexEntry { id: "practices_p001".into(), field: "practices".into(),
+            IndexEntry {
+                id: "practices_p001".into(),
+                field: "practices".into(),
                 title: "Mario Rossi S.r.l. — Risarcimento danni".into(),
-                tags: vec!["practices".into(), "status:active".into(), "type:civil".into()],
-                updated_at: "2026-03-22T15:30:00Z".into(), summary: None },
-            IndexEntry { id: "practices_p002".into(), field: "practices".into(),
+                tags: vec![
+                    "practices".into(),
+                    "status:active".into(),
+                    "type:civil".into(),
+                ],
+                updated_at: "2026-03-22T15:30:00Z".into(),
+                summary: None,
+            },
+            IndexEntry {
+                id: "practices_p002".into(),
+                field: "practices".into(),
                 title: "Anna Verdi — Ricorso pensione".into(),
-                tags: vec!["practices".into(), "status:active".into(), "type:labor".into()],
-                updated_at: "2026-03-22T16:00:00Z".into(), summary: None },
+                tags: vec![
+                    "practices".into(),
+                    "status:active".into(),
+                    "type:labor".into(),
+                ],
+                updated_at: "2026-03-22T16:00:00Z".into(),
+                summary: None,
+            },
         ];
         vault.index = encrypt_index(&dek, &index).unwrap();
         vault.rotation.writes += 1;
@@ -4489,12 +4511,16 @@ mod full_coverage_tests {
         assert_eq!(entry_mut.versions.len(), 2); // v1 + v2
 
         // Verify version history
-        let v1_plain = decrypt_record(&dek2, &EncryptedBlock {
-            iv: entry_mut.versions[0].iv.clone(),
-            tag: entry_mut.versions[0].tag.clone(),
-            data: entry_mut.versions[0].data.clone(),
-            compressed: entry_mut.versions[0].compressed,
-        }).unwrap();
+        let v1_plain = decrypt_record(
+            &dek2,
+            &EncryptedBlock {
+                iv: entry_mut.versions[0].iv.clone(),
+                tag: entry_mut.versions[0].tag.clone(),
+                data: entry_mut.versions[0].data.clone(),
+                compressed: entry_mut.versions[0].compressed,
+            },
+        )
+        .unwrap();
         let v1: serde_json::Value = rmp_serde::from_slice(&v1_plain).unwrap();
         assert_eq!(v1["diary"].as_array().unwrap().len(), 2); // original
 
@@ -4549,25 +4575,37 @@ mod full_coverage_tests {
 
         // Add a practice before generating recovery key
         let mut vault = vault;
-        let practice = serde_json::json!({"id": "p001", "client": "Test Client", "object": "Recovery test"});
+        let practice =
+            serde_json::json!({"id": "p001", "client": "Test Client", "object": "Recovery test"});
         let practice_bytes = rmp_serde::to_vec(&practice).unwrap();
-        let mut entry = RecordEntry { versions: vec![], current: 0 };
+        let mut entry = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut entry, &dek, &practice_bytes).unwrap();
         vault.records.insert("practices_p001".to_string(), entry);
         let idx = vec![IndexEntry {
-            id: "practices_p001".into(), field: "practices".into(),
-            title: "Test Client".into(), tags: vec![], updated_at: "2026-01-01".into(), summary: None,
+            id: "practices_p001".into(),
+            field: "practices".into(),
+            title: "Test Client".into(),
+            tags: vec![],
+            updated_at: "2026-01-01".into(),
+            summary: None,
         }];
         vault.index = encrypt_index(&dek, &idx).unwrap();
 
         // Generate recovery key
         let display_key = generate_recovery_key(&mut vault, &dek).unwrap();
-        assert!(display_key.contains('-'), "Recovery key should be formatted XXXX-XXXX-...");
+        assert!(
+            display_key.contains('-'),
+            "Recovery key should be formatted XXXX-XXXX-..."
+        );
 
         let serialized = serialize_vault(&vault).unwrap();
 
         // Forget password — unlock with recovery key
-        let (recovered_vault, recovered_dek) = open_vault_with_recovery(&display_key, &serialized).unwrap();
+        let (recovered_vault, recovered_dek) =
+            open_vault_with_recovery(&display_key, &serialized).unwrap();
 
         // Verify data is intact
         let entry = recovered_vault.records.get("practices_p001").unwrap();
@@ -4584,7 +4622,10 @@ mod full_coverage_tests {
         let serialized = serialize_vault(&vault).unwrap();
         let (_, dek) = open_vault(password, &serialized).unwrap();
 
-        let mut entry = RecordEntry { versions: vec![], current: 0 };
+        let mut entry = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
 
         // Simulate 20 edits to the same practice (heavy editing day)
         for i in 1..=20 {
@@ -4623,9 +4664,12 @@ mod full_coverage_tests {
         let serialized = serialize_vault(&vault).unwrap();
 
         let attack_passwords = [
-            "", "password", "123456", "R3alP@ssword_2026",  // missing !
-            "r3alP@ssword_2026!", // wrong case
-            "R3alP@ssword_2027!", // wrong year
+            "",
+            "password",
+            "123456",
+            "R3alP@ssword_2026",   // missing !
+            "r3alP@ssword_2026!",  // wrong case
+            "R3alP@ssword_2027!",  // wrong year
             "R3alP@ssword_2026!!", // extra char
             " R3alP@ssword_2026!", // leading space
         ];
@@ -4633,7 +4677,8 @@ mod full_coverage_tests {
         for pwd in &attack_passwords {
             assert!(
                 open_vault(pwd, &serialized).is_err(),
-                "Password '{}' should not open vault", pwd
+                "Password '{}' should not open vault",
+                pwd
             );
         }
     }
@@ -4648,14 +4693,17 @@ mod full_coverage_tests {
         let json_str = String::from_utf8_lossy(&serialized[VAULT_MAGIC_V4.len()..]).to_string();
         let weakened = json_str.replace(
             &format!("\"m\":{}", vault.kdf.m),
-            "\"m\":1024" // dangerously low
+            "\"m\":1024", // dangerously low
         );
         serialized = VAULT_MAGIC_V4.to_vec();
         serialized.extend_from_slice(weakened.as_bytes());
 
         // Even with correct password, HMAC mismatch → rejected
         let result = open_vault("SecurePassword123!", &serialized);
-        assert!(result.is_err(), "Downgraded KDF params must be rejected by HMAC verification");
+        assert!(
+            result.is_err(),
+            "Downgraded KDF params must be rejected by HMAC verification"
+        );
     }
 
     /// Attacker replaces the wrapped DEK with their own.
@@ -4721,7 +4769,8 @@ mod full_coverage_tests {
             };
             assert!(
                 decrypt_record(&dek, &tampered_block).is_err(),
-                "Bit flip at ciphertext byte {} was not detected!", i
+                "Bit flip at ciphertext byte {} was not detected!",
+                i
             );
         }
 
@@ -4736,7 +4785,8 @@ mod full_coverage_tests {
             };
             assert!(
                 decrypt_record(&dek, &tampered_block).is_err(),
-                "Bit flip at tag byte {} was not detected!", i
+                "Bit flip at tag byte {} was not detected!",
+                i
             );
         }
 
@@ -4751,7 +4801,8 @@ mod full_coverage_tests {
             };
             assert!(
                 decrypt_record(&dek, &tampered_block).is_err(),
-                "Bit flip at IV byte {} was not detected!", i
+                "Bit flip at IV byte {} was not detected!",
+                i
             );
         }
     }
@@ -4769,7 +4820,10 @@ mod full_coverage_tests {
 
         // Try recovery key from A on vault B → must fail
         let result = open_vault_with_recovery(&display_key_a, &serialized_b);
-        assert!(result.is_err(), "Recovery key from vault A must not open vault B");
+        assert!(
+            result.is_err(),
+            "Recovery key from vault A must not open vault B"
+        );
     }
 
     /// Attacker replaces the entire vault file with an older version (rollback).
@@ -4782,7 +4836,10 @@ mod full_coverage_tests {
 
         // Write 1: add practice
         let bytes = rmp_serde::to_vec(&json!({"id": "p1", "client": "First"})).unwrap();
-        let mut e1 = RecordEntry { versions: vec![], current: 0 };
+        let mut e1 = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut e1, &dek, &bytes).unwrap();
         vault.records.insert("practices_p1".into(), e1);
         vault.rotation.writes = 5;
@@ -4824,10 +4881,16 @@ mod full_coverage_tests {
 
         // Should fail: m_cost too low (below 8192 minimum)
         let result = open_vault("anything", &data);
-        assert!(result.is_err(), "Crafted vault with weak KDF must be rejected");
+        assert!(
+            result.is_err(),
+            "Crafted vault with weak KDF must be rejected"
+        );
         let err = result.unwrap_err();
-        assert!(err.contains("m_cost") || err.contains("too low"),
-            "Error should mention weak KDF params, got: {}", err);
+        assert!(
+            err.contains("m_cost") || err.contains("too low"),
+            "Error should mention weak KDF params, got: {}",
+            err
+        );
     }
 
     /// Attacker tries to decrypt records with the KEK instead of DEK.
@@ -4870,10 +4933,14 @@ mod full_coverage_tests {
                                     err.fetch_add(1, Ordering::Relaxed);
                                 }
                             }
-                            Err(_) => { err.fetch_add(1, Ordering::Relaxed); }
+                            Err(_) => {
+                                err.fetch_add(1, Ordering::Relaxed);
+                            }
                         }
                     }
-                    Err(_) => { err.fetch_add(1, Ordering::Relaxed); }
+                    Err(_) => {
+                        err.fetch_add(1, Ordering::Relaxed);
+                    }
                 }
             }));
         }
@@ -4881,7 +4948,11 @@ mod full_coverage_tests {
         for h in handles {
             h.join().unwrap();
         }
-        assert_eq!(errors.load(Ordering::Relaxed), 0, "Concurrent vault creation had errors");
+        assert_eq!(
+            errors.load(Ordering::Relaxed),
+            0,
+            "Concurrent vault creation had errors"
+        );
     }
 
     /// Stress: 100 records with realistic Italian legal data.
@@ -4892,8 +4963,11 @@ mod full_coverage_tests {
 
         let types = ["civil", "penal", "labor", "administrative", "tax"];
         let courts = [
-            "Tribunale Civile di Milano", "Tribunale di Roma Sez. III",
-            "Corte d'Appello di Napoli", "TAR Lazio", "Tribunale del Lavoro di Torino",
+            "Tribunale Civile di Milano",
+            "Tribunale di Roma Sez. III",
+            "Corte d'Appello di Napoli",
+            "TAR Lazio",
+            "Tribunale del Lavoro di Torino",
         ];
         let statuses = ["active", "archived", "suspended", "closed"];
 
@@ -4917,14 +4991,22 @@ mod full_coverage_tests {
             });
             let bytes = rmp_serde::to_vec(&practice).unwrap();
             let key = format!("practices_p{:04}", i);
-            let mut entry = RecordEntry { versions: vec![], current: 0 };
+            let mut entry = RecordEntry {
+                versions: vec![],
+                current: 0,
+            };
             append_record_version(&mut entry, &dek, &bytes).unwrap();
             vault.records.insert(key.clone(), entry);
             index_entries.push(IndexEntry {
-                id: key, field: "practices".into(),
+                id: key,
+                field: "practices".into(),
                 title: format!("Cliente {} S.r.l.", i),
-                tags: vec!["practices".into(), format!("status:{}", statuses[i % statuses.len()])],
-                updated_at: "2026-03-25T12:00:00Z".into(), summary: None,
+                tags: vec![
+                    "practices".into(),
+                    format!("status:{}", statuses[i % statuses.len()]),
+                ],
+                updated_at: "2026-03-25T12:00:00Z".into(),
+                summary: None,
             });
         }
 
@@ -4982,13 +5064,16 @@ mod full_coverage_tests {
 
 #[cfg(test)]
 mod extreme_tests {
-    use crate::vault_engine::*;
-    use crate::io::*;
     use crate::crypto;
+    use crate::io::*;
+    use crate::vault_engine::*;
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
     use serde_json::json;
     use std::collections::BTreeMap;
-    use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
+    use std::sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    };
     use zeroize::Zeroizing;
 
     fn make_dek() -> Zeroizing<Vec<u8>> {
@@ -5071,7 +5156,10 @@ mod extreme_tests {
 
             let bytes = rmp_serde::to_vec(&practice).unwrap();
             let key = format!("practices_p{:05}", i);
-            let mut entry = RecordEntry { versions: vec![], current: 0 };
+            let mut entry = RecordEntry {
+                versions: vec![],
+                current: 0,
+            };
             append_record_version(&mut entry, &dek, &bytes).unwrap();
             vault.records.insert(key.clone(), entry);
 
@@ -5079,7 +5167,10 @@ mod extreme_tests {
                 id: key,
                 field: "practices".into(),
                 title: format!("Studio {} — RG {}/2026", i, 10000 + i),
-                tags: vec!["practices".into(), format!("status:{}", ["active", "archived", "suspended"][i % 3])],
+                tags: vec![
+                    "practices".into(),
+                    format!("status:{}", ["active", "archived", "suspended"][i % 3]),
+                ],
                 updated_at: format!("2026-03-{:02}T12:00:00Z", (i % 28) + 1),
                 summary: None,
             });
@@ -5091,7 +5182,10 @@ mod extreme_tests {
         // Serialize (questo produce un blob enorme)
         let serialized = serialize_vault(&vault).unwrap();
         let size_mb = serialized.len() as f64 / (1024.0 * 1024.0);
-        eprintln!("[STRESS] Vault serialized: {:.1} MB with 1000 practices × 80 diary entries", size_mb);
+        eprintln!(
+            "[STRESS] Vault serialized: {:.1} MB with 1000 practices × 80 diary entries",
+            size_mb
+        );
 
         // Deserialize e verifica
         let (vault2, dek2) = open_vault(password, &serialized).unwrap();
@@ -5108,7 +5202,12 @@ mod extreme_tests {
             let val: serde_json::Value = rmp_serde::from_slice(&plain).unwrap();
             assert_eq!(val["id"], format!("p{:05}", check_i));
             let diary = val["diary"].as_array().unwrap();
-            assert_eq!(diary.len(), 80, "Practice {} should have 80 diary entries", check_i);
+            assert_eq!(
+                diary.len(),
+                80,
+                "Practice {} should have 80 diary entries",
+                check_i
+            );
             let deadlines = val["deadlines"].as_array().unwrap();
             assert_eq!(deadlines.len(), 15);
         }
@@ -5123,7 +5222,10 @@ mod extreme_tests {
     #[test]
     fn stress_500_rapid_saves() {
         let dek = make_dek();
-        let mut entry = RecordEntry { versions: vec![], current: 0 };
+        let mut entry = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
 
         for i in 0..500 {
             let data = json!({
@@ -5160,33 +5262,48 @@ mod extreme_tests {
 
         // Aggiungi dati
         let bytes = rmp_serde::to_vec(&json!({"id": "p1", "client": "Test"})).unwrap();
-        let mut e = RecordEntry { versions: vec![], current: 0 };
+        let mut e = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut e, &dek, &bytes).unwrap();
         vault.records.insert("practices_p1".into(), e);
-        vault.index = encrypt_index(&dek, &[IndexEntry {
-            id: "practices_p1".into(), field: "practices".into(),
-            title: "Test".into(), tags: vec![], updated_at: "".into(), summary: None,
-        }]).unwrap();
+        vault.index = encrypt_index(
+            &dek,
+            &[IndexEntry {
+                id: "practices_p1".into(),
+                field: "practices".into(),
+                title: "Test".into(),
+                tags: vec![],
+                updated_at: "".into(),
+                summary: None,
+            }],
+        )
+        .unwrap();
 
         let full = serialize_vault(&vault).unwrap();
 
         // Tronca a punti diversi e verifica che TUTTI rifiutino l'apertura
         let truncation_points = [
-            1,                          // solo 1 byte
-            VAULT_MAGIC_V4.len(),       // solo magic
-            VAULT_MAGIC_V4.len() + 1,   // magic + 1 byte JSON
-            full.len() / 4,             // 25%
-            full.len() / 2,             // 50%
-            full.len() * 3 / 4,         // 75%
-            full.len() - 1,             // manca 1 byte
-            full.len() - 10,            // mancano 10 bytes
+            1,                        // solo 1 byte
+            VAULT_MAGIC_V4.len(),     // solo magic
+            VAULT_MAGIC_V4.len() + 1, // magic + 1 byte JSON
+            full.len() / 4,           // 25%
+            full.len() / 2,           // 50%
+            full.len() * 3 / 4,       // 75%
+            full.len() - 1,           // manca 1 byte
+            full.len() - 10,          // mancano 10 bytes
         ];
 
         for &point in &truncation_points {
             let truncated = &full[..point];
             let result = open_vault(password, truncated);
-            assert!(result.is_err(),
-                "Truncated vault at byte {}/{} should not open!", point, full.len());
+            assert!(
+                result.is_err(),
+                "Truncated vault at byte {}/{} should not open!",
+                point,
+                full.len()
+            );
         }
     }
 
@@ -5194,7 +5311,8 @@ mod extreme_tests {
     /// Verifica che il file .tmp non corrompa il file originale.
     #[test]
     fn crash_atomic_write_original_survives() {
-        let dir = std::env::temp_dir().join(format!("lexflow_crash_test_{}", rand::random::<u64>()));
+        let dir =
+            std::env::temp_dir().join(format!("lexflow_crash_test_{}", rand::random::<u64>()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("vault.dat");
 
@@ -5229,7 +5347,10 @@ mod extreme_tests {
         let (mut vault, dek) = create_vault(password).unwrap();
 
         let bytes = rmp_serde::to_vec(&json!({"id": "p1", "data": "important"})).unwrap();
-        let mut e = RecordEntry { versions: vec![], current: 0 };
+        let mut e = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut e, &dek, &bytes).unwrap();
         vault.records.insert("practices_p1".into(), e);
 
@@ -5243,7 +5364,9 @@ mod extreme_tests {
 
         for i in 0..200 {
             let pos = start + (i * step).min(len - 1);
-            if pos >= len { break; }
+            if pos >= len {
+                break;
+            }
 
             let mut corrupted = full.clone();
             corrupted[pos] ^= 0xFF; // flip all bits
@@ -5265,11 +5388,17 @@ mod extreme_tests {
         }
 
         let detection_rate = detected as f64 / 200.0 * 100.0;
-        eprintln!("[CORRUPTION] Detection rate: {:.1}% ({}/200 corruptions detected)", detection_rate, detected);
+        eprintln!(
+            "[CORRUPTION] Detection rate: {:.1}% ({}/200 corruptions detected)",
+            detection_rate, detected
+        );
         // Almeno il 95% delle corruzioni deve essere rilevato
         // (alcune posizioni nel JSON whitespace potrebbero non alterare il parsing)
-        assert!(detection_rate >= 90.0,
-            "Corruption detection rate too low: {:.1}%", detection_rate);
+        assert!(
+            detection_rate >= 90.0,
+            "Corruption detection rate too low: {:.1}%",
+            detection_rate
+        );
     }
 
     /// Corruzione massiccia: sovrascrive blocchi interi del vault con zeri.
@@ -5287,8 +5416,11 @@ mod extreme_tests {
             for byte in &mut corrupted[start..end] {
                 *byte = 0;
             }
-            assert!(open_vault(password, &corrupted).is_err(),
-                "Zero block at offset {} should be detected", start);
+            assert!(
+                open_vault(password, &corrupted).is_err(),
+                "Zero block at offset {} should be detected",
+                start
+            );
         }
     }
 
@@ -5324,9 +5456,13 @@ mod extreme_tests {
         // Inserisci il record cifrato con la chiave sbagliata
         let entry = RecordEntry {
             versions: vec![RecordVersion {
-                v: 1, ts: "2026-01-01T00:00:00Z".into(),
-                iv: block.iv, tag: block.tag, data: block.data,
-                compressed: block.compressed, format: Some("msgpack".into()),
+                v: 1,
+                ts: "2026-01-01T00:00:00Z".into(),
+                iv: block.iv,
+                tag: block.tag,
+                data: block.data,
+                compressed: block.compressed,
+                format: Some("msgpack".into()),
             }],
             current: 1,
         };
@@ -5337,8 +5473,10 @@ mod extreme_tests {
 
         // Il vault si apre (header OK) ma il record specifico non si decifra
         let entry = vault2.records.get("practices_p1").unwrap();
-        assert!(read_current_version(entry, &dek2).is_err(),
-            "Record encrypted with foreign DEK must fail decryption");
+        assert!(
+            read_current_version(entry, &dek2).is_err(),
+            "Record encrypted with foreign DEK must fail decryption"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -5355,7 +5493,10 @@ mod extreme_tests {
         // Sessione 1: crea vault
         let (vault_v1, dek_v1) = create_vault(old_pwd).unwrap();
         let bytes = rmp_serde::to_vec(&json!({"id": "p1", "client": "Original"})).unwrap();
-        let mut e = RecordEntry { versions: vec![], current: 0 };
+        let mut e = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut e, &dek_v1, &bytes).unwrap();
         let mut vault_v1 = vault_v1;
         vault_v1.records.insert("practices_p1".into(), e);
@@ -5384,9 +5525,12 @@ mod extreme_tests {
         let (old_vault, _) = open_vault(old_pwd, &snapshot_v1).unwrap();
         // Il vault si apre con la VECCHIA password — il sistema anti-rollback in vault.rs
         // confronterebbe writes counter e rifiuterebbe perché old.writes < stored_counter.
-        assert!(old_vault.rotation.writes < vault_v2.rotation.writes,
+        assert!(
+            old_vault.rotation.writes < vault_v2.rotation.writes,
             "Rollback detection: old writes ({}) < new writes ({})",
-            old_vault.rotation.writes, vault_v2.rotation.writes);
+            old_vault.rotation.writes,
+            vault_v2.rotation.writes
+        );
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -5403,16 +5547,31 @@ mod extreme_tests {
 
         // Aggiungi record reale
         let bytes = rmp_serde::to_vec(&json!({"id": "p1", "client": "Real"})).unwrap();
-        let mut e = RecordEntry { versions: vec![], current: 0 };
+        let mut e = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut e, &dek, &bytes).unwrap();
         vault.records.insert("practices_p1".into(), e);
 
         // Crea indice con voce fantasma
         let phantom_index = vec![
-            IndexEntry { id: "practices_p1".into(), field: "practices".into(),
-                title: "Real".into(), tags: vec![], updated_at: "".into(), summary: None },
-            IndexEntry { id: "practices_PHANTOM".into(), field: "practices".into(),
-                title: "GHOST RECORD".into(), tags: vec![], updated_at: "".into(), summary: None },
+            IndexEntry {
+                id: "practices_p1".into(),
+                field: "practices".into(),
+                title: "Real".into(),
+                tags: vec![],
+                updated_at: "".into(),
+                summary: None,
+            },
+            IndexEntry {
+                id: "practices_PHANTOM".into(),
+                field: "practices".into(),
+                title: "GHOST RECORD".into(),
+                tags: vec![],
+                updated_at: "".into(),
+                summary: None,
+            },
         ];
         vault.index = encrypt_index(&dek, &phantom_index).unwrap();
         let serialized = serialize_vault(&vault).unwrap();
@@ -5422,8 +5581,10 @@ mod extreme_tests {
         assert_eq!(idx.len(), 2); // Phantom è nell'indice
 
         // Ma il record fantasma non esiste → nessun dato decifrabile
-        assert!(vault2.records.get("practices_PHANTOM").is_none(),
-            "Phantom record must not exist in records map");
+        assert!(
+            vault2.records.get("practices_PHANTOM").is_none(),
+            "Phantom record must not exist in records map"
+        );
 
         // Record reale è intatto
         let entry = vault2.records.get("practices_p1").unwrap();
@@ -5462,20 +5623,26 @@ mod extreme_tests {
                 Ok(_) => {
                     // Se il byte originale → OK, altrimenti AES-GCM-SIV ha un problema
                     if byte_val != ct[last] {
-                        panic!("Modified ciphertext decrypted successfully! Padding oracle possible!");
+                        panic!(
+                            "Modified ciphertext decrypted successfully! Padding oracle possible!"
+                        );
                     }
                 }
                 Err(ref e) => {
                     // Verifica che tutti gli errori siano identici (no info leak via errori diversi)
                     if byte_val > 0 && byte_val != ct[last] {
-                        let first_err = decrypt_record(&dek, &EncryptedBlock {
-                            data: B64.encode({
-                                let mut m = ct.clone();
-                                m[last] = if ct[last] == 0 { 1 } else { 0 };
-                                m
-                            }),
-                            ..block.clone()
-                        }).unwrap_err();
+                        let first_err = decrypt_record(
+                            &dek,
+                            &EncryptedBlock {
+                                data: B64.encode({
+                                    let mut m = ct.clone();
+                                    m[last] = if ct[last] == 0 { 1 } else { 0 };
+                                    m
+                                }),
+                                ..block.clone()
+                            },
+                        )
+                        .unwrap_err();
                         if *e != first_err {
                             errors_identical = false;
                         }
@@ -5484,8 +5651,10 @@ mod extreme_tests {
             }
         }
 
-        assert!(errors_identical,
-            "Error messages must be identical for all invalid ciphertexts (no oracle)");
+        assert!(
+            errors_identical,
+            "Error messages must be identical for all invalid ciphertexts (no oracle)"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -5505,11 +5674,13 @@ mod extreme_tests {
             .collect();
 
         // Verifica che tutti i ciphertext siano diversi (nonce random)
-        let unique: std::collections::HashSet<String> = blocks.iter().map(|b| b.data.clone()).collect();
+        let unique: std::collections::HashSet<String> =
+            blocks.iter().map(|b| b.data.clone()).collect();
         assert_eq!(unique.len(), 100, "All ciphertexts must be unique");
 
         // Verifica che nonce, tag, e ciphertext siano tutti diversi
-        let unique_ivs: std::collections::HashSet<String> = blocks.iter().map(|b| b.iv.clone()).collect();
+        let unique_ivs: std::collections::HashSet<String> =
+            blocks.iter().map(|b| b.iv.clone()).collect();
         assert_eq!(unique_ivs.len(), 100, "All IVs must be unique");
 
         // XOR di due ciphertext non rivela informazioni (a differenza di stream cipher con nonce reuse)
@@ -5519,7 +5690,11 @@ mod extreme_tests {
         // XOR deve sembrare random (alta entropia)
         let zeros = xor.iter().filter(|&&b| b == 0).count();
         let zero_ratio = zeros as f64 / xor.len() as f64;
-        assert!(zero_ratio < 0.1, "XOR of two ciphertexts looks non-random (too many zeros: {:.1}%)", zero_ratio * 100.0);
+        assert!(
+            zero_ratio < 0.1,
+            "XOR of two ciphertexts looks non-random (too many zeros: {:.1}%)",
+            zero_ratio * 100.0
+        );
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -5550,10 +5725,16 @@ mod extreme_tests {
         }
         let total_bytes = 100 * 32;
         let expected = total_bytes as f64 / 256.0;
-        let max_deviation = byte_counts.iter().map(|&c| (c as f64 - expected).abs()).fold(0.0f64, f64::max);
+        let max_deviation = byte_counts
+            .iter()
+            .map(|&c| (c as f64 - expected).abs())
+            .fold(0.0f64, f64::max);
         // Con 3200 byte, la deviazione max attesa è ~√(3200/256) × 3 ≈ 10.6
-        assert!(max_deviation < 30.0,
-            "Byte distribution bias too high: max deviation {:.1} (expected < 30)", max_deviation);
+        assert!(
+            max_deviation < 30.0,
+            "Byte distribution bias too high: max deviation {:.1} (expected < 30)",
+            max_deviation
+        );
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -5567,12 +5748,18 @@ mod extreme_tests {
 
         // Record 1: fascicolo
         let p_bytes = rmp_serde::to_vec(&json!({"id": "p1", "client": "Practice Data"})).unwrap();
-        let mut p_entry = RecordEntry { versions: vec![], current: 0 };
+        let mut p_entry = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut p_entry, &dek, &p_bytes).unwrap();
 
         // Record 2: contatto
         let c_bytes = rmp_serde::to_vec(&json!({"id": "c1", "name": "Contact Data"})).unwrap();
-        let mut c_entry = RecordEntry { versions: vec![], current: 0 };
+        let mut c_entry = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
         append_record_version(&mut c_entry, &dek, &c_bytes).unwrap();
 
         // Attaccante scambia i ciphertext
@@ -5581,10 +5768,14 @@ mod extreme_tests {
 
         let mut spliced_entry = RecordEntry {
             versions: vec![RecordVersion {
-                v: 1, ts: p_version.ts,
+                v: 1,
+                ts: p_version.ts,
                 // Usa IV/tag/data del contatto al posto del fascicolo
-                iv: c_version.iv, tag: c_version.tag, data: c_version.data,
-                compressed: c_version.compressed, format: c_version.format,
+                iv: c_version.iv,
+                tag: c_version.tag,
+                data: c_version.data,
+                compressed: c_version.compressed,
+                format: c_version.format,
             }],
             current: 1,
         };
@@ -5594,8 +5785,10 @@ mod extreme_tests {
         let val: serde_json::Value = rmp_serde::from_slice(&plain).unwrap();
         // Questo è un vero rischio: con la stessa DEK, i record sono interscambiabili.
         // La protezione è l'indice cifrato che mappia ID → record.
-        assert_eq!(val["name"], "Contact Data",
-            "Spliced record contains wrong data — splice attack works at crypto level");
+        assert_eq!(
+            val["name"], "Contact Data",
+            "Spliced record contains wrong data — splice attack works at crypto level"
+        );
         // NOTE: questo test documenta un LIMITE dell'architettura per-record-same-DEK.
         // La mitigazione è l'indice HMAC-autenticato e il write counter anti-rollback.
     }
@@ -5614,11 +5807,11 @@ mod extreme_tests {
 
         // Password con 0, 5, 10, 15, 20 caratteri corretti
         let test_passwords = [
-            "XXXXXXXXXXXXXXXXXXXXXXXXX",  // 0 chars correct
-            "TiminXXXXXXXXXXXXXXXXXXXX",  // 5 chars correct
-            "TimingAttaXXXXXXXXXXXXXXX",  // 10 chars correct
-            "TimingAttackTest_XXXXXXXX",  // 17 chars correct
-            "TimingAttackTest_2026!Y",    // 21/22 chars correct (last wrong)
+            "XXXXXXXXXXXXXXXXXXXXXXXXX", // 0 chars correct
+            "TiminXXXXXXXXXXXXXXXXXXXX", // 5 chars correct
+            "TimingAttaXXXXXXXXXXXXXXX", // 10 chars correct
+            "TimingAttackTest_XXXXXXXX", // 17 chars correct
+            "TimingAttackTest_2026!Y",   // 21/22 chars correct (last wrong)
         ];
 
         let mut timings = Vec::new();
@@ -5632,16 +5825,32 @@ mod extreme_tests {
         // Con Argon2, il tempo è dominato dalla KDF (costante) → timing attack non praticabile.
         // Verifichiamo che la varianza sia bassa rispetto alla media.
         let mean = timings.iter().map(|t| t.as_millis()).sum::<u128>() / timings.len() as u128;
-        let max_diff = timings.iter().map(|t| {
-            let ms = t.as_millis();
-            if ms > mean { ms - mean } else { mean - ms }
-        }).max().unwrap_or(0);
+        let max_diff = timings
+            .iter()
+            .map(|t| {
+                let ms = t.as_millis();
+                if ms > mean {
+                    ms - mean
+                } else {
+                    mean - ms
+                }
+            })
+            .max()
+            .unwrap_or(0);
 
         // La deviazione max deve essere < 30% della media (Argon2 domina)
         let ratio = max_diff as f64 / mean.max(1) as f64;
-        eprintln!("[TIMING] Mean: {}ms, Max deviation: {}ms ({:.1}%)", mean, max_diff, ratio * 100.0);
-        assert!(ratio < 0.5,
-            "Timing variation too high: {:.1}% — possible timing leak!", ratio * 100.0);
+        eprintln!(
+            "[TIMING] Mean: {}ms, Max deviation: {}ms ({:.1}%)",
+            mean,
+            max_diff,
+            ratio * 100.0
+        );
+        assert!(
+            ratio < 0.5,
+            "Timing variation too high: {:.1}% — possible timing leak!",
+            ratio * 100.0
+        );
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -5657,7 +5866,11 @@ mod extreme_tests {
 
         // Inietta un campo "admin": true nel JSON
         let json_str = String::from_utf8_lossy(&full[VAULT_MAGIC_V4.len()..]).to_string();
-        let injected = json_str.replacen("\"version\":4", "\"version\":4,\"admin\":true,\"bypass\":true", 1);
+        let injected = json_str.replacen(
+            "\"version\":4",
+            "\"version\":4,\"admin\":true,\"bypass\":true",
+            1,
+        );
         let mut injected_data = VAULT_MAGIC_V4.to_vec();
         injected_data.extend_from_slice(injected.as_bytes());
 
@@ -5690,14 +5903,18 @@ mod extreme_tests {
 
         for fake_version in [0, 1, 2, 3, 5, 99, 255] {
             let json_str = String::from_utf8_lossy(&full[VAULT_MAGIC_V4.len()..]).to_string();
-            let hacked = json_str.replacen("\"version\":4", &format!("\"version\":{}", fake_version), 1);
+            let hacked =
+                json_str.replacen("\"version\":4", &format!("\"version\":{}", fake_version), 1);
             let mut hacked_data = VAULT_MAGIC_V4.to_vec();
             hacked_data.extend_from_slice(hacked.as_bytes());
 
             let result = open_vault(password, &hacked_data);
             // Deve fallire: o HMAC mismatch, o version check
-            assert!(result.is_err(),
-                "Version {} should be rejected", fake_version);
+            assert!(
+                result.is_err(),
+                "Version {} should be rejected",
+                fake_version
+            );
         }
     }
 
@@ -5746,9 +5963,14 @@ mod extreme_tests {
             }));
         }
 
-        for h in handles { h.join().unwrap(); }
-        assert_eq!(errors.load(Ordering::Relaxed), 0,
-            "Concurrent 8-thread encrypt/decrypt had errors!");
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert_eq!(
+            errors.load(Ordering::Relaxed),
+            0,
+            "Concurrent 8-thread encrypt/decrypt had errors!"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -5766,11 +5988,17 @@ mod extreme_tests {
 
         // Usa encrypt_record che gestisce compressione+cifratura
         let block = encrypt_record(&dek, &bomb_source).unwrap();
-        assert!(block.compressed, "Large repetitive data should be compressed");
+        assert!(
+            block.compressed,
+            "Large repetitive data should be compressed"
+        );
 
         // Decrypt+decompress: 10MB < 100MB cap → OK
         let result = decrypt_record(&dek, &block);
-        assert!(result.is_ok(), "10MB decompression should succeed (under 100MB cap)");
+        assert!(
+            result.is_ok(),
+            "10MB decompression should succeed (under 100MB cap)"
+        );
         assert_eq!(result.unwrap().len(), 10_000_000);
     }
 
@@ -5787,8 +6015,14 @@ mod extreme_tests {
 
         // Aggiungi 50 record
         for i in 0..50 {
-            let bytes = rmp_serde::to_vec(&json!({"id": format!("p{}", i), "data": format!("record {}", i)})).unwrap();
-            let mut e = RecordEntry { versions: vec![], current: 0 };
+            let bytes = rmp_serde::to_vec(
+                &json!({"id": format!("p{}", i), "data": format!("record {}", i)}),
+            )
+            .unwrap();
+            let mut e = RecordEntry {
+                versions: vec![],
+                current: 0,
+            };
             append_record_version(&mut e, &dek_old, &bytes).unwrap();
             vault.records.insert(format!("practices_p{}", i), e);
         }
@@ -5799,15 +6033,21 @@ mod extreme_tests {
         // Ri-cifra solo i primi 25 record (crash a metà)
         let record_ids: Vec<String> = vault.records.keys().cloned().collect();
         for (i, id) in record_ids.iter().enumerate() {
-            if i >= 25 { break; } // "crash" dopo 25
+            if i >= 25 {
+                break;
+            } // "crash" dopo 25
             let entry = vault.records.get(id).unwrap();
             let plain = read_current_version(entry, &dek_old).unwrap();
             let block = encrypt_record(&dek_new, &plain).unwrap();
             let new_entry = RecordEntry {
                 versions: vec![RecordVersion {
-                    v: 1, ts: chrono::Utc::now().to_rfc3339(),
-                    iv: block.iv, tag: block.tag, data: block.data,
-                    compressed: block.compressed, format: Some("msgpack".into()),
+                    v: 1,
+                    ts: chrono::Utc::now().to_rfc3339(),
+                    iv: block.iv,
+                    tag: block.tag,
+                    data: block.data,
+                    compressed: block.compressed,
+                    format: Some("msgpack".into()),
                 }],
                 current: 1,
             };
@@ -5819,8 +6059,12 @@ mod extreme_tests {
         let mut readable_old = 0;
         let mut readable_new = 0;
         for entry in vault.records.values() {
-            if read_current_version(entry, &dek_old).is_ok() { readable_old += 1; }
-            if read_current_version(entry, &dek_new).is_ok() { readable_new += 1; }
+            if read_current_version(entry, &dek_old).is_ok() {
+                readable_old += 1;
+            }
+            if read_current_version(entry, &dek_new).is_ok() {
+                readable_new += 1;
+            }
         }
         assert_eq!(readable_old, 25, "25 records still encrypted with old DEK");
         assert_eq!(readable_new, 25, "25 records re-encrypted with new DEK");
@@ -5838,7 +6082,12 @@ mod extreme_tests {
 
         // Simula un fascicolo con descrizione enorme (10MB di testo)
         let large_text: String = (0..500_000)
-            .map(|i| format!("Riga {} del diario del fascicolo — annotazione dettagliata. ", i))
+            .map(|i| {
+                format!(
+                    "Riga {} del diario del fascicolo — annotazione dettagliata. ",
+                    i
+                )
+            })
             .collect();
 
         let data = json!({
@@ -5855,6 +6104,9 @@ mod extreme_tests {
         let decrypted = decrypt_record(&dek, &block).unwrap();
         let recovered: serde_json::Value = rmp_serde::from_slice(&decrypted).unwrap();
         assert_eq!(recovered["id"], "p_giant");
-        assert_eq!(recovered["description"].as_str().unwrap().len(), large_text.len());
+        assert_eq!(
+            recovered["description"].as_str().unwrap().len(),
+            large_text.len()
+        );
     }
 }

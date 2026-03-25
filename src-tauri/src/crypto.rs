@@ -160,7 +160,10 @@ mod tests {
         let key = vec![0x42u8; 32];
         let enc1 = encrypt_data(&key, b"same").unwrap();
         let enc2 = encrypt_data(&key, b"same").unwrap();
-        assert_ne!(enc1, enc2, "Encryptions of same plaintext must differ (random nonce)");
+        assert_ne!(
+            enc1, enc2,
+            "Encryptions of same plaintext must differ (random nonce)"
+        );
     }
 
     #[test]

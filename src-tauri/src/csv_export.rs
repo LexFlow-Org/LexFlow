@@ -68,7 +68,11 @@ mod tests {
     fn test_escape_csv_formula_injection_equals() {
         let result = escape_csv("=CMD(\"calc\")");
         // Result is quoted because of inner ", but the ' prefix neutralizes the formula
-        assert!(result.contains("'=CMD"), "Formula starting with = must contain ' prefix: got {}", result);
+        assert!(
+            result.contains("'=CMD"),
+            "Formula starting with = must contain ' prefix: got {}",
+            result
+        );
     }
 
     #[test]
@@ -106,7 +110,11 @@ mod tests {
         // trim_start is used, so "  =CMD" should still be caught
         let result = escape_csv("  =CMD(\"calc\")");
         // Contains ' prefix for formula neutralization (may also be quoted due to ")
-        assert!(result.contains("'"), "Formula with spaces must contain ' prefix: got {}", result);
+        assert!(
+            result.contains("'"),
+            "Formula with spaces must contain ' prefix: got {}",
+            result
+        );
     }
 
     #[test]
@@ -118,8 +126,16 @@ mod tests {
     fn test_escape_csv_formula_plus_comma() {
         // Formula injection + comma → both prefix and quoting
         let result = escape_csv("+1,2");
-        assert!(result.contains("'"), "Must contain ' prefix: got {}", result);
-        assert!(result.contains("\""), "Must be quoted due to comma: got {}", result);
+        assert!(
+            result.contains("'"),
+            "Must contain ' prefix: got {}",
+            result
+        );
+        assert!(
+            result.contains("\""),
+            "Must be quoted due to comma: got {}",
+            result
+        );
     }
 
     #[test]

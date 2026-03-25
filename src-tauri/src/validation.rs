@@ -259,7 +259,9 @@ mod tests {
     fn test_contacts_field_too_long() {
         let long = "b".repeat(MAX_STRING_LEN + 1);
         let data = json!([{"id": "c1", "notes": long}]);
-        assert!(validate_contacts(&data).unwrap_err().contains("troppo lungo"));
+        assert!(validate_contacts(&data)
+            .unwrap_err()
+            .contains("troppo lungo"));
     }
 
     // ─── validate_agenda ─────────────────────────────────────

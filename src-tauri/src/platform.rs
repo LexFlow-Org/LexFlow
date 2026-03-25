@@ -354,7 +354,8 @@ mod tests {
 
     #[test]
     fn test_decrypt_local_with_migration_nonexistent() {
-        let result = decrypt_local_with_migration(std::path::Path::new("/tmp/nonexistent_lex_test"));
+        let result =
+            decrypt_local_with_migration(std::path::Path::new("/tmp/nonexistent_lex_test"));
         assert!(result.is_none());
     }
 
@@ -381,7 +382,10 @@ mod tests {
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         ensure_machine_id();
         let dir = std::env::temp_dir();
-        let path = dir.join(format!("lexflow_platform_corrupt_{}", rand::random::<u64>()));
+        let path = dir.join(format!(
+            "lexflow_platform_corrupt_{}",
+            rand::random::<u64>()
+        ));
         std::fs::write(&path, b"totally corrupted garbage data").unwrap();
 
         let result = decrypt_local_with_migration(&path);

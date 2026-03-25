@@ -240,7 +240,8 @@ mod tests {
     use super::*;
 
     fn test_dir() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("lexflow_lockout_test_{}", rand::random::<u64>()));
+        let dir =
+            std::env::temp_dir().join(format!("lexflow_lockout_test_{}", rand::random::<u64>()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -248,7 +249,8 @@ mod tests {
     fn ensure_machine_id() {
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
-            let _ = crate::platform::MACHINE_ID_CACHE.set("test_machine_id_for_lockout".to_string());
+            let _ =
+                crate::platform::MACHINE_ID_CACHE.set("test_machine_id_for_lockout".to_string());
         }
     }
 
