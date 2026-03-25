@@ -351,7 +351,6 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
         // User closed the save dialog — silent dismiss, no error toast
       } else if (result?.error) {
         console.warn('[PracticeDetail] PDF export returned error:', result.error);
-        const msg = result.error?.message || String(result.error);
         toast.error('Errore durante l\'esportazione. Riprova.');
       } else {
         console.warn('[PracticeDetail] PDF export returned failure:', result);
