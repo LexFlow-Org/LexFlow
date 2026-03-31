@@ -39,7 +39,7 @@ export default function Breadcrumb({ practiceTitle }) {
   if (segments.length <= 1) return null;
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-2 px-6 py-3 text-sm text-[var(--text-dim)] border-b border-[var(--border)] mb-0">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-2 px-6 py-3 text-sm text-[var(--text-dim)] border-b border-[var(--border)]/20 mb-4">
       {segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
         const Icon = seg.icon;
