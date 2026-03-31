@@ -26,11 +26,64 @@ use std::time::Duration;
 
 #[tauri::command]
 pub(crate) fn check_bio() -> bool {
-    cfg!(any(
-        target_os = "macos",
-        target_os = "windows",
-        target_os = "android"
-    ))
+    use std::sync::OnceLock;
+    static BIO_AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *BIO_AVAILABLE.get_or_init(check_bio_hardware)
+}
+
+/// Runtime hardware detection — cached via OnceLock (runs once per process).
+#[cfg(target_os = "macos")]
+fn check_bio_hardware() -> bool {
+    use std::io::Write;
+    let swift = "import LocalAuthentication\nlet c=LAContext();var e:NSError?\nexit(c.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,error:&e) ? 0 : 1)";
+    let mut cmd = std::process::Command::new("/usr/bin/swift");
+    cmd.arg("-")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    for (k, _) in std::env::vars() {
+        if k.starts_with("DYLD_") || k.starts_with("LD_") || k == "CFNETWORK_LIBRARY_PATH" {
+            cmd.env_remove(&k);
+        }
+    }
+    let Ok(mut child) = cmd.spawn() else {
+        return false;
+    };
+    if let Some(ref mut stdin) = child.stdin {
+        let _ = stdin.write_all(swift.as_bytes());
+    }
+    drop(child.stdin.take());
+    child.wait().map(|s| s.success()).unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn check_bio_hardware() -> bool {
+    let ps = r#"Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$m = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+function Await($t, $r) { $s = $m.MakeGenericMethod($r); $n = $s.Invoke($null, @($t)); $n.Wait(-1) | Out-Null; $n.Result }
+[Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime] | Out-Null
+$r = Await ([Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync()) ([Windows.Security.Credentials.UI.ConsentVerifierAvailability])
+if ($r -eq [Windows.Security.Credentials.UI.ConsentVerifierAvailability]::Available) { exit 0 } else { exit 1 }"#;
+    let Ok(mut child) =
+        std::process::Command::new(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", ps])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+    else {
+        return false;
+    };
+    child.wait().map(|s| s.success()).unwrap_or(false)
+}
+
+#[cfg(target_os = "android")]
+fn check_bio_hardware() -> bool {
+    true // Android biometrics handled by frontend
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "android")))]
+fn check_bio_hardware() -> bool {
+    false
 }
 
 #[tauri::command]

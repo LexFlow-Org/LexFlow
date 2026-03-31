@@ -24,7 +24,7 @@ pub(crate) async fn export_vault(
 
     // Verify password before creating backup
     let version = crate::state::get_vault_version(&state);
-    if version == 4 {
+    if version >= 4 {
         // v4: verify by attempting to open vault
         let dir = state
             .data_dir
@@ -175,7 +175,7 @@ pub(crate) async fn import_vault(
         *state
             .vault_version
             .write()
-            .unwrap_or_else(|e| e.into_inner()) = 4;
+            .unwrap_or_else(|e| e.into_inner()) = vault_engine::CURRENT_VAULT_VERSION;
 
         // Now write the actual data using the v4 write path
         crate::vault::write_vault_internal(&state, &val)?;

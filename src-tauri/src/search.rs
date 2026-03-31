@@ -433,8 +433,8 @@ pub(crate) fn search_vault(
     limit: Option<usize>,
 ) -> Result<Value, String> {
     let version = get_vault_version(&state);
-    if version != 4 {
-        return Err("Search requires vault v4 format".into());
+    if version < 4 {
+        return Err("Search requires vault v4+ format".into());
     }
 
     let dek = get_vault_dek(&state)?;
@@ -780,8 +780,8 @@ mod tests {
 #[tauri::command]
 pub(crate) fn rebuild_search_index(state: State<AppState>) -> Result<Value, String> {
     let version = get_vault_version(&state);
-    if version != 4 {
-        return Err("Search requires vault v4 format".into());
+    if version < 4 {
+        return Err("Search requires vault v4+ format".into());
     }
 
     let dek = get_vault_dek(&state)?;

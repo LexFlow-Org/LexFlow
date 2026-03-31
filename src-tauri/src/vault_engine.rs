@@ -26,6 +26,9 @@ use zeroize::{Zeroize, Zeroizing};
 
 // ─── Constants ──────────────────────────────────────────────
 
+pub(crate) const CURRENT_VAULT_VERSION: u32 = 7;
+pub(crate) const VAULT_MAGIC: &[u8] = b"LEXFLOW_V7";
+/// Legacy V4 magic — kept only for reading old vaults (auto-migrated on save).
 pub(crate) const VAULT_MAGIC_V4: &[u8] = b"LEXFLOW_V4";
 const AES_KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
@@ -633,17 +636,22 @@ pub(crate) fn rotate_dek(vault: &mut VaultData, kek: &[u8]) -> Result<Zeroizing<
 /// Serialize VaultData to bytes for disk storage.
 pub fn serialize_vault(vault: &VaultData) -> Result<Vec<u8>, String> {
     let json = serde_json::to_vec(vault).map_err(|e| format!("Vault serialize: {}", e))?;
-    let mut out = VAULT_MAGIC_V4.to_vec();
+    let mut out = VAULT_MAGIC.to_vec();
     out.extend_from_slice(&json);
     Ok(out)
 }
 
 /// Deserialize VaultData from bytes read from disk.
 pub fn deserialize_vault(data: &[u8]) -> Result<VaultData, String> {
-    if !data.starts_with(VAULT_MAGIC_V4) {
-        return Err("Not a v4 vault file".into());
-    }
-    let json_bytes = &data[VAULT_MAGIC_V4.len()..];
+    // Accept both current and legacy V4 magic
+    let magic_len = if data.starts_with(VAULT_MAGIC) {
+        VAULT_MAGIC.len()
+    } else if data.starts_with(VAULT_MAGIC_V4) {
+        VAULT_MAGIC_V4.len()
+    } else {
+        return Err("Not a valid vault file".into());
+    };
+    let json_bytes = &data[magic_len..];
     serde_json::from_slice(json_bytes).map_err(|e| format!("Vault deserialize: {}", e))
 }
 
@@ -670,7 +678,7 @@ pub fn create_vault(password: &str) -> Result<(VaultData, Zeroizing<Vec<u8>>), S
 
     // Build vault
     let mut vault = VaultData {
-        version: 4,
+        version: CURRENT_VAULT_VERSION,
         kdf,
         wrapped_dek,
         dek_iv,
@@ -701,7 +709,7 @@ pub fn create_vault(password: &str) -> Result<(VaultData, Zeroizing<Vec<u8>>), S
 pub fn open_vault(password: &str, data: &[u8]) -> Result<(VaultData, Zeroizing<Vec<u8>>), String> {
     let mut vault = deserialize_vault(data)?;
 
-    if vault.version != 4 {
+    if vault.version != CURRENT_VAULT_VERSION && vault.version != 4 {
         return Err(format!("Unsupported vault version: {}", vault.version));
     }
 
@@ -734,6 +742,9 @@ pub fn open_vault(password: &str, data: &[u8]) -> Result<(VaultData, Zeroizing<V
 
 /// Detect vault format by examining the first bytes.
 pub(crate) fn detect_vault_version(data: &[u8]) -> u32 {
+    if data.starts_with(VAULT_MAGIC) {
+        return CURRENT_VAULT_VERSION;
+    }
     if data.starts_with(VAULT_MAGIC_V4) {
         return 4;
     }
@@ -914,7 +925,7 @@ pub(crate) fn open_vault_with_recovery(
     data: &[u8],
 ) -> Result<(VaultData, Zeroizing<Vec<u8>>), String> {
     let vault = deserialize_vault(data)?;
-    if vault.version != 4 {
+    if vault.version != CURRENT_VAULT_VERSION && vault.version != 4 {
         return Err("Unsupported vault version".into());
     }
 

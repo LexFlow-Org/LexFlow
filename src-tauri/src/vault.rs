@@ -38,7 +38,7 @@ pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, Stri
     }
 
     let version = get_vault_version(state);
-    let result = if version == 4 {
+    let result = if version >= 4 {
         read_vault_engine(state)?
     } else {
         // v2 legacy path
@@ -129,7 +129,7 @@ pub(crate) fn write_vault_internal(state: &State<AppState>, data: &Value) -> Res
     invalidate_vault_cache(state);
 
     let version = get_vault_version(state);
-    if version == 4 {
+    if version >= 4 {
         let result = write_vault_engine(state, data);
         // PERF: update cache with new data on success
         if result.is_ok() {
@@ -311,7 +311,7 @@ fn init_new_vault_engine(
     *state
         .vault_version
         .write()
-        .unwrap_or_else(|e| e.into_inner()) = 4;
+        .unwrap_or_else(|e| e.into_inner()) = vault_engine::CURRENT_VAULT_VERSION;
 
     Ok(())
 }
@@ -364,10 +364,19 @@ pub(crate) fn vault_exists(state: State<AppState>) -> bool {
     let vault_path = dir.join(VAULT_FILE);
     if vault_path.exists() {
         if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 10) {
-            if data.starts_with(vault_engine::VAULT_MAGIC_V4) {
+            if data.starts_with(vault_engine::VAULT_MAGIC)
+                || data.starts_with(vault_engine::VAULT_MAGIC_V4)
+            {
                 return true;
             }
         }
+    }
+    // V6 split migration: vault.lex renamed to .v4-backup — check split vault
+    if vault_engine::is_split_vault(&dir) {
+        return true;
+    }
+    if dir.join("vault.lex.v4-backup").exists() {
+        return true;
     }
     dir.join(VAULT_SALT_FILE).exists()
 }
@@ -405,9 +414,19 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
     }
 
     let vault_path = dir.join(VAULT_FILE);
+    let backup_path = dir.join("vault.lex.v4-backup");
 
-    // v4-only: check if vault exists
-    let is_new = !vault_path.exists();
+    // After V6 split migration vault.lex is renamed to .v4-backup.
+    // Use the backup as unlock source when vault.lex is gone.
+    let unlock_path = if vault_path.exists() {
+        vault_path.clone()
+    } else if backup_path.exists() {
+        backup_path.clone()
+    } else {
+        vault_path.clone() // neither exists → is_new
+    };
+
+    let is_new = !unlock_path.exists() && !vault_engine::is_split_vault(&dir);
 
     if is_new {
         // Create new vault in v4 format
@@ -429,8 +448,8 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
     }
 
     // Existing vault — detect version
-    if vault_path.exists() {
-        let raw = match crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
+    if unlock_path.exists() {
+        let raw = match crate::io::safe_bounded_read(&unlock_path, 500 * 1024 * 1024) {
             Ok(r) => r,
             Err(_e) => {
                 zeroize_password(password);
@@ -440,7 +459,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
 
         let version = vault_engine::detect_vault_version(&raw);
 
-        if version == 4 {
+        if version >= 4 {
             // Open v4 vault directly
             match vault_engine::open_vault(&password, &raw) {
                 Ok((vault, dek)) => {
@@ -471,7 +490,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                     *state
                         .vault_version
                         .write()
-                        .unwrap_or_else(|e| e.into_inner()) = 4;
+                        .unwrap_or_else(|e| e.into_inner()) = vault_engine::CURRENT_VAULT_VERSION;
 
                     // V6: migrate monolithic vault to split format if needed
                     if !vault_engine::is_split_vault(&dir) {
@@ -1128,8 +1147,8 @@ pub(crate) fn check_conflict(state: State<AppState>, name: String) -> Result<Val
 #[tauri::command]
 pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, String> {
     let version = get_vault_version(&state);
-    if version != 4 {
-        return Err("Recovery key requires vault v4".into());
+    if version < 4 {
+        return Err("Recovery key requires modern vault format".into());
     }
     let dek = get_vault_dek(&state)?;
     let dir = state
@@ -1192,7 +1211,7 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
             *state
                 .vault_version
                 .write()
-                .unwrap_or_else(|e| e.into_inner()) = 4;
+                .unwrap_or_else(|e| e.into_inner()) = vault_engine::CURRENT_VAULT_VERSION;
             *state
                 .last_activity
                 .lock()

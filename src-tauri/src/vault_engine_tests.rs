@@ -75,7 +75,7 @@ mod tests {
         let (vault, _dek) = create_vault("TestPassword123!").unwrap();
         let serialized = serialize_vault(&vault).unwrap();
         let deserialized = deserialize_vault(&serialized).unwrap();
-        assert_eq!(deserialized.version, 4);
+        assert_eq!(deserialized.version, CURRENT_VAULT_VERSION);
         assert_eq!(deserialized.kdf.alg, "argon2id");
     }
 
@@ -97,6 +97,11 @@ mod tests {
 
     #[test]
     fn test_detect_vault_version() {
+        assert_eq!(
+            detect_vault_version(b"LEXFLOW_V7{\"version\":7}"),
+            CURRENT_VAULT_VERSION
+        );
+        // Legacy V4 still detected for migration
         assert_eq!(detect_vault_version(b"LEXFLOW_V4{\"version\":4}"), 4);
         assert_eq!(detect_vault_version(b"LEXFLOW_V2_SECURE\x00\x00"), 2);
         assert_eq!(detect_vault_version(b"UNKNOWN"), 0);
@@ -414,10 +419,10 @@ mod tests {
 
     #[test]
     fn pentest_truncated_vault() {
-        assert!(deserialize_vault(b"LEXFLOW_V4").is_err());
-        assert!(deserialize_vault(b"LEXFLOW_V4{").is_err());
+        assert!(deserialize_vault(b"LEXFLOW_V7").is_err());
+        assert!(deserialize_vault(b"LEXFLOW_V7{").is_err());
         assert!(deserialize_vault(b"").is_err());
-        assert!(deserialize_vault(b"LEXFLOW_V4{}").is_err());
+        assert!(deserialize_vault(b"LEXFLOW_V7{}").is_err());
     }
 
     #[test]
@@ -1050,7 +1055,7 @@ mod tests {
 
         // Open the v4 vault again (not a migration, just re-open)
         let (vault2, dek2) = open_vault(password, &serialized).unwrap();
-        assert_eq!(vault2.version, 4);
+        assert_eq!(vault2.version, CURRENT_VAULT_VERSION);
         assert_eq!(*dek, *dek2);
     }
 
@@ -1189,7 +1194,7 @@ mod tests {
         let mut bytes = serialize_vault(&vault).unwrap();
 
         // Flip a bit in the JSON payload (after magic bytes)
-        let pos = VAULT_MAGIC_V4.len() + bytes.len() / 3;
+        let pos = VAULT_MAGIC.len() + bytes.len() / 3;
         if pos < bytes.len() {
             bytes[pos] ^= 0x01;
         }
@@ -1612,12 +1617,12 @@ mod tests {
     fn atk08d_malformed_json_vault() {
         // Various malformed JSON payloads after magic bytes
         let bad_payloads = vec![
-            b"LEXFLOW_V4null".to_vec(),
-            b"LEXFLOW_V4\"just a string\"".to_vec(),
-            b"LEXFLOW_V4[1,2,3]".to_vec(),
-            b"LEXFLOW_V40".to_vec(),
-            b"LEXFLOW_V4true".to_vec(),
-            [b"LEXFLOW_V4".to_vec(), vec![0xFF; 100]].concat(), // binary garbage
+            b"LEXFLOW_V7null".to_vec(),
+            b"LEXFLOW_V7\"just a string\"".to_vec(),
+            b"LEXFLOW_V7[1,2,3]".to_vec(),
+            b"LEXFLOW_V70".to_vec(),
+            b"LEXFLOW_V7true".to_vec(),
+            [b"LEXFLOW_V7".to_vec(), vec![0xFF; 100]].concat(), // binary garbage
         ];
         for (i, payload) in bad_payloads.iter().enumerate() {
             assert!(
@@ -1631,7 +1636,7 @@ mod tests {
     #[test]
     fn atk08e_deep_json_nesting() {
         // Deeply nested JSON should not stack overflow
-        let deep = format!("LEXFLOW_V4{}{}", "{\"a\":".repeat(100), "}".repeat(100));
+        let deep = format!("LEXFLOW_V7{}{}", "{\"a\":".repeat(100), "}".repeat(100));
         let result = std::panic::catch_unwind(|| {
             let _ = deserialize_vault(deep.as_bytes());
         });
@@ -2419,7 +2424,7 @@ mod dynamic_tests {
 
         // 1. Create vault
         let (vault, dek) = create_vault(password).unwrap();
-        assert_eq!(vault.version, 4);
+        assert_eq!(vault.version, CURRENT_VAULT_VERSION);
         assert!(vault.records.is_empty());
 
         // 2. Serialize
@@ -3055,7 +3060,7 @@ mod exhaustive_tests {
         assert!(open_vault("Test_2024!", &[]).is_err());
 
         // Just magic bytes
-        assert!(open_vault("Test_2024!", VAULT_MAGIC_V4).is_err());
+        assert!(open_vault("Test_2024!", VAULT_MAGIC).is_err());
     }
 
     #[test]
@@ -4690,12 +4695,12 @@ mod full_coverage_tests {
         let mut serialized = serialize_vault(&vault).unwrap();
 
         // Tamper: reduce m_cost in the JSON
-        let json_str = String::from_utf8_lossy(&serialized[VAULT_MAGIC_V4.len()..]).to_string();
+        let json_str = String::from_utf8_lossy(&serialized[VAULT_MAGIC.len()..]).to_string();
         let weakened = json_str.replace(
             &format!("\"m\":{}", vault.kdf.m),
             "\"m\":1024", // dangerously low
         );
-        serialized = VAULT_MAGIC_V4.to_vec();
+        serialized = VAULT_MAGIC.to_vec();
         serialized.extend_from_slice(weakened.as_bytes());
 
         // Even with correct password, HMAC mismatch → rejected
@@ -4876,7 +4881,7 @@ mod full_coverage_tests {
             "index": {"iv": "", "tag": "", "data": "", "compressed": false},
             "records": {}
         });
-        let mut data = VAULT_MAGIC_V4.to_vec();
+        let mut data = VAULT_MAGIC.to_vec();
         data.extend_from_slice(&serde_json::to_vec(&fake).unwrap());
 
         // Should fail: m_cost too low (below 8192 minimum)
@@ -5041,9 +5046,9 @@ mod full_coverage_tests {
         let serialized = serialize_vault(&vault).unwrap();
 
         // Tamper: change mac_version to force legacy computation
-        let json_str = String::from_utf8_lossy(&serialized[VAULT_MAGIC_V4.len()..]).to_string();
+        let json_str = String::from_utf8_lossy(&serialized[VAULT_MAGIC.len()..]).to_string();
         let tampered = json_str.replace("\"mac_version\":2", "\"mac_version\":99");
-        let mut tampered_data = VAULT_MAGIC_V4.to_vec();
+        let mut tampered_data = VAULT_MAGIC.to_vec();
         tampered_data.extend_from_slice(tampered.as_bytes());
 
         // Should still work: verify_header_mac tries fallback versions
@@ -5051,7 +5056,7 @@ mod full_coverage_tests {
         // Either succeeds (fallback found matching version) or fails (HMAC mismatch)
         // Both are acceptable — the important thing is no panic or data leak
         match result {
-            Ok((v, _)) => assert_eq!(v.version, 4),
+            Ok((v, _)) => assert_eq!(v.version, CURRENT_VAULT_VERSION),
             Err(e) => assert!(!e.is_empty()),
         }
     }
@@ -5285,14 +5290,14 @@ mod extreme_tests {
 
         // Tronca a punti diversi e verifica che TUTTI rifiutino l'apertura
         let truncation_points = [
-            1,                        // solo 1 byte
-            VAULT_MAGIC_V4.len(),     // solo magic
-            VAULT_MAGIC_V4.len() + 1, // magic + 1 byte JSON
-            full.len() / 4,           // 25%
-            full.len() / 2,           // 50%
-            full.len() * 3 / 4,       // 75%
-            full.len() - 1,           // manca 1 byte
-            full.len() - 10,          // mancano 10 bytes
+            1,                     // solo 1 byte
+            VAULT_MAGIC.len(),     // solo magic
+            VAULT_MAGIC.len() + 1, // magic + 1 byte JSON
+            full.len() / 4,        // 25%
+            full.len() / 2,        // 50%
+            full.len() * 3 / 4,    // 75%
+            full.len() - 1,        // manca 1 byte
+            full.len() - 10,       // mancano 10 bytes
         ];
 
         for &point in &truncation_points {
@@ -5359,7 +5364,7 @@ mod extreme_tests {
 
         // Corrompi 200 posizioni random (dopo il magic prefix)
         let mut detected = 0;
-        let start = VAULT_MAGIC_V4.len() + 1;
+        let start = VAULT_MAGIC.len() + 1;
         let step = (len - start).max(1) / 200;
 
         for i in 0..200 {
@@ -5410,7 +5415,7 @@ mod extreme_tests {
 
         // Sovrascrive blocchi da 64 bytes in punti diversi
         let block_size = 64;
-        for start in (VAULT_MAGIC_V4.len()..full.len()).step_by(full.len() / 10) {
+        for start in (VAULT_MAGIC.len()..full.len()).step_by(full.len() / 10) {
             let mut corrupted = full.clone();
             let end = (start + block_size).min(corrupted.len());
             for byte in &mut corrupted[start..end] {
@@ -5437,7 +5442,7 @@ mod extreme_tests {
         assert!(open_vault(password, &random_data).is_err());
 
         // Con magic ma contenuto random
-        let mut with_magic = VAULT_MAGIC_V4.to_vec();
+        let mut with_magic = VAULT_MAGIC.to_vec();
         with_magic.extend_from_slice(&random_data);
         assert!(open_vault(password, &with_magic).is_err());
     }
@@ -5865,13 +5870,14 @@ mod extreme_tests {
         let full = serialize_vault(&vault).unwrap();
 
         // Inietta un campo "admin": true nel JSON
-        let json_str = String::from_utf8_lossy(&full[VAULT_MAGIC_V4.len()..]).to_string();
-        let injected = json_str.replacen(
-            "\"version\":4",
-            "\"version\":4,\"admin\":true,\"bypass\":true",
-            1,
+        let json_str = String::from_utf8_lossy(&full[VAULT_MAGIC.len()..]).to_string();
+        let current_ver = format!("\"version\":{}", CURRENT_VAULT_VERSION);
+        let injected_ver = format!(
+            "\"version\":{},\"admin\":true,\"bypass\":true",
+            CURRENT_VAULT_VERSION
         );
-        let mut injected_data = VAULT_MAGIC_V4.to_vec();
+        let injected = json_str.replacen(&current_ver, &injected_ver, 1);
+        let mut injected_data = VAULT_MAGIC.to_vec();
         injected_data.extend_from_slice(injected.as_bytes());
 
         // Il HMAC deve fallire perché il header canonico è cambiato
@@ -5881,7 +5887,7 @@ mod extreme_tests {
         match open_vault(password, &injected_data) {
             Ok((v, _)) => {
                 // Se apre, verifica che i campi iniettati NON influenzino nulla
-                assert_eq!(v.version, 4);
+                assert_eq!(v.version, CURRENT_VAULT_VERSION);
                 // I campi "admin" e "bypass" sono ignorati da serde (non nel struct)
             }
             Err(_) => {
@@ -5894,18 +5900,19 @@ mod extreme_tests {
     //  HACKING 9: Version downgrade a v=0
     // ═══════════════════════════════════════════════════════════
 
-    /// Attaccante cambia il campo version da 4 a 0 o 99.
+    /// Attaccante cambia il campo version.
     #[test]
     fn hack_version_field_manipulation() {
         let password = "VersionHack_2026!X";
         let (vault, _) = create_vault(password).unwrap();
         let full = serialize_vault(&vault).unwrap();
+        let current_ver = format!("\"version\":{}", CURRENT_VAULT_VERSION);
 
-        for fake_version in [0, 1, 2, 3, 5, 99, 255] {
-            let json_str = String::from_utf8_lossy(&full[VAULT_MAGIC_V4.len()..]).to_string();
+        for fake_version in [0, 1, 2, 3, 4, 5, 99, 255] {
+            let json_str = String::from_utf8_lossy(&full[VAULT_MAGIC.len()..]).to_string();
             let hacked =
-                json_str.replacen("\"version\":4", &format!("\"version\":{}", fake_version), 1);
-            let mut hacked_data = VAULT_MAGIC_V4.to_vec();
+                json_str.replacen(&current_ver, &format!("\"version\":{}", fake_version), 1);
+            let mut hacked_data = VAULT_MAGIC.to_vec();
             hacked_data.extend_from_slice(hacked.as_bytes());
 
             let result = open_vault(password, &hacked_data);
