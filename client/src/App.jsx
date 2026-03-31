@@ -449,7 +449,7 @@ export default function App() {
     <LicenseActivation>
       <ErrorBoundary>
       <AppProvider value={{ practices, agendaEvents, settings, savePractices, saveAgenda }}>
-      <div className="flex h-screen bg-background text-text-primary overflow-hidden border border-border rounded-lg shadow-2xl relative">
+      <div className="flex h-screen bg-background text-text-primary overflow-hidden border border-border/30 rounded-lg shadow-lg relative">
         
         {/* Privacy Shield */}
         {privacyEnabled && blurred && (

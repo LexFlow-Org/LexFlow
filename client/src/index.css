@@ -112,7 +112,7 @@
     --text-subtle: #B0B6D0;
 
     /* Bordi & Ombre */
-    --border: #32394f;
+    --border: #232838;
     --radius: 12px;
     --radius-sm: 8px;
     --radius-lg: 16px;
@@ -210,7 +210,7 @@
     --text-subtle: #6e7290;
 
     /* Bordi — ratio bg↔border IDENTICO al dark */
-    --border: #b7bbbf;
+    --border: #d0d3d8;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 
     /* Semantici — IDENTICI al dark */

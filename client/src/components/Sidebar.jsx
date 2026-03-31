@@ -105,7 +105,7 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
   const isLight = theme === 'light';
 
   return (
-    <aside className="w-68 h-screen flex flex-col flex-shrink-0 z-20 pt-14 relative bg-sidebar-bg shadow-[1px_0_0_0_var(--border)]">
+    <aside className="w-68 h-screen flex flex-col flex-shrink-0 z-20 pt-14 relative bg-sidebar-bg shadow-[1px_0_0_0_rgba(var(--overlay),0.08)]">
 
       {/* Logo */}
       <div className="h-20 flex items-center px-8 mb-6">
@@ -121,9 +121,9 @@ function DesktopSidebar({ version, onLock, theme, onToggleTheme }) {
       </div>
 
       {/* Nav — scrollbar adattiva: visibile solo su hover se serve */}
-      <nav className="flex-1 px-4 py-2 space-y-5 overflow-y-auto sidebar-scroll">
+      <nav className="flex-1 px-4 py-2 space-y-6 overflow-y-auto sidebar-scroll">
         {sections.map((section, sIdx) => (
-          <div key={section.title || 'main'} className={`space-y-1 ${sIdx > 0 && section.title ? 'pt-2' : ''}`}>
+          <div key={section.title || 'main'} className={`space-y-1 ${sIdx > 0 && section.title ? 'pt-3' : ''}`}>
             {section.title && (
               <div className="px-4 mb-2 mt-1 text-xs font-black text-text-dim/60 uppercase tracking-title">
                 {section.title}
