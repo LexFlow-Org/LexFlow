@@ -464,12 +464,17 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
             match vault_engine::open_vault(&password, &raw) {
                 Ok((vault, dek)) => {
                     // SECURITY: anti-rollback check
+                    // Skip when unlocking from .v4-backup with split vault present:
+                    // the backup has a stale write counter from before migration,
+                    // while the split vault kept incrementing the stored counter.
+                    let using_stale_backup =
+                        unlock_path == backup_path && vault_engine::is_split_vault(&dir);
                     let counter_path = sec_dir.join(".vault-writes-counter");
                     let stored_counter = fs::read_to_string(&counter_path)
                         .ok()
                         .and_then(|s| s.trim().parse::<u64>().ok())
                         .unwrap_or(0);
-                    if vault.rotation.writes < stored_counter {
+                    if !using_stale_backup && vault.rotation.writes < stored_counter {
                         eprintln!(
                             "[SECURITY] ROLLBACK DETECTED: vault writes={} < stored counter={}",
                             vault.rotation.writes, stored_counter
@@ -478,7 +483,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                         return json!({"success": false, "error": "Rilevata un'anomalia nel database. Per sicurezza, contatta il supporto tecnico."});
                     }
                     // Update stored counter
-                    if vault.rotation.writes > stored_counter {
+                    if !using_stale_backup && vault.rotation.writes > stored_counter {
                         let _ = atomic_write_with_sync(
                             &counter_path,
                             vault.rotation.writes.to_string().as_bytes(),
