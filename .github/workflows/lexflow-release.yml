@@ -277,6 +277,21 @@ jobs:
           prerelease: false
           args: --target universal-apple-darwin --bundles dmg
 
+      - name: Inject rounded icon into DMG
+        run: |
+          DMG_FILE=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -n "$DMG_FILE" ]; then
+            hdiutil convert "$DMG_FILE" -format UDRW -o /tmp/lexflow-rw.dmg
+            hdiutil attach /tmp/lexflow-rw.dmg -mountpoint /tmp/lexflow-mount
+            cp src-tauri/icons/dmg-icon.icns /tmp/lexflow-mount/.VolumeIcon.icns
+            SetFile -a C /tmp/lexflow-mount
+            hdiutil detach /tmp/lexflow-mount
+            rm "$DMG_FILE"
+            hdiutil convert /tmp/lexflow-rw.dmg -format UDZO -o "$DMG_FILE"
+            rm /tmp/lexflow-rw.dmg
+            echo "✅ DMG volume icon injected (rounded)"
+          fi
+
       - name: Generate SBOM
         uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11
         with:
