@@ -31,7 +31,7 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
     update();
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => { el.removeEventListener('scroll', onScroll); cancelAnimationFrame(rafId); };
-  }, [relevant]);
+  }, [relevant.length]); // PERF: only re-attach when list size changes, not on every array ref change
 
   if (relevant.length === 0) {
     return (

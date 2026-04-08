@@ -588,7 +588,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 custom-scrollbar">
         
         {/* ═══ TAB: DIARIO CRONOLOGICO ═══ */}
         {activeTab === 'diary' && (
@@ -608,7 +608,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </button>
               </div>
             )}
-            <div className="flex-1 space-y-4 mb-6">
+            <div className="flex-1 overflow-y-auto space-y-4 pb-4 custom-scrollbar">
                {(!practice.diary || practice.diary.length === 0) && (
                 <div className="text-center py-16 text-text-dim">
                   <Clock size={36} className="mx-auto mb-3 opacity-40" />
@@ -636,7 +636,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
               ))}
             </div>
 
-            <form onSubmit={addNote} className="sticky bottom-0 bg-background pt-4 border-t border-border">
+            <form onSubmit={addNote} className="flex-shrink-0 bg-background pt-4 border-t border-border">
               <div className="relative">
                 <textarea
                   className="w-full min-h-[80px] pr-14 pl-4 py-3 resize-none rounded-2xl bg-surface border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 focus:bg-card outline-none transition-colors"
@@ -700,7 +700,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             <div>
               <h3 className="text-2xs font-black text-text-dim uppercase tracking-label mb-4">Documenti Allegati</h3>
               {(!practice.attachments || practice.attachments.length === 0) ? (
-                <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-border">
+                <div className="glass-card p-8 flex flex-col items-center justify-center text-center border-2 border-dashed border-grid-line">
                   <FileText size={28} className="text-text-dim/40 mb-3" />
                   <p className="text-sm text-text-muted">Nessun documento allegato</p>
                   <p className="text-xs text-text-dim mt-1">Carica PDF o documenti nel vault crittografato</p>
@@ -739,7 +739,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             <div className="mt-6">
               <h3 className="text-2xs font-black text-text-dim uppercase tracking-label mb-4">Cartelle Collegate</h3>
               {folders.length === 0 ? (
-                <div className="glass-card p-8 flex flex-col items-center justify-center text-center border border-dashed border-border">
+                <div className="glass-card p-8 flex flex-col items-center justify-center text-center border-2 border-dashed border-grid-line">
                   <FolderOpen size={28} className="text-text-dim/40 mb-3" />
                   <p className="text-sm text-text-muted">Nessuna cartella collegata</p>
                   <p className="text-xs text-text-dim mt-1">Collega cartelle locali al fascicolo</p>
@@ -943,7 +943,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             {/* Dati Generali */}
             <div className="glass-card p-6">
               <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2 flex items-center gap-2"><FileText size={14} className="text-text-muted" /> Dati Generali</h3>
-              <div className="grid grid-cols-2 gap-y-5 gap-x-8 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-5 gap-x-8 text-sm">
                 <div>
                   <span className="block text-2xs font-bold text-text-dim uppercase tracking-wider mb-1">Materia</span>
                   <span className="text-text font-medium capitalize">{

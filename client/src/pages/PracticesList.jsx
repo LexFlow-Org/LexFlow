@@ -1,14 +1,15 @@
 import { useState, useMemo, memo } from 'react';
 import PropTypes from 'prop-types';
-import { 
-  Search, 
-  Plus, 
-  ChevronRight, 
-  Briefcase, 
+import {
+  Search,
+  Plus,
+  ChevronRight,
+  Briefcase,
   Archive,
   CheckCircle2,
   Filter,
-  Fingerprint
+  Fingerprint,
+  FileText
 } from 'lucide-react';
 
 // Mappa dei colori e stili per ogni materia
@@ -69,7 +70,15 @@ const PracticeRow = memo(function PracticeRow({ practice: p, onSelect }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+         {(p?.attachments?.length > 0) && (
+           <div className="relative" title={`${p.attachments.length} document${p.attachments.length === 1 ? 'o' : 'i'}`}>
+             <FileText size={16} className="text-text-dim/60" />
+             <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-primary text-[9px] font-black text-black leading-none px-0.5">
+               {p.attachments.length}
+             </span>
+           </div>
+         )}
          {p?.biometricProtected && <Fingerprint size={16} className="text-primary/60" title="Protetto con biometria" />}
          <ChevronRight className="text-text-dim group-hover:text-primary group-hover:translate-x-1 transition-colors" size={24} />
       </div>
@@ -238,21 +247,21 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
 
       {/* Lista Fascicoli */}
       <div className="space-y-4">
-        {filteredPractices.length > 0 ? (
-          filteredPractices.map((p, index) => (
-            <PracticeRow key={p?.id || `practice-${index}`} practice={p} onSelect={onSelect} />
-          ))
-        ) : (
-          <div className="glass-card p-24 flex flex-col items-center justify-center text-center space-y-6 border border-dashed border-border">
-            <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center text-text-dim/20">
-              <Search size={40} />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-bold text-text">Nessun fascicolo trovato</h3>
-              <p className="text-text-muted text-sm max-w-xs mx-auto">Affina i filtri di ricerca o crea una nuova pratica digitale per iniziare.</p>
-            </div>
+      {filteredPractices.length > 0 ? (
+        filteredPractices.map((p, index) => (
+          <PracticeRow key={p?.id || `practice-${index}`} practice={p} onSelect={onSelect} />
+        ))
+      ) : (
+        <div className="glass-card p-24 flex flex-col items-center justify-center text-center space-y-6 border border-dashed border-border">
+          <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center text-text-dim/20">
+            <Search size={40} />
           </div>
-        )}
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-text">Nessun fascicolo trovato</h3>
+            <p className="text-text-muted text-sm max-w-xs mx-auto">Affina i filtri di ricerca o crea una nuova pratica digitale per iniziare.</p>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

@@ -38,6 +38,15 @@
             "--font-path",
             { "validator": "\\S+" }
           ]
+        },
+        {
+          "name": "binaries/typst",
+          "sidecar": true,
+          "args": [
+            "compile",
+            { "validator": "\\S+" },
+            { "validator": "\\S+" }
+          ]
         }
       ]
     }

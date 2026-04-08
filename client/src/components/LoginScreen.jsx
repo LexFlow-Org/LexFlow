@@ -358,7 +358,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
 
       setPassword('');
       setConfirm('');
-      onUnlock();
+      onUnlock(isNew);
     } catch (err) {
       console.error(err);
       setError('Errore di sistema durante lo sblocco');

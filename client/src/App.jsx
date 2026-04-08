@@ -33,6 +33,7 @@ const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const ReportPage = lazy(() => import('./pages/ReportPage'));
 const ActivityPage = lazy(() => import('./pages/ActivityPage'));
+const DocumentToolsPage = lazy(() => import('./pages/DocumentToolsPage'));
 
 // PERF: preload all lazy pages after initial render to eliminate navigation delay.
 // Chunks download in background so page switches are instant.
@@ -45,6 +46,7 @@ const preloadPages = () => {
   import('./pages/ContactsPage');
   import('./pages/ReportPage');
   import('./pages/ActivityPage');
+  import('./pages/DocumentToolsPage');
 };
 
 export default function App() {
@@ -343,7 +345,7 @@ export default function App() {
     }
   }, [syncDeadlinesToAgenda, syncScheduleToBackend]);
 
-  const handleUnlock = useCallback(async () => {
+  const handleUnlock = useCallback(async (vaultIsNew = false) => {
     setBlurred(false);
     setAutoLocked(false);
     setIsLocked(false);
@@ -359,9 +361,8 @@ export default function App() {
       }
     } catch { console.debug('[App] Notification permission non-critical'); }
 
-    // Show onboarding wizard on first launch (no practices yet)
-    const pracs = await api.loadPractices().catch(() => []);
-    if (!pracs || pracs.length === 0) {
+    // Show onboarding wizard ONLY when vault was just created (first install or after reset)
+    if (vaultIsNew) {
       setShowOnboarding(true);
     }
   }, [loadAllData]);
@@ -502,7 +503,7 @@ export default function App() {
           <TccLocationBanner />
           <Toaster
             position="top-right"
-            containerClassName="!top-16 !right-6 !z-[99999]"
+            containerClassName="!top-16 !right-6 !z-[99999] !max-w-[calc(100vw-3rem)]"
             gutter={10}
             toastOptions={{
               className: 'lexflow-toast',
@@ -591,6 +592,7 @@ export default function App() {
               } />
               <Route path="/report" element={<ReportPage practices={practices} />} />
               <Route path="/attivita" element={<ActivityPage />} />
+              <Route path="/strumenti" element={<DocumentToolsPage />} />
               <Route path="/audit" element={<ActivityPage />} />
             </Routes>
             </Suspense>

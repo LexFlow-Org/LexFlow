@@ -31,6 +31,16 @@ const MONTHS_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Lugl
 
 const HOURS = Array.from({length: 24}, (_, i) => i); // 00:00 - 23:00
 
+// PERF: static hour grid — never changes, allocated once at module scope
+const hourGridLines = HOURS.map((h, i) => (
+  <div key={h} className="absolute w-full border-t border-grid-line" style={{top: i * 60, height: 60}} />
+));
+const hourLabels = HOURS.map((h, i) => (
+  <div key={h} className="absolute left-0 w-12 text-right text-xs-p font-medium text-text-dim pt-1.5" style={{top: i * 60}}>
+    {String(h).padStart(2,'0')}:00
+  </div>
+));
+
 function parseDate(s) {
   if (!s || typeof s !== 'string') return new Date(Number.NaN);
   const [y, m, d] = s.split('-').map(Number);
@@ -745,16 +755,10 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
       <div className="glass-card flex-1 overflow-hidden relative">
              <div ref={timelineRef} className="overflow-y-auto h-full no-scrollbar relative p-4">
                 <div className="absolute top-4 left-16 right-4 bottom-4 pointer-events-none">
-                     {HOURS.map((h, i) => (
-                        <div key={h} className="absolute w-full border-t border-border" style={{top: i * 60, height: 60}}></div>
-                     ))}
+                     {hourGridLines}
                 </div>
                 <div className="relative" style={{height: HOURS.length * 60 + 20}}>
-                  {HOURS.map((h, i) => (
-                    <div key={h} className="absolute left-0 w-12 text-right text-xs-p font-medium text-text-dim pt-1.5" style={{top: i * 60}}>
-                      {String(h).padStart(2,'0')}:00
-                    </div>
-                  ))}
+                  {hourLabels}
                   {(() => {
                     const nowMin = now.getHours() * 60 + now.getMinutes();
                     const top = (nowMin / 60) * 60;
@@ -943,7 +947,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
         </div>
         <div ref={scrollRef} className="overflow-y-auto flex-1 no-scrollbar relative">
           <div className="grid grid-cols-[50px_repeat(7,1fr)] relative" style={{height: HOURS.length * 60}}>
-            <div className="relative border-r border-border bg-surface">
+            <div className="relative border-r border-grid-line bg-surface">
               {HOURS.map(h => (
                 <div key={h} className="absolute w-full text-right pr-2 text-2xs text-text-dim font-medium" style={{top: h*60 + 5}}>
                   {String(h).padStart(2,'0')}
@@ -955,7 +959,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
               const dayEvts = eventsByDate.get(str) || [];
               return (
                 <div key={str} data-daystr={str} role="grid" tabIndex={0} aria-label={`Giorno ${str} — clicca per creare evento`}
-                    className={`relative border-r border-border ${isToday ? 'bg-surface' : ''}`}
+                    className={`relative border-r border-grid-line ${isToday ? 'bg-surface' : ''}`}
                     onKeyDown={(e) => {
                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(str, '09:00', '10:00'); }
                     }}
@@ -967,7 +971,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
                        const startH = Math.floor(rawMin/60); 
                        onAdd(str, fmtTime(startH, 0), fmtTime(Math.min(startH+1,23), 0));
                     }}>
-                  {HOURS.map(h => (<div key={h} className="absolute w-full border-t border-border" style={{top: h*60, height: 60}}/>))}
+                  {HOURS.map(h => (<div key={h} className="absolute w-full border-t border-grid-line" style={{top: h*60, height: 60}}/>))}
                   {dayEvts.map(ev => {
                     const [sh,sm] = ev.timeStart.split(':').map(Number);
                     const [eh,em] = ev.timeEnd.split(':').map(Number);
@@ -1052,7 +1056,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
         </button>
       </div>
       <div className="glass-card flex-1 flex flex-col overflow-hidden p-0">
-        <div className="grid grid-cols-7 border-b border-border bg-surface">
+        <div className="grid grid-cols-7 border-b border-grid-line bg-surface">
           {['LUN','MAR','MER','GIO','VEN','SAB','DOM'].map((d, i) => (
             <div key={d} className={`text-center py-2 text-2xs font-bold ${i>=5 ? 'text-primary' : 'text-text-dim'}`}>{d}</div>
           ))}
@@ -1063,7 +1067,7 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
             const dayEvts = eventsByDate.get(str) || [];
             return (
               <div key={str}
-                className={`border-b border-r border-border p-1 relative cursor-pointer hover:bg-surface transition group text-left ${outside ? 'opacity-30' : ''} ${isToday ? 'bg-primary/[0.05]' : ''}`}>
+                className={`border-b border-r border-grid-line p-1 relative cursor-pointer hover:bg-surface transition group text-left ${outside ? 'opacity-30' : ''} ${isToday ? 'bg-primary/[0.05]' : ''}`}>
                 <button type="button" className="absolute inset-0 z-0 cursor-pointer" aria-label={`Aggiungi evento il ${str}`}
                   onClick={() => onAdd(str)} />
                 <div className={`text-2xs font-bold mb-1 ml-1 w-5 h-5 flex items-center justify-center rounded-full relative z-[1] pointer-events-none ${isToday ? 'bg-primary text-black' : 'text-text-muted'}`}>

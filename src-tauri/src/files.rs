@@ -83,6 +83,29 @@ pub(crate) async fn select_file(app: AppHandle) -> Result<Option<Value>, String>
     }))
 }
 
+/// Select multiple files at once (for merge, batch operations).
+#[tauri::command]
+pub(crate) async fn select_files(
+    app: AppHandle,
+    extensions: Option<Vec<String>>,
+) -> Result<Vec<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut builder = app.dialog().file();
+    let exts: Vec<String> = extensions.unwrap_or_else(|| vec!["pdf".into()]);
+    let ext_refs: Vec<&str> = exts.iter().map(|s| s.as_str()).collect();
+    builder = builder.add_filter("Documenti", &ext_refs);
+    builder.pick_files(move |file_paths| {
+        let _ = tx.send(file_paths);
+    });
+    let result = rx.await.map_err(|e| format!("Dialog error: {}", e))?;
+    Ok(result
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|f| f.into_path().ok().map(|p| p.to_string_lossy().to_string()))
+        .collect())
+}
+
 #[tauri::command]
 pub(crate) async fn select_folder(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;

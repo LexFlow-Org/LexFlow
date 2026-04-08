@@ -52,6 +52,9 @@ zeroize = { version = "1.7", features = ["derive", "alloc"] }
 
 ed25519-dalek = "2.0"
 
+# Document Tools (PDF manipulation)
+lopdf = "0.34"
+
 [features]
 default = ["desktop"]
 desktop = ["tauri/tray-icon"]

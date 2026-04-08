@@ -49,7 +49,8 @@ export async function exportPracticeTypstPDF(practice) {
     try {
       const license = await checkLicense() || {};
       if (license.activated) {
-        lawyerName = license.lawyerName || '';
+        // Strip any title prefix from name (e.g. "Avv. Pietro Longo" → "Pietro Longo")
+        lawyerName = (license.lawyerName || '').replace(/^(Avv\.|Avv|Avvocato|Praticante)\.?\s+/i, '').trim();
         studioName = license.studioName || '';
         lawyerTitle = license.lawyerTitle || 'Avv.';
       }

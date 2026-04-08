@@ -487,8 +487,8 @@ export default function TimeTrackingPage({ practices }) {
           </div>
 
           <div className="flex justify-end mb-4">
-            <button onClick={() => setShowCreateInvoice(true)} className="btn-primary text-xs px-4 py-2">
-              <Plus size={14} /> Nuova Parcella
+            <button onClick={() => setShowCreateInvoice(true)} className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest">
+              <Plus size={18} strokeWidth={3} /> Nuova Parcella
             </button>
           </div>
 
@@ -719,7 +719,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
             </div>
             <div>
               <label htmlFor="inv-status" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Stato</label>
-              <select id="inv-status" value={status} onChange={e => setStatus(e.target.value)} className="input-field w-full py-3">
+              <select id="inv-status" value={status} onChange={e => setStatus(e.target.value)} className="input-field w-full py-3 h-[46px]">
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
@@ -734,12 +734,12 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
           <div className="flex items-center justify-between">
             <span className="text-2xs font-black text-text-dim uppercase tracking-label">Voci</span>
             <div className="flex gap-2">
-              <button type="button" onClick={autoFillFromLogs} className="text-2xs text-primary hover:underline font-bold">Auto-compila da ore</button>
-              <button type="button" onClick={addItem} className="text-2xs text-text-muted hover:text-text font-bold flex items-center gap-1"><Plus size={12} /> Aggiungi</button>
+              <button type="button" onClick={autoFillFromLogs} className="text-xs text-primary hover:bg-primary/10 font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 transition-colors"><Clock size={13} /> Auto-compila da ore</button>
+              <button type="button" onClick={addItem} className="text-xs text-text-muted hover:text-text hover:bg-surface font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border transition-colors"><Plus size={13} /> Aggiungi voce</button>
             </div>
           </div>
           {items.map((it, idx) => (
-            <div key={it._key} className="glass-card p-3 space-y-3">
+            <div key={it._key} className="glass-card p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <input value={it.description} onChange={e => updateItem(idx, 'description', e.target.value)} className="input-field flex-1 py-2 text-sm" placeholder="Descrizione voce..." />
                 {items.length > 1 && (
@@ -753,7 +753,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
                 </div>
                 <div>
                   <label htmlFor={`inv-item-unit-${idx}`} className="text-3xs text-text-dim block mb-1">Unit&agrave;</label>
-                  <select id={`inv-item-unit-${idx}`} value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="input-field w-full py-2 text-sm">
+                  <select id={`inv-item-unit-${idx}`} value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="input-field w-full py-2 text-sm h-[38px]">
                     <option value="h">Ore</option>
                     <option value="u">Unit&agrave;</option>
                     <option value="f">Forfait</option>
@@ -771,11 +771,11 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
             </div>
           ))}
           <div className="glass-card p-4 space-y-2 text-sm">
-            <div className="flex justify-between text-text-muted"><span>Imponibile</span><span>\u20AC {totals.subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-text-dim"><span>CPA 4%</span><span>\u20AC {totals.cpa.toFixed(2)}</span></div>
-            <div className="flex justify-between text-text-dim"><span>IVA 22%</span><span>\u20AC {totals.iva.toFixed(2)}</span></div>
+            <div className="flex justify-between text-text-muted"><span>Imponibile</span><span>€ {totals.subtotal.toFixed(2)}</span></div>
+            <div className="flex justify-between text-text-dim"><span>CPA 4%</span><span>€ {totals.cpa.toFixed(2)}</span></div>
+            <div className="flex justify-between text-text-dim"><span>IVA 22%</span><span>€ {totals.iva.toFixed(2)}</span></div>
             <div className="flex justify-between text-text font-bold text-base pt-2 border-t border-border">
-              <span>Totale</span><span className="text-primary">\u20AC {totals.total.toFixed(2)}</span>
+              <span>Totale</span><span className="text-primary">€ {totals.total.toFixed(2)}</span>
             </div>
           </div>
         </form>

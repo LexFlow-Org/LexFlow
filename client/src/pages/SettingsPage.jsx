@@ -568,7 +568,7 @@ export default function SettingsPage({ onLock }) {
     // Load lawyer/studio from license token (read-only, not from settings)
     api.checkLicense().then(res => {
       if (res?.activated) {
-        if (res.lawyerName) setLawyerName(res.lawyerName);
+        if (res.lawyerName) setLawyerName(res.lawyerName.replace(/^(Avv\.|Avv|Avvocato|Praticante)\.?\s+/i, '').trim());
         if (res.lawyerTitle) setLawyerTitle(res.lawyerTitle);
         if (res.studioName) setStudioName(res.studioName);
       }

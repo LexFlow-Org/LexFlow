@@ -11,6 +11,7 @@ const ROUTE_LABELS = {
   '/settings': 'Impostazioni',
   '/report': 'Report',
   '/attivita': 'Attività',
+  '/strumenti': 'Strumenti PDF',
 };
 
 export default function Breadcrumb({ practiceTitle }) {

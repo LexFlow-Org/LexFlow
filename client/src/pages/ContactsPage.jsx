@@ -92,14 +92,27 @@ export default function ContactsPage({ practices, onSelectPractice }) {
     return list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [contacts, filterType, searchQuery]);
 
-  // Find practices linked to a contact
-  const getLinkedPractices = useCallback((contactId) => {
-    return (practices || []).filter(p => {
-      if (p.clientId === contactId || p.counterpartyId === contactId || p.opposingCounselId === contactId || p.judgeId === contactId) return true;
-      if (p.roles?.some(r => r.contactId === contactId)) return true;
-      return false;
-    });
+  // PERF: pre-compute contact→practices map once per practices change (avoids O(n*m) per contact)
+  const contactPracticesMap = useMemo(() => {
+    const map = new Map();
+    const addLink = (contactId, practice) => {
+      if (!contactId) return;
+      if (!map.has(contactId)) map.set(contactId, []);
+      map.get(contactId).push(practice);
+    };
+    for (const p of (practices || [])) {
+      addLink(p.clientId, p);
+      addLink(p.counterpartyId, p);
+      addLink(p.opposingCounselId, p);
+      addLink(p.judgeId, p);
+      if (p.roles) for (const r of p.roles) addLink(r.contactId, p);
+    }
+    return map;
   }, [practices]);
+
+  const getLinkedPractices = useCallback((contactId) => {
+    return contactPracticesMap.get(contactId) || [];
+  }, [contactPracticesMap]);
 
   // Find related contacts via shared practices (e.g. counterparty ↔ opposing_counsel)
   const collectFromPractice = useCallback((practice, contactId, seen, related) => {

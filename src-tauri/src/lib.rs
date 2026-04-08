@@ -10,6 +10,7 @@ mod bio;
 mod constants;
 mod crypto;
 mod csv_export;
+mod doc_tools;
 mod error;
 mod files;
 mod import_export;
@@ -228,6 +229,7 @@ pub fn run() {
             bio::clear_bio,
             // Files
             files::select_file,
+            files::select_files,
             files::select_folder,
             files::open_path,
             files::select_pdf_save_path,
@@ -246,6 +248,21 @@ pub fn run() {
             license::verify_license,
             license::activate_license,
             license::get_machine_fingerprint,
+            // Document Tools
+            doc_tools::pdf_info,
+            doc_tools::merge_pdfs,
+            doc_tools::split_pdf,
+            doc_tools::remove_pages,
+            doc_tools::extract_pages,
+            doc_tools::compress_pdf,
+            doc_tools::add_watermark,
+            doc_tools::pdf_to_text,
+            doc_tools::images_to_pdf,
+            doc_tools::protect_pdf,
+            doc_tools::rotate_pdf,
+            doc_tools::reorder_pages,
+            doc_tools::add_page_numbers,
+            doc_tools::redact_pdf,
             // Import / Export
             import_export::export_vault,
             import_export::import_vault,

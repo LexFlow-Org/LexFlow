@@ -208,7 +208,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                   <input
                     id="cpm-courtLocation"
                     className="input-field pl-12 w-full bg-surface border-border"
-                    placeholder="Città o sezione..."
+                    placeholder="Città o sez..."
                     value={formData.courtLocation}
                     onChange={e => updateField('courtLocation', e.target.value)}
                   />

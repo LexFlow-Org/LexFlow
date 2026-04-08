@@ -110,7 +110,8 @@ export default function LicenseActivation({ children }) {
   function handleActivationResponse(response) {
     if (response.success) {
       const title = response.lawyerTitle || 'Avv.';
-      const parts = [response.client, response.lawyerName ? `${title} ${response.lawyerName}` : ''].filter(Boolean);
+      const cleanName = (response.lawyerName || '').replace(/^(Avv\.|Avv|Avvocato|Praticante)\.?\s+/i, '').trim();
+      const parts = [response.client, cleanName ? `${title} ${cleanName}` : ''].filter(Boolean);
       setToast({
         type: 'success',
         text: 'Licenza attivata con successo',

@@ -124,6 +124,7 @@ export const saveSettings = (settings) => safeInvoke('save_settings', { settings
 
 // Files
 export const selectFile = async () => (await safeInvoke('select_file')) || null;
+export const selectFiles = async (extensions) => (await safeInvoke('select_files', { extensions })) || [];
 export const selectFolder = async () => (await safeInvoke('select_folder')) || null;
 export const openPath = (path) => safeInvoke('open_path', { path });
 
@@ -171,6 +172,24 @@ export const syncNotificationSchedule = (schedule) =>
 // Licensing
 export const checkLicense = () => safeInvoke('check_license');
 export const activateLicense = (key) => safeInvoke('activate_license', { key });
+
+// Save dialog (generic)
+export const selectSavePath = (defaultName) => safeInvoke('select_pdf_save_path', { defaultName });
+
+// Document Tools
+export const pdfInfo = (path) => safeInvoke('pdf_info', { path });
+export const mergePdfs = (inputPaths, outputPath) => safeInvoke('merge_pdfs', { inputPaths, outputPath });
+export const splitPdf = (inputPath, outputDir) => safeInvoke('split_pdf', { inputPath, outputDir });
+export const removePages = (inputPath, outputPath, pagesToRemove) => safeInvoke('remove_pages', { inputPath, outputPath, pagesToRemove });
+export const extractPages = (inputPath, outputPath, pagesToExtract) => safeInvoke('extract_pages', { inputPath, outputPath, pagesToExtract });
+export const compressPdf = (inputPath, outputPath) => safeInvoke('compress_pdf', { inputPath, outputPath });
+export const addWatermark = (inputPath, outputPath, text, opacity, fontSize) => safeInvoke('add_watermark', { inputPath, outputPath, text, opacity, fontSize });
+export const rotatePdf = (inputPath, outputPath, rotation, pagesToRotate) => safeInvoke('rotate_pdf', { inputPath, outputPath, rotation, pagesToRotate });
+export const pdfToText = (inputPath) => safeInvoke('pdf_to_text', { inputPath });
+export const imagesToPdf = (imagePaths, outputPath) => safeInvoke('images_to_pdf', { imagePaths, outputPath });
+export const reorderPages = (inputPath, outputPath, newOrder) => safeInvoke('reorder_pages', { inputPath, outputPath, newOrder });
+export const addPageNumbers = (inputPath, outputPath, position, formatStr, startFrom, fontSize) => safeInvoke('add_page_numbers', { inputPath, outputPath, position, formatStr, startFrom, fontSize });
+export const redactPdf = (inputPath, outputPath, redactions) => safeInvoke('redact_pdf', { inputPath, outputPath, redactions });
 
 // Platform / App
 export const isMac = () => safeInvoke('is_mac');

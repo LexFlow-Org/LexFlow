@@ -141,9 +141,24 @@ pub struct IndexEntry {
 //  FASE 2: KEK Derivation + Auto-benchmark
 // ═══════════════════════════════════════════════════════════
 
-/// Benchmark Argon2 to find params yielding ~300-500ms on this device.
+/// Benchmark Argon2 to find params yielding ~250-400ms on this device.
 /// Called during vault creation and password change.
 pub fn benchmark_argon2_params() -> KdfParams {
+    // In debug builds, skip expensive benchmark and use safe defaults.
+    // Debug-mode Argon2 is 10-20x slower than release.
+    #[cfg(debug_assertions)]
+    {
+        return KdfParams {
+            alg: "argon2id".to_string(),
+            m: 16384,
+            t: 3,
+            p: 1,
+            salt: String::new(),
+        };
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
     let cores = std::thread::available_parallelism()
         .map(|n| n.get() as u32)
         .unwrap_or(1);
@@ -156,7 +171,7 @@ pub fn benchmark_argon2_params() -> KdfParams {
         262144 // 256MB absolute ceiling
     };
 
-    let target_ms: u128 = 400;
+    let target_ms: u128 = 300;
     let candidates_m: &[u32] = if cfg!(target_os = "android") {
         &[16384, 24576, 32768]
     } else {
@@ -223,6 +238,7 @@ pub fn benchmark_argon2_params() -> KdfParams {
         p: 1,
         salt: String::new(),
     })
+    } // end #[cfg(not(debug_assertions))]
 }
 
 /// Derive KEK from password + KdfParams (reads params from vault header).
