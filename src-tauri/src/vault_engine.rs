@@ -159,85 +159,85 @@ pub fn benchmark_argon2_params() -> KdfParams {
 
     #[cfg(not(debug_assertions))]
     {
-    let cores = std::thread::available_parallelism()
-        .map(|n| n.get() as u32)
-        .unwrap_or(1);
-    let max_p = (cores as f32 * 0.75).floor().clamp(1.0, 4.0) as u32;
+        let cores = std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(1);
+        let max_p = (cores as f32 * 0.75).floor().clamp(1.0, 4.0) as u32;
 
-    // Android: cap memory at 32MB to avoid OOM
-    let max_m: u32 = if cfg!(target_os = "android") {
-        32768
-    } else {
-        262144 // 256MB absolute ceiling
-    };
+        // Android: cap memory at 32MB to avoid OOM
+        let max_m: u32 = if cfg!(target_os = "android") {
+            32768
+        } else {
+            262144 // 256MB absolute ceiling
+        };
 
-    let target_ms: u128 = 300;
-    let candidates_m: &[u32] = if cfg!(target_os = "android") {
-        &[16384, 24576, 32768]
-    } else {
-        &[16384, 32768, 65536, 131072]
-    };
+        let target_ms: u128 = 300;
+        let candidates_m: &[u32] = if cfg!(target_os = "android") {
+            &[16384, 24576, 32768]
+        } else {
+            &[16384, 32768, 65536, 131072]
+        };
 
-    let mut best: Option<(KdfParams, i128)> = None;
-    let test_salt = [0u8; 32];
+        let mut best: Option<(KdfParams, i128)> = None;
+        let test_salt = [0u8; 32];
 
-    // Strategy: single probe per (m,p) combo — if within target, accept immediately.
-    // Only do 3-run median for the first good match to confirm stability.
-    'outer: for &m in candidates_m {
-        if m > max_m {
-            break;
-        }
-        for p in 1..=max_p {
-            // Quick single probe first
-            let start = std::time::Instant::now();
-            let _ = derive_kek_raw("x", &test_salt, m, 3, p);
-            let probe_ms = start.elapsed().as_millis();
-
-            // Skip if way too slow (> 2x target) — higher m/p will be worse
-            if probe_ms > target_ms * 2 {
-                break; // skip remaining p values for this m
+        // Strategy: single probe per (m,p) combo — if within target, accept immediately.
+        // Only do 3-run median for the first good match to confirm stability.
+        'outer: for &m in candidates_m {
+            if m > max_m {
+                break;
             }
+            for p in 1..=max_p {
+                // Quick single probe first
+                let start = std::time::Instant::now();
+                let _ = derive_kek_raw("x", &test_salt, m, 3, p);
+                let probe_ms = start.elapsed().as_millis();
 
-            // If within range, confirm with 2 more runs (median of 3)
-            if (200..=800).contains(&probe_ms) {
-                let mut durations = vec![probe_ms];
-                for _ in 0..2 {
-                    let start = std::time::Instant::now();
-                    let _ = derive_kek_raw("x", &test_salt, m, 3, p);
-                    durations.push(start.elapsed().as_millis());
+                // Skip if way too slow (> 2x target) — higher m/p will be worse
+                if probe_ms > target_ms * 2 {
+                    break; // skip remaining p values for this m
                 }
-                durations.sort();
-                let median = durations[1];
-                let distance = (median as i128 - target_ms as i128).abs();
 
-                if best.is_none() || distance < best.as_ref().unwrap().1 {
-                    best = Some((
-                        KdfParams {
-                            alg: "argon2id".to_string(),
-                            m,
-                            t: 3,
-                            p,
-                            salt: String::new(),
-                        },
-                        distance,
-                    ));
-                    // If very close to target (within 50ms), stop searching
-                    if distance < 50 {
-                        break 'outer;
+                // If within range, confirm with 2 more runs (median of 3)
+                if (200..=800).contains(&probe_ms) {
+                    let mut durations = vec![probe_ms];
+                    for _ in 0..2 {
+                        let start = std::time::Instant::now();
+                        let _ = derive_kek_raw("x", &test_salt, m, 3, p);
+                        durations.push(start.elapsed().as_millis());
+                    }
+                    durations.sort();
+                    let median = durations[1];
+                    let distance = (median as i128 - target_ms as i128).abs();
+
+                    if best.is_none() || distance < best.as_ref().unwrap().1 {
+                        best = Some((
+                            KdfParams {
+                                alg: "argon2id".to_string(),
+                                m,
+                                t: 3,
+                                p,
+                                salt: String::new(),
+                            },
+                            distance,
+                        ));
+                        // If very close to target (within 50ms), stop searching
+                        if distance < 50 {
+                            break 'outer;
+                        }
                     }
                 }
             }
         }
-    }
 
-    // Fallback: safe minimum params
-    best.map(|(params, _)| params).unwrap_or(KdfParams {
-        alg: "argon2id".to_string(),
-        m: 16384,
-        t: 3,
-        p: 1,
-        salt: String::new(),
-    })
+        // Fallback: safe minimum params
+        best.map(|(params, _)| params).unwrap_or(KdfParams {
+            alg: "argon2id".to_string(),
+            m: 16384,
+            t: 3,
+            p: 1,
+            salt: String::new(),
+        })
     } // end #[cfg(not(debug_assertions))]
 }
 

@@ -373,7 +373,9 @@ pub fn compress_pdf(input_path: String, output_path: String) -> DocToolResult {
 
     match doc.save(&output_path) {
         Ok(_) => {
-            let new_size = std::fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
+            let new_size = std::fs::metadata(&output_path)
+                .map(|m| m.len())
+                .unwrap_or(0);
             let saved = original_size.saturating_sub(new_size);
             let pct = if original_size > 0 {
                 (saved as f64 / original_size as f64 * 100.0) as u32
@@ -440,8 +442,7 @@ pub fn add_watermark(
             fs, opacity_val, opacity_val, opacity_val, text, text
         );
 
-        let stream =
-            lopdf::Stream::new(lopdf::dictionary! {}, watermark_content.into_bytes());
+        let stream = lopdf::Stream::new(lopdf::dictionary! {}, watermark_content.into_bytes());
         let stream_id = doc.add_object(Object::Stream(stream));
 
         // Append watermark stream to page contents
@@ -456,10 +457,7 @@ pub fn add_watermark(
                     Some(Object::Reference(r)) => {
                         dict.set(
                             "Contents",
-                            Object::Array(vec![
-                                Object::Reference(r),
-                                Object::Reference(stream_id),
-                            ]),
+                            Object::Array(vec![Object::Reference(r), Object::Reference(stream_id)]),
                         );
                     }
                     _ => {
@@ -473,10 +471,7 @@ pub fn add_watermark(
     match doc.save(&output_path) {
         Ok(_) => ok_result(
             &output_path,
-            &format!(
-                "Watermark \"{}\" aggiunto a {} pagine.",
-                text, page_count
-            ),
+            &format!("Watermark \"{}\" aggiunto a {} pagine.", text, page_count),
         ),
         Err(e) => err_result(&format!("Errore nel salvataggio: {}", e)),
     }
@@ -501,8 +496,7 @@ pub fn rotate_pdf(
     };
 
     let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
-    let target_pages =
-        pages_to_rotate.unwrap_or_else(|| pages.iter().map(|(n, _)| *n).collect());
+    let target_pages = pages_to_rotate.unwrap_or_else(|| pages.iter().map(|(n, _)| *n).collect());
 
     let mut rotated = 0;
     for (page_num, page_id) in &pages {
@@ -591,10 +585,7 @@ pub fn pdf_to_text(input_path: String) -> Result<String, String> {
     }
 
     if full_text.is_empty() {
-        Ok(
-            "Nessun testo estraibile trovato. Il PDF potrebbe contenere solo immagini."
-                .to_string(),
-        )
+        Ok("Nessun testo estraibile trovato. Il PDF potrebbe contenere solo immagini.".to_string())
     } else {
         Ok(full_text)
     }
@@ -620,7 +611,8 @@ pub async fn images_to_pdf(
     let mut typst_content = String::new();
 
     // ── Same palette + page setup as fascicolo.typ ──
-    typst_content.push_str(r##"
+    typst_content.push_str(
+        r##"
 // LexFlow — Conversione Immagini → PDF
 // Stesso stile premium del Report Fascicolo
 
@@ -644,7 +636,8 @@ pub async fn images_to_pdf(
 )
 
 #set text(font: "Libertinus Serif", size: 10.5pt, fill: slate-900, lang: "it")
-"##);
+"##,
+    );
 
     // ── Header ──
     typst_content.push_str(&format!(
@@ -697,7 +690,9 @@ pub async fn images_to_pdf(
     };
 
     use tauri::Manager;
-    let font_path = app.path().resource_dir()
+    let font_path = app
+        .path()
+        .resource_dir()
         .map(|p: std::path::PathBuf| p.join("fonts"))
         .unwrap_or_default();
     let cmd = sidecar.args([
@@ -808,10 +803,7 @@ pub fn reorder_pages(
     match final_doc.save(&output_path) {
         Ok(_) => ok_result(
             &output_path,
-            &format!(
-                "{} pagine riordinate con successo.",
-                total
-            ),
+            &format!("{} pagine riordinate con successo.", total),
         ),
         Err(e) => err_result(&format!("Errore nel salvataggio: {}", e)),
     }
@@ -823,10 +815,10 @@ pub fn reorder_pages(
 pub fn add_page_numbers(
     input_path: String,
     output_path: String,
-    position: Option<String>,   // "bottom-center" (default), "bottom-right", "bottom-left", "top-center", "top-right", "top-left"
+    position: Option<String>, // "bottom-center" (default), "bottom-right", "bottom-left", "top-center", "top-right", "top-left"
     format_str: Option<String>, // e.g. "Pag. {n} di {total}", default: "{n}"
-    start_from: Option<u32>,    // starting number, default 1
-    font_size: Option<f64>,     // default 10
+    start_from: Option<u32>,  // starting number, default 1
+    font_size: Option<f64>,   // default 10
 ) -> DocToolResult {
     let mut doc = match Document::load(&input_path) {
         Ok(d) => d,
@@ -853,13 +845,13 @@ pub fn add_page_numbers(
         // Calculate position
         let text_width_approx = label.len() as f64 * fs * 0.5; // rough estimate
         let (x, y) = match pos.as_str() {
-            "bottom-left"   => (40.0, 25.0),
-            "bottom-right"  => (page_w - 40.0 - text_width_approx, 25.0),
+            "bottom-left" => (40.0, 25.0),
+            "bottom-right" => (page_w - 40.0 - text_width_approx, 25.0),
             "bottom-center" => ((page_w - text_width_approx) / 2.0, 25.0),
-            "top-left"      => (40.0, page_h - 30.0),
-            "top-right"     => (page_w - 40.0 - text_width_approx, page_h - 30.0),
-            "top-center"    => ((page_w - text_width_approx) / 2.0, page_h - 30.0),
-            _               => ((page_w - text_width_approx) / 2.0, 25.0),
+            "top-left" => (40.0, page_h - 30.0),
+            "top-right" => (page_w - 40.0 - text_width_approx, page_h - 30.0),
+            "top-center" => ((page_w - text_width_approx) / 2.0, page_h - 30.0),
+            _ => ((page_w - text_width_approx) / 2.0, 25.0),
         };
 
         let content = format!(
@@ -871,7 +863,9 @@ pub fn add_page_numbers(
              ({}) Tj\n\
              ET\n\
              Q",
-            fs, x, y,
+            fs,
+            x,
+            y,
             label.replace('(', "\\(").replace(')', "\\)")
         );
 
@@ -890,10 +884,7 @@ pub fn add_page_numbers(
                     Some(Object::Reference(r)) => {
                         dict.set(
                             "Contents",
-                            Object::Array(vec![
-                                Object::Reference(r),
-                                Object::Reference(stream_id),
-                            ]),
+                            Object::Array(vec![Object::Reference(r), Object::Reference(stream_id)]),
                         );
                     }
                     _ => {
@@ -909,7 +900,9 @@ pub fn add_page_numbers(
             &output_path,
             &format!(
                 "Numeri di pagina aggiunti a {} pagine (da {} a {}).",
-                total, start, start + total - 1
+                total,
+                start,
+                start + total - 1
             ),
         ),
         Err(e) => err_result(&format!("Errore nel salvataggio: {}", e)),
@@ -923,8 +916,16 @@ fn get_page_dimensions(doc: &Document, page_id: ObjectId) -> (f64, f64) {
             if let Ok(mbox) = dict.get(b"MediaBox") {
                 if let Ok(arr) = mbox.as_array() {
                     if arr.len() == 4 {
-                        let w: f64 = arr[2].as_float().map(|v| v as f64).or_else(|_| arr[2].as_i64().map(|v| v as f64)).unwrap_or(595.0);
-                        let h: f64 = arr[3].as_float().map(|v| v as f64).or_else(|_| arr[3].as_i64().map(|v| v as f64)).unwrap_or(842.0);
+                        let w: f64 = arr[2]
+                            .as_float()
+                            .map(|v| v as f64)
+                            .or_else(|_| arr[2].as_i64().map(|v| v as f64))
+                            .unwrap_or(595.0);
+                        let h: f64 = arr[3]
+                            .as_float()
+                            .map(|v| v as f64)
+                            .or_else(|_| arr[3].as_i64().map(|v| v as f64))
+                            .unwrap_or(842.0);
                         return (w, h);
                     }
                 }
@@ -1072,11 +1073,7 @@ pub struct RedactArea {
 // ─── Protect PDF (password) ─────────────────────────────────
 
 #[tauri::command]
-pub fn protect_pdf(
-    input_path: String,
-    output_path: String,
-    _password: String,
-) -> DocToolResult {
+pub fn protect_pdf(input_path: String, output_path: String, _password: String) -> DocToolResult {
     // lopdf doesn't support PDF encryption natively.
     // Copy the file and note the limitation.
     match std::fs::copy(&input_path, &output_path) {
@@ -1119,9 +1116,10 @@ mod tests {
                 "BT /F1 12 Tf 72 750 Td (Pagina {} - Testo di test per documento legale LexFlow) Tj ET",
                 i
             );
-            let content_id = doc.add_object(
-                Object::Stream(lopdf::Stream::new(lopdf::dictionary! {}, content.into_bytes()))
-            );
+            let content_id = doc.add_object(Object::Stream(lopdf::Stream::new(
+                lopdf::dictionary! {},
+                content.into_bytes(),
+            )));
 
             let page_id = doc.add_object(lopdf::dictionary! {
                 "Type" => "Page",
@@ -1136,11 +1134,14 @@ mod tests {
         }
 
         let kids: Vec<Object> = page_ids.iter().map(|id| Object::Reference(*id)).collect();
-        doc.objects.insert(pages_id, Object::Dictionary(lopdf::dictionary! {
-            "Type" => "Pages",
-            "Kids" => Object::Array(kids),
-            "Count" => Object::Integer(num_pages as i64),
-        }));
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(lopdf::dictionary! {
+                "Type" => "Pages",
+                "Kids" => Object::Array(kids),
+                "Count" => Object::Integer(num_pages as i64),
+            }),
+        );
 
         let catalog_id = doc.add_object(lopdf::dictionary! {
             "Type" => "Catalog",
@@ -1151,7 +1152,10 @@ mod tests {
     }
 
     fn tmp_path(name: &str) -> String {
-        std::env::temp_dir().join(format!("lexflow_test_{}", name)).to_string_lossy().to_string()
+        std::env::temp_dir()
+            .join(format!("lexflow_test_{}", name))
+            .to_string_lossy()
+            .to_string()
     }
 
     // ─── 1. PDF Info ───────────────────────────────────────
@@ -1214,7 +1218,11 @@ mod tests {
         assert!(res.success, "Split should succeed: {}", res.message);
 
         // Verify 4 individual files created
-        let stem = PathBuf::from(&src).file_stem().unwrap().to_string_lossy().to_string();
+        let stem = PathBuf::from(&src)
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         for i in 1..=4 {
             let page_file = PathBuf::from(&out_dir).join(format!("{}_pag{}.pdf", stem, i));
             assert!(page_file.exists(), "Page {} file should exist", i);
@@ -1240,7 +1248,10 @@ mod tests {
 
         let info = pdf_info(out.clone()).unwrap();
         assert_eq!(info.pages, 3, "Should have 6-3=3 pages remaining");
-        println!("✓ remove_pages: 6 pages, removed 3 → {} remaining", info.pages);
+        println!(
+            "✓ remove_pages: 6 pages, removed 3 → {} remaining",
+            info.pages
+        );
 
         fs::remove_file(&src).ok();
         fs::remove_file(&out).ok();
@@ -1271,7 +1282,10 @@ mod tests {
 
         let info = pdf_info(out.clone()).unwrap();
         assert_eq!(info.pages, 3, "Should extract exactly 3 pages");
-        println!("✓ extract_pages: extracted 3 pages from 8 → {} pages", info.pages);
+        println!(
+            "✓ extract_pages: extracted 3 pages from 8 → {} pages",
+            info.pages
+        );
 
         fs::remove_file(&src).ok();
         fs::remove_file(&out).ok();
@@ -1303,7 +1317,13 @@ mod tests {
         let out = tmp_path("wmark_out.pdf");
         create_test_pdf(&src, 3);
 
-        let res = add_watermark(src.clone(), out.clone(), "BOZZA".into(), Some(0.2), Some(48.0));
+        let res = add_watermark(
+            src.clone(),
+            out.clone(),
+            "BOZZA".into(),
+            Some(0.2),
+            Some(48.0),
+        );
         assert!(res.success, "Watermark should succeed: {}", res.message);
 
         let info = pdf_info(out.clone()).unwrap();
@@ -1313,7 +1333,10 @@ mod tests {
         let src_size = fs::metadata(&src).unwrap().len();
         let out_size = fs::metadata(&out).unwrap().len();
         assert!(out_size > src_size, "Watermarked PDF should be larger");
-        println!("✓ add_watermark: BOZZA added to 3 pages ({} → {} bytes)", src_size, out_size);
+        println!(
+            "✓ add_watermark: BOZZA added to 3 pages ({} → {} bytes)",
+            src_size, out_size
+        );
 
         fs::remove_file(&src).ok();
         fs::remove_file(&out).ok();
@@ -1349,7 +1372,11 @@ mod tests {
         create_test_pdf(&src, 5);
 
         let res = rotate_pdf(src.clone(), out.clone(), 180, Some(vec![2, 4]));
-        assert!(res.success, "Partial rotate should succeed: {}", res.message);
+        assert!(
+            res.success,
+            "Partial rotate should succeed: {}",
+            res.message
+        );
         println!("✓ rotate_pdf: pages 2,4 rotated 180° in a 5-page PDF");
 
         fs::remove_file(&src).ok();
@@ -1379,8 +1406,13 @@ mod tests {
         // Our test PDFs have BT/ET text blocks, so text extraction should find something
         assert!(!text.is_empty(), "Should return non-empty result");
         // The function prefixes each page with "--- Pagina N ---" if text is found
-        let has_text = text.contains("Pagina") || text.contains("Testo") || text.contains("immagini");
-        assert!(has_text, "Should contain page markers or text content, got: {}", &text[..text.len().min(200)]);
+        let has_text =
+            text.contains("Pagina") || text.contains("Testo") || text.contains("immagini");
+        assert!(
+            has_text,
+            "Should contain page markers or text content, got: {}",
+            &text[..text.len().min(200)]
+        );
         println!("✓ pdf_to_text: result {} chars from 2 pages", text.len());
 
         fs::remove_file(&src).ok();
@@ -1455,8 +1487,12 @@ mod tests {
         create_test_pdf(&src, 5);
 
         let res = add_page_numbers(
-            src.clone(), out.clone(),
-            None, None, None, None  // all defaults: bottom-center, "{n}", start=1, 10pt
+            src.clone(),
+            out.clone(),
+            None,
+            None,
+            None,
+            None, // all defaults: bottom-center, "{n}", start=1, 10pt
         );
         assert!(res.success, "Page numbers should succeed: {}", res.message);
 
@@ -1467,7 +1503,10 @@ mod tests {
         let out_size = fs::metadata(&out).unwrap().len();
         let src_size = fs::metadata(&src).unwrap().len();
         assert!(out_size > src_size, "Numbered PDF should be larger");
-        println!("✓ add_page_numbers: default format on 5 pages ({} → {} bytes)", src_size, out_size);
+        println!(
+            "✓ add_page_numbers: default format on 5 pages ({} → {} bytes)",
+            src_size, out_size
+        );
 
         fs::remove_file(&src).ok();
         fs::remove_file(&out).ok();
@@ -1480,13 +1519,18 @@ mod tests {
         create_test_pdf(&src, 3);
 
         let res = add_page_numbers(
-            src.clone(), out.clone(),
+            src.clone(),
+            out.clone(),
             Some("top-right".into()),
             Some("Pag. {n} di {total}".into()),
             Some(1),
             Some(9.0),
         );
-        assert!(res.success, "Formatted page numbers should succeed: {}", res.message);
+        assert!(
+            res.success,
+            "Formatted page numbers should succeed: {}",
+            res.message
+        );
         println!("✓ add_page_numbers: 'Pag. N di M' top-right on 3 pages");
 
         fs::remove_file(&src).ok();
@@ -1500,14 +1544,19 @@ mod tests {
         create_test_pdf(&src, 4);
 
         let res = add_page_numbers(
-            src.clone(), out.clone(),
+            src.clone(),
+            out.clone(),
             Some("bottom-left".into()),
             Some("{n}".into()),
             Some(10),
             None,
         );
         assert!(res.success, "Custom start should succeed: {}", res.message);
-        assert!(res.message.contains("da 10 a 13"), "Should mention numbering 10-13, got: {}", res.message);
+        assert!(
+            res.message.contains("da 10 a 13"),
+            "Should mention numbering 10-13, got: {}",
+            res.message
+        );
         println!("✓ add_page_numbers: numbered 10-13 on 4 pages");
 
         fs::remove_file(&src).ok();
@@ -1522,8 +1571,15 @@ mod tests {
         create_test_pdf(&src, 2);
 
         let res = redact_pdf(
-            src.clone(), out.clone(),
-            vec![RedactArea { page: 1, x: 50.0, y: 740.0, width: 300.0, height: 20.0 }],
+            src.clone(),
+            out.clone(),
+            vec![RedactArea {
+                page: 1,
+                x: 50.0,
+                y: 740.0,
+                width: 300.0,
+                height: 20.0,
+            }],
         );
         assert!(res.success, "Redact should succeed: {}", res.message);
 
@@ -1542,16 +1598,45 @@ mod tests {
         create_test_pdf(&src, 3);
 
         let res = redact_pdf(
-            src.clone(), out.clone(),
+            src.clone(),
+            out.clone(),
             vec![
-                RedactArea { page: 1, x: 50.0, y: 740.0, width: 200.0, height: 15.0 },
-                RedactArea { page: 1, x: 50.0, y: 700.0, width: 150.0, height: 15.0 },
-                RedactArea { page: 2, x: 100.0, y: 600.0, width: 250.0, height: 20.0 },
-                RedactArea { page: 3, x: 72.0, y: 750.0, width: 400.0, height: 18.0 },
+                RedactArea {
+                    page: 1,
+                    x: 50.0,
+                    y: 740.0,
+                    width: 200.0,
+                    height: 15.0,
+                },
+                RedactArea {
+                    page: 1,
+                    x: 50.0,
+                    y: 700.0,
+                    width: 150.0,
+                    height: 15.0,
+                },
+                RedactArea {
+                    page: 2,
+                    x: 100.0,
+                    y: 600.0,
+                    width: 250.0,
+                    height: 20.0,
+                },
+                RedactArea {
+                    page: 3,
+                    x: 72.0,
+                    y: 750.0,
+                    width: 400.0,
+                    height: 18.0,
+                },
             ],
         );
         assert!(res.success, "Multi-redact should succeed: {}", res.message);
-        assert!(res.message.contains("4 aree"), "Should report 4 areas, got: {}", res.message);
+        assert!(
+            res.message.contains("4 aree"),
+            "Should report 4 areas, got: {}",
+            res.message
+        );
         println!("✓ redact_pdf: 4 areas across 3 pages → {}", res.message);
 
         fs::remove_file(&src).ok();
@@ -1564,8 +1649,15 @@ mod tests {
         create_test_pdf(&src, 2);
 
         let res = redact_pdf(
-            src.clone(), tmp_path("redact_bad_out.pdf"),
-            vec![RedactArea { page: 5, x: 0.0, y: 0.0, width: 100.0, height: 100.0 }],
+            src.clone(),
+            tmp_path("redact_bad_out.pdf"),
+            vec![RedactArea {
+                page: 5,
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+            }],
         );
         assert!(!res.success, "Should reject page 5 for 2-page PDF");
         println!("✓ redact_pdf: correctly rejects invalid page number");
@@ -1606,24 +1698,31 @@ mod tests {
 
         // Step 2: Add page numbers
         let res2 = add_page_numbers(
-            merged.clone(), numbered.clone(),
+            merged.clone(),
+            numbered.clone(),
             Some("bottom-center".into()),
             Some("Pag. {n} di {total}".into()),
-            Some(1), None,
+            Some(1),
+            None,
         );
         assert!(res2.success, "Page numbers step failed");
 
         // Step 3: Add watermark
         let res3 = add_watermark(
-            numbered.clone(), final_out.clone(),
-            "BOZZA".into(), Some(0.15), Some(60.0),
+            numbered.clone(),
+            final_out.clone(),
+            "BOZZA".into(),
+            Some(0.15),
+            Some(60.0),
         );
         assert!(res3.success, "Watermark step failed");
 
         let final_info = pdf_info(final_out.clone()).unwrap();
         assert_eq!(final_info.pages, 5, "Final document should have 5 pages");
-        println!("✓ WORKFLOW: merge(3+2) → page numbers → watermark BOZZA = {} pages, {} bytes",
-            final_info.pages, final_info.file_size);
+        println!(
+            "✓ WORKFLOW: merge(3+2) → page numbers → watermark BOZZA = {} pages, {} bytes",
+            final_info.pages, final_info.file_size
+        );
 
         fs::remove_file(&a).ok();
         fs::remove_file(&b).ok();
@@ -1647,17 +1746,33 @@ mod tests {
 
         // Step 2: Redact areas on pages of extracted doc
         let res2 = redact_pdf(
-            extracted.clone(), redacted.clone(),
+            extracted.clone(),
+            redacted.clone(),
             vec![
-                RedactArea { page: 1, x: 72.0, y: 740.0, width: 200.0, height: 16.0 },
-                RedactArea { page: 3, x: 72.0, y: 740.0, width: 200.0, height: 16.0 },
+                RedactArea {
+                    page: 1,
+                    x: 72.0,
+                    y: 740.0,
+                    width: 200.0,
+                    height: 16.0,
+                },
+                RedactArea {
+                    page: 3,
+                    x: 72.0,
+                    y: 740.0,
+                    width: 200.0,
+                    height: 16.0,
+                },
             ],
         );
         assert!(res2.success, "Redact step failed");
 
         let info = pdf_info(redacted.clone()).unwrap();
         assert_eq!(info.pages, 3, "Redacted doc should have 3 pages");
-        println!("✓ WORKFLOW: extract(2,5,8 from 10) → redact 2 areas = {} pages", info.pages);
+        println!(
+            "✓ WORKFLOW: extract(2,5,8 from 10) → redact 2 areas = {} pages",
+            info.pages
+        );
 
         fs::remove_file(&src).ok();
         fs::remove_file(&extracted).ok();
