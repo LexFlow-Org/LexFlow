@@ -263,6 +263,8 @@ pub fn run() {
             doc_tools::reorder_pages,
             doc_tools::add_page_numbers,
             doc_tools::redact_pdf,
+            doc_tools::secure_pdf,
+            doc_tools::unsecure_pdf,
             // Import / Export
             import_export::export_vault,
             import_export::import_vault,

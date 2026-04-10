@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   FileText, Merge, Split, Scissors, RotateCw,
   Minimize2, Stamp, FileOutput, Type, Images,
   Upload, Download, Check, AlertCircle, Loader2, X, Info,
-  ArrowUpDown, Hash, EyeOff
+  ArrowUpDown, Hash, EyeOff, Shield, Unlock, Clock
 } from 'lucide-react';
 import * as api from '../tauri-api';
 
@@ -111,6 +111,24 @@ const TOOLS = [
     accept: '.pdf',
     needsRedact: true,
   },
+  {
+    id: 'secure',
+    label: 'Proteggi PDF',
+    icon: Shield,
+    description: 'Blocca copia, stampa, modifica e condivisione',
+    multiFile: false,
+    accept: '.pdf',
+    needsSecure: true,
+  },
+  {
+    id: 'unsecure',
+    label: 'Rimuovi Protezione',
+    icon: Unlock,
+    description: 'Rimuovi restrizioni da un PDF protetto',
+    multiFile: false,
+    accept: '.pdf',
+    needsUnsecurePassword: true,
+  },
 ];
 
 const WATERMARK_PRESETS = ['BOZZA', 'RISERVATO', 'COPIA CONFORME', 'CONFIDENZIALE', 'URGENTE'];
@@ -146,6 +164,22 @@ export default function DocumentToolsPage() {
   // Redact state
   const [redactAreas, setRedactAreas] = useState([{ page: 1, x: 50, y: 750, width: 200, height: 20 }]);
 
+  // Secure PDF state
+  const [secNoCopy, setSecNoCopy] = useState(true);
+  const [secNoPrint, setSecNoPrint] = useState(true);
+  const [secNoModify, setSecNoModify] = useState(true);
+  const [secWatermark, setSecWatermark] = useState(true);
+  const [secPassword, setSecPassword] = useState('');
+
+  // Unsecure password
+  const [unsecurePassword, setUnsecurePassword] = useState('');
+
+  // History
+  const [history, setHistory] = useState([]);
+  useEffect(() => {
+    try { setHistory(JSON.parse(localStorage.getItem('lexflow_pdf_history') || '[]')); } catch { setHistory([]); }
+  }, []);
+
   const resetState = () => {
     setFiles([]);
     setPdfInfo(null);
@@ -159,6 +193,15 @@ export default function DocumentToolsPage() {
     setPageNumPosition('bottom-center');
     setPageNumFormat('Pag. {n} di {total}');
     setPageNumStart(1);
+    setSecNoCopy(true); setSecNoPrint(true); setSecNoModify(true); setSecWatermark(true); setSecPassword('');
+    setUnsecurePassword('');
+  };
+
+  const addToHistory = (tool, inputName, outputPath) => {
+    const entry = { tool, input: inputName, output: outputPath, date: new Date().toISOString() };
+    const updated = [entry, ...history].slice(0, 50);
+    setHistory(updated);
+    try { localStorage.setItem('lexflow_pdf_history', JSON.stringify(updated)); } catch { /* ignore */ }
   };
 
   const selectTool = (tool) => {
@@ -338,6 +381,31 @@ export default function DocumentToolsPage() {
           setResult(res);
           break;
         }
+        case 'secure': {
+          const out = await api.selectSavePath('protetto.pdf');
+          if (!out) break;
+          res = await api.securePdf(files[0], out, {
+            noCopy: secNoCopy,
+            noPrint: secNoPrint,
+            noModify: secNoModify,
+            watermark: secWatermark ? 'RISERVATO' : null,
+            ownerPassword: secPassword || null,
+          });
+          setResult(res);
+          break;
+        }
+        case 'unsecure': {
+          const out = await api.selectSavePath('sbloccato.pdf');
+          if (!out) break;
+          res = await api.unsecurePdf(files[0], out, unsecurePassword || null);
+          setResult(res);
+          break;
+        }
+      }
+      // Save to history if successful
+      if (res?.success && res?.output_path) {
+        const inputName = (typeof files[0] === 'string' ? files[0] : '').split('/').pop() || 'file';
+        addToHistory(activeTool, inputName, res.output_path);
       }
     } catch (err) {
       setResult({ success: false, message: err?.message || String(err) });
@@ -386,6 +454,28 @@ export default function DocumentToolsPage() {
             );
           })}
         </div>
+
+        {/* History */}
+        {history.length > 0 && (
+          <div className="mt-8">
+            <div className="flex items-center gap-2 mb-3">
+              <Clock size={14} className="text-text-dim" />
+              <h3 className="text-2xs font-black text-text-dim uppercase tracking-label">Ultimi file modificati</h3>
+            </div>
+            <div className="space-y-1.5">
+              {history.slice(0, 10).map((h, i) => (
+                <div key={i} className="glass-card p-3 flex items-center gap-3 text-xs">
+                  <span className="text-primary font-bold uppercase w-20 truncate">{h.tool}</span>
+                  <span className="text-text truncate flex-1">{h.input}</span>
+                  <span className="text-text-dim text-2xs shrink-0">{new Date(h.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                  {h.output && (
+                    <button onClick={() => api.openPath(h.output)} className="text-primary hover:underline text-2xs font-bold shrink-0">Apri</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -681,6 +771,43 @@ export default function DocumentToolsPage() {
               + Aggiungi area
             </button>
             <p className="text-2xs text-text-dim">Le coordinate usano il sistema PDF: X da sinistra, Y dal basso. L = larghezza, A = altezza in punti.</p>
+          </div>
+        )}
+
+        {/* Secure PDF Options */}
+        {currentTool.needsSecure && pdfInfo && (
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-text-dim uppercase tracking-widest">Protezioni</label>
+            <div className="space-y-2">
+              {[
+                { key: 'noCopy', label: 'Blocca copia/incolla testo', val: secNoCopy, set: setSecNoCopy },
+                { key: 'noPrint', label: 'Blocca stampa', val: secNoPrint, set: setSecNoPrint },
+                { key: 'noModify', label: 'Blocca modifica', val: secNoModify, set: setSecNoModify },
+                { key: 'watermark', label: 'Watermark RISERVATO', val: secWatermark, set: setSecWatermark },
+              ].map(opt => (
+                <label key={opt.key} className="flex items-center gap-3 cursor-pointer py-1">
+                  <input type="checkbox" checked={opt.val} onChange={e => opt.set(e.target.checked)}
+                    className="w-4 h-4 rounded border-border accent-primary" />
+                  <span className="text-sm text-text">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-text-dim uppercase tracking-widest">Password proprietario (opzionale)</label>
+              <input type="password" value={secPassword} onChange={e => setSecPassword(e.target.value)}
+                placeholder="Lascia vuoto per generare automaticamente"
+                className="input-field w-full px-4 py-3 rounded-xl bg-input border-border text-text text-sm" />
+            </div>
+          </div>
+        )}
+
+        {/* Unsecure Password */}
+        {currentTool.needsUnsecurePassword && pdfInfo && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-text-dim uppercase tracking-widest">Password (se il PDF ne ha una)</label>
+            <input type="password" value={unsecurePassword} onChange={e => setUnsecurePassword(e.target.value)}
+              placeholder="Lascia vuoto se il PDF non ha password"
+              className="input-field w-full px-4 py-3 rounded-xl bg-input border-border text-text text-sm" />
           </div>
         )}
 

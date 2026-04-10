@@ -35,7 +35,7 @@
   },
   "bundle": {
     "active": true,
-    "externalBin": ["binaries/typst"],
+    "externalBin": ["binaries/typst", "binaries/qpdf"],
     "resources": [
       "templates/*",
       "fonts/*"

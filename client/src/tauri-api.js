@@ -190,6 +190,8 @@ export const imagesToPdf = (imagePaths, outputPath) => safeInvoke('images_to_pdf
 export const reorderPages = (inputPath, outputPath, newOrder) => safeInvoke('reorder_pages', { inputPath, outputPath, newOrder });
 export const addPageNumbers = (inputPath, outputPath, position, formatStr, startFrom, fontSize) => safeInvoke('add_page_numbers', { inputPath, outputPath, position, formatStr, startFrom, fontSize });
 export const redactPdf = (inputPath, outputPath, redactions) => safeInvoke('redact_pdf', { inputPath, outputPath, redactions });
+export const securePdf = (inputPath, outputPath, options) => safeInvoke('secure_pdf', { inputPath, outputPath, options });
+export const unsecurePdf = (inputPath, outputPath, password) => safeInvoke('unsecure_pdf', { inputPath, outputPath, password });
 
 // Platform / App
 export const isMac = () => safeInvoke('is_mac');

@@ -4,8 +4,8 @@ import PropTypes from 'prop-types';
 import {
   ArrowLeft, Calendar, FileText,
   Clock, Plus, Trash2, Send, FolderOpen,
-  FolderPlus, Lock, ChevronDown,
-  FilePlus, Info, Fingerprint, ShieldCheck, Download, X, Users, BellRing
+  FolderPlus, Lock, ChevronDown, Check,
+  FilePlus, Info, Fingerprint, ShieldCheck, Download, X, Users, BellRing, Shield
 } from 'lucide-react';
 import { exportPracticeTypstPDF } from '../utils/typstPdfGenerator';
 import ExportWarningModal from './ExportWarningModal';
@@ -251,8 +251,9 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   const [showExportWarning, setShowExportWarning] = useState(false);
   const [showExportPwdModal, setShowExportPwdModal] = useState(false);
   const [exportPwd, setExportPwd] = useState('');
-  const [exportMode, setExportMode] = useState('standard'); // standard | compressed | protected
+  const [exportMode, setExportMode] = useState('standard'); // standard | compressed | secured
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showSecureConfirm, setShowSecureConfirm] = useState(false);
   
   // Stati per i form
   const [newNote, setNewNote] = useState('');
@@ -332,6 +333,11 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   };
 
   const handleExport = () => {
+    if (exportMode === 'secured') {
+      // Show protection confirmation card before proceeding
+      setShowSecureConfirm(true);
+      return;
+    }
     // Open the security warning modal first — actual export runs only on confirm.
     setShowExportWarning(true);
   };
@@ -363,14 +369,15 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
         } catch (e) { console.warn('[Export] Compression failed (non-critical):', e); }
       }
 
-      if (exportMode === 'protected' && savedPath) {
+      if (exportMode === 'secured' && savedPath) {
         try {
-          // Apply watermark "RISERVATO" + text render mode 3 (invisible text = no copy)
-          await api.addWatermark(savedPath, savedPath, 'RISERVATO', 0.06, null);
+          const secResult = await api.securePdf(savedPath, savedPath, {
+            noCopy: true, noPrint: true, noModify: true, watermark: 'RISERVATO',
+          });
           toast.dismiss(toastId);
-          toast.success('PDF protetto e salvato!\nWatermark RISERVATO applicato.', { duration: 6000 });
+          toast.success(`PDF blindato e salvato!\n${secResult?.message || 'Protezione completa applicata.'}`, { duration: 6000 });
           return;
-        } catch (e) { console.warn('[Export] Protection failed (non-critical):', e); }
+        } catch (e) { console.warn('[Export] Secure failed (non-critical):', e); }
       }
 
       toast.dismiss(toastId);
@@ -626,7 +633,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold bg-card text-text-muted hover:bg-card-hover hover:text-text transition-colors"
                     >
                       <Download size={14} />
-                      {exportMode === 'compressed' ? 'Esporta Compresso' : exportMode === 'protected' ? 'Esporta Protetto' : 'Esporta PDF'}
+                      {exportMode === 'compressed' ? 'Compresso' : exportMode === 'secured' ? 'Protetto' : 'Esporta PDF'}
                     </button>
                     <button
                       onClick={() => setShowExportMenu(v => !v)}
@@ -640,7 +647,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       {[
                         { id: 'standard', label: 'Standard', desc: 'PDF senza modifiche' },
                         { id: 'compressed', label: 'Compresso', desc: 'Ottimizzato per PEC' },
-                        { id: 'protected', label: 'Protetto', desc: 'Watermark RISERVATO' },
+                        { id: 'secured', label: 'Protetto', desc: 'No copia, no stampa, watermark' },
                       ].map(opt => (
                         <button key={opt.id}
                           onClick={() => { setExportMode(opt.id); setShowExportMenu(false); }}
@@ -655,6 +662,38 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </div>
               </div>
             )}
+
+            {/* Secure Export Confirmation Card */}
+            {showSecureConfirm && (
+              <div className="glass-card p-5 border border-primary/30 animate-fade-in mb-4">
+                <div className="flex items-start gap-3">
+                  <Shield size={20} className="text-primary mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-bold text-text mb-2">Esporta PDF Protetto</h4>
+                    <p className="text-xs text-text-muted leading-relaxed mb-3">
+                      Il PDF verra' esportato con le seguenti protezioni:
+                    </p>
+                    <ul className="text-xs text-text-dim space-y-1 mb-4">
+                      <li className="flex items-center gap-2"><Check size={12} className="text-success" /> Copia/incolla testo bloccata</li>
+                      <li className="flex items-center gap-2"><Check size={12} className="text-success" /> Stampa bloccata</li>
+                      <li className="flex items-center gap-2"><Check size={12} className="text-success" /> Modifica bloccata</li>
+                      <li className="flex items-center gap-2"><Check size={12} className="text-success" /> Watermark "RISERVATO" applicato</li>
+                    </ul>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowSecureConfirm(false)}
+                        className="px-4 py-2 rounded-lg text-xs font-bold text-text-muted bg-surface border border-border hover:bg-card-hover transition-colors">
+                        Annulla
+                      </button>
+                      <button onClick={() => { setShowSecureConfirm(false); setShowExportWarning(true); }}
+                        className="btn-primary px-4 py-2 rounded-lg text-xs font-bold">
+                        Conferma Protezione
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex-1 space-y-4 pb-4">
                {(!practice.diary || practice.diary.length === 0) && (
                 <div className="text-center py-16 text-text-dim">

@@ -1,10 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
-import { BarChart3, TrendingUp, Clock, FileText } from 'lucide-react';
+import { BarChart3, TrendingUp, Clock, FileText, RefreshCw } from 'lucide-react';
 import * as api from '../tauri-api';
 
 export default function ReportPage({ practices = [] }) {
   const [timeLogs, setTimeLogs] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activityLoading, setActivityLoading] = useState(false);
+
+  const loadActivity = async () => {
+    setActivityLoading(true);
+    try {
+      const data = await api.getAuditLog();
+      setActivityLog(Array.isArray(data) ? [...data].reverse() : []);
+    } catch { setActivityLog([]); }
+    finally { setActivityLoading(false); }
+  };
 
   useEffect(() => {
     const load = () => {
@@ -14,8 +25,8 @@ export default function ReportPage({ practices = [] }) {
       }).catch(() => setLoading(false));
     };
     load();
-    // Reload when page becomes visible (navigating back)
-    const onFocus = () => load();
+    loadActivity();
+    const onFocus = () => { load(); loadActivity(); };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, []);
@@ -116,6 +127,41 @@ export default function ReportPage({ practices = [] }) {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Activity Log */}
+      <div className="glass-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-2xs font-black uppercase tracking-label text-[var(--text-dim)]">Attivita' Recenti</h3>
+          <button onClick={loadActivity} className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-dim)]">
+            <RefreshCw size={14} className={activityLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+        {activityLog.length === 0 ? (
+          <p className="text-center py-6 text-sm text-[var(--text-dim)]">Nessuna attivita' registrata</p>
+        ) : (
+          <div className="relative max-h-[300px] overflow-y-auto custom-scrollbar">
+            <div className="absolute left-4 top-0 bottom-0 w-px bg-[var(--border)]" />
+            <div className="space-y-1">
+              {activityLog.slice(0, 30).map((entry, i) => {
+                const event = typeof entry === 'string' ? entry : (entry.event || JSON.stringify(entry));
+                const ts = entry.time || '';
+                const displayTs = ts ? new Date(ts).toLocaleString('it-IT', {
+                  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                }) : '';
+                return (
+                  <div key={i} className="flex items-start gap-4 pl-2 py-2">
+                    <div className="w-4 h-4 rounded-full bg-[var(--bg-card)] border-2 border-[var(--primary)] z-10 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-[var(--text)]">{event}</p>
+                      {displayTs && <p className="text-2xs text-[var(--text-dim)] font-mono mt-0.5 flex items-center gap-1"><Clock size={10} /> {displayTs}</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

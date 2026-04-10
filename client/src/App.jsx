@@ -32,7 +32,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const ReportPage = lazy(() => import('./pages/ReportPage'));
-const ActivityPage = lazy(() => import('./pages/ActivityPage'));
+// ActivityPage merged into ReportPage
 const DocumentToolsPage = lazy(() => import('./pages/DocumentToolsPage'));
 
 // PERF: preload all lazy pages after initial render to eliminate navigation delay.
@@ -45,7 +45,7 @@ const preloadPages = () => {
   import('./pages/TimeTrackingPage');
   import('./pages/ContactsPage');
   import('./pages/ReportPage');
-  import('./pages/ActivityPage');
+  // ActivityPage merged into ReportPage
   import('./pages/DocumentToolsPage');
 };
 
@@ -591,9 +591,7 @@ export default function App() {
                 <ContactsPage practices={practices} onSelectPractice={handleSelectPractice} />
               } />
               <Route path="/report" element={<ReportPage practices={practices} />} />
-              <Route path="/attivita" element={<ActivityPage />} />
               <Route path="/strumenti" element={<DocumentToolsPage />} />
-              <Route path="/audit" element={<ActivityPage />} />
             </Routes>
             </Suspense>
           </div>

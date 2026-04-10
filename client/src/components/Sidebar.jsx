@@ -54,7 +54,6 @@ const sections = [
     items: [
       { path: '/ore',       label: 'Gestione Ore', icon: Clock },
       { path: '/report',    label: 'Report', icon: BarChart3 },
-      { path: '/attivita',  label: 'Attività', icon: Activity },
     ],
   },
 ];

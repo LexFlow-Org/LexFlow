@@ -47,6 +47,11 @@
             { "validator": "\\S+" },
             { "validator": "\\S+" }
           ]
+        },
+        {
+          "name": "binaries/qpdf",
+          "sidecar": true,
+          "args": true
         }
       ]
     }
