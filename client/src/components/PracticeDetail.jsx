@@ -251,6 +251,8 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   const [showExportWarning, setShowExportWarning] = useState(false);
   const [showExportPwdModal, setShowExportPwdModal] = useState(false);
   const [exportPwd, setExportPwd] = useState('');
+  const [exportMode, setExportMode] = useState('standard'); // standard | compressed | protected
+  const [showExportMenu, setShowExportMenu] = useState(false);
   
   // Stati per i form
   const [newNote, setNewNote] = useState('');
@@ -334,28 +336,46 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
     setShowExportWarning(true);
   };
 
-  /** Shared helper: show loading toast → run PDF export → resolve toast */
+  /** Shared helper: show loading toast → run PDF export → post-process → resolve toast */
   const runPdfExport = async () => {
-    const toastId = toast.loading('Generazione PDF in corso…', { duration: 30000 });
+    const modeLabel = exportMode === 'compressed' ? 'Compressione' : exportMode === 'protected' ? 'Protezione' : 'Generazione';
+    const toastId = toast.loading(`${modeLabel} PDF in corso…`, { duration: 30000 });
     try {
       const result = await exportPracticeTypstPDF(practice);
-      toast.dismiss(toastId);
-      if (result?.success) {
-        const fullPath = result.path || '';
-        const fileName = fullPath.split(/[/\\]/).pop() || 'PDF';
-        toast.success(
-          `PDF salvato con successo!\n${fileName}`,
-          { duration: 6000 }
-        );
-      } else if (result?.cancelled) {
-        // User closed the save dialog — silent dismiss, no error toast
-      } else if (result?.error) {
-        console.warn('[PracticeDetail] PDF export returned error:', result.error);
-        toast.error('Errore durante l\'esportazione. Riprova.');
-      } else {
-        console.warn('[PracticeDetail] PDF export returned failure:', result);
-        toast.error('Impossibile generare il PDF. Riprova.');
+      if (!result?.success) {
+        toast.dismiss(toastId);
+        if (result?.cancelled) return;
+        toast.error(result?.error ? 'Errore durante l\'esportazione. Riprova.' : 'Impossibile generare il PDF. Riprova.');
+        return;
       }
+
+      const savedPath = result.path || '';
+
+      // Post-processing based on export mode
+      if (exportMode === 'compressed' && savedPath) {
+        try {
+          const compResult = await api.compressPdf(savedPath, savedPath);
+          if (compResult?.details?.saved_percent > 0) {
+            toast.dismiss(toastId);
+            toast.success(`PDF compresso e salvato! (-${compResult.details.saved_percent}%)`, { duration: 6000 });
+            return;
+          }
+        } catch (e) { console.warn('[Export] Compression failed (non-critical):', e); }
+      }
+
+      if (exportMode === 'protected' && savedPath) {
+        try {
+          // Apply watermark "RISERVATO" + text render mode 3 (invisible text = no copy)
+          await api.addWatermark(savedPath, savedPath, 'RISERVATO', 0.06, null);
+          toast.dismiss(toastId);
+          toast.success('PDF protetto e salvato!\nWatermark RISERVATO applicato.', { duration: 6000 });
+          return;
+        } catch (e) { console.warn('[Export] Protection failed (non-critical):', e); }
+      }
+
+      toast.dismiss(toastId);
+      const fileName = savedPath.split(/[/\\]/).pop() || 'PDF';
+      toast.success(`PDF salvato con successo!\n${fileName}`, { duration: 6000 });
     } catch (err) {
       console.error('[PracticeDetail] PDF export failed:', err);
       toast.dismiss(toastId);
@@ -599,16 +619,43 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 <span className="text-xs font-bold text-text-dim uppercase tracking-label">
                   {practice.diary.length} {practice.diary.length === 1 ? 'annotazione' : 'annotazioni'}
                 </span>
-                <button
-                  onClick={handleExport}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-card text-text-muted border border-border hover:bg-card-hover hover:text-text transition-colors"
-                >
-                  <Download size={14} />
-                  Esporta PDF
-                </button>
+                <div className="relative">
+                  <div className="flex items-center rounded-xl border border-border overflow-hidden">
+                    <button
+                      onClick={handleExport}
+                      className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold bg-card text-text-muted hover:bg-card-hover hover:text-text transition-colors"
+                    >
+                      <Download size={14} />
+                      {exportMode === 'compressed' ? 'Esporta Compresso' : exportMode === 'protected' ? 'Esporta Protetto' : 'Esporta PDF'}
+                    </button>
+                    <button
+                      onClick={() => setShowExportMenu(v => !v)}
+                      className="px-2 py-2.5 bg-card text-text-dim hover:bg-card-hover hover:text-text border-l border-border transition-colors"
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
+                  {showExportMenu && (
+                    <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg z-50 py-1 min-w-[200px] animate-fade-in">
+                      {[
+                        { id: 'standard', label: 'Standard', desc: 'PDF senza modifiche' },
+                        { id: 'compressed', label: 'Compresso', desc: 'Ottimizzato per PEC' },
+                        { id: 'protected', label: 'Protetto', desc: 'Watermark RISERVATO' },
+                      ].map(opt => (
+                        <button key={opt.id}
+                          onClick={() => { setExportMode(opt.id); setShowExportMenu(false); }}
+                          className={`w-full text-left px-4 py-2.5 text-xs hover:bg-surface transition-colors ${exportMode === opt.id ? 'text-primary font-bold' : 'text-text-muted'}`}
+                        >
+                          <span className="block font-bold">{opt.label}</span>
+                          <span className="block text-2xs text-text-dim mt-0.5">{opt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-            <div className="flex-1 overflow-y-auto space-y-4 pb-4 custom-scrollbar">
+            <div className="flex-1 space-y-4 pb-4">
                {(!practice.diary || practice.diary.length === 0) && (
                 <div className="text-center py-16 text-text-dim">
                   <Clock size={36} className="mx-auto mb-3 opacity-40" />
@@ -723,9 +770,6 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                           {att.addedAt ? formatDateIT(att.addedAt, '') : ''}
                         </p>
                       </div>
-                      <button onClick={(e) => { e.stopPropagation(); att.path && api.openPath(att.path); }} className="btn-ghost text-xs p-2 relative z-[1]">
-                        <FolderOpen size={14} />
-                      </button>
                       <button onClick={(e) => { e.stopPropagation(); confirmRemoveAttachment(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-colors relative z-[1]">
                         <Trash2 size={14} />
                       </button>
@@ -755,16 +799,13 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                         className="absolute inset-0 z-0 cursor-pointer"
                         aria-label={`Apri ${fld.name}`}
                       />
-                      <FolderOpen size={16} className="text-warning flex-shrink-0" />
+                      <FolderOpen size={16} className="text-text-muted flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-text truncate">{fld.name}</p>
                         <p className="text-2xs text-text-dim">
                           {fld.addedAt ? formatDateIT(fld.addedAt, '') : ''}
                         </p>
                       </div>
-                      <button onClick={(e) => { e.stopPropagation(); openFolderAtPath(fld.path); }} className="btn-ghost text-xs p-2 relative z-[1]" title="Apri nel Finder">
-                        <FolderOpen size={14} />
-                      </button>
                       <button onClick={(e) => { e.stopPropagation(); confirmRemoveFolder(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-colors relative z-[1]">
                         <Trash2 size={14} />
                       </button>

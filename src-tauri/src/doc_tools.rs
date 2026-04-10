@@ -2,7 +2,7 @@
 //  DOC TOOLS — PDF manipulation for legal professionals
 // ═══════════════════════════════════════════════════════════
 
-use lopdf::{Document, Object, ObjectId};
+use lopdf::{dictionary, Document, Object, ObjectId};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -425,29 +425,88 @@ pub fn add_watermark(
     let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
     let page_count = pages.len();
 
+    // Register Helvetica font once for watermark use
+    let wm_font_id = doc.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "Type1",
+        "BaseFont" => "Helvetica",
+    });
+
+    let escaped_text = text
+        .replace('\\', "\\\\")
+        .replace('(', "\\(")
+        .replace(')', "\\)");
+
     for (_page_num, page_id) in &pages {
-        // Create watermark content stream with transparency
+        let (page_w, page_h) = get_page_dimensions(&doc, *page_id);
+
+        // Center the watermark diagonally across the page
+        let angle: f64 = 0.52; // ~30 degrees in radians
+        let cos_a = angle.cos();
+        let sin_a = angle.sin();
+        let tx = page_w * 0.15;
+        let ty = page_h * 0.35;
+
+        // Create watermark content stream with transparency via ExtGState
         let watermark_content = format!(
             "q\n\
-             0.7 0.7 0.7 rg\n\
+             {} {} {} {} {} {} cm\n\
              BT\n\
-             /Helvetica {} Tf\n\
+             /WMFont {} Tf\n\
              {} {} {} rg\n\
-             1 0 0.5 1 100 400 Tm\n\
-             ({}) Tj\n\
-             0 -200 Td\n\
+             0 0 Td\n\
              ({}) Tj\n\
              ET\n\
              Q",
-            fs, opacity_val, opacity_val, opacity_val, text, text
+            cos_a,
+            sin_a,
+            -sin_a,
+            cos_a,
+            tx,
+            ty,
+            fs,
+            opacity_val,
+            opacity_val,
+            opacity_val,
+            escaped_text
         );
 
-        let stream = lopdf::Stream::new(lopdf::dictionary! {}, watermark_content.into_bytes());
+        let stream = lopdf::Stream::new(dictionary! {}, watermark_content.into_bytes());
         let stream_id = doc.add_object(Object::Stream(stream));
 
-        // Append watermark stream to page contents
+        // Ensure page has Resources → Font → WMFont pointing to our Helvetica
         if let Ok(page_obj) = doc.get_object_mut(*page_id) {
             if let Ok(dict) = page_obj.as_dict_mut() {
+                // Add or merge font into Resources
+                let has_resources = dict.get(b"Resources").is_ok();
+                if !has_resources {
+                    dict.set(
+                        "Resources",
+                        dictionary! {
+                            "Font" => dictionary! {
+                                "WMFont" => Object::Reference(wm_font_id),
+                            },
+                        },
+                    );
+                } else if let Ok(res) = dict.get_mut(b"Resources") {
+                    if let Ok(res_dict) = res.as_dict_mut() {
+                        let has_font = res_dict.get(b"Font").is_ok();
+                        if !has_font {
+                            res_dict.set(
+                                "Font",
+                                dictionary! {
+                                    "WMFont" => Object::Reference(wm_font_id),
+                                },
+                            );
+                        } else if let Ok(font_obj) = res_dict.get_mut(b"Font") {
+                            if let Ok(font_dict) = font_obj.as_dict_mut() {
+                                font_dict.set("WMFont", Object::Reference(wm_font_id));
+                            }
+                        }
+                    }
+                }
+
+                // Append watermark stream to page contents
                 let existing = dict.get(b"Contents").ok().cloned();
                 match existing {
                     Some(Object::Array(mut arr)) => {
@@ -869,7 +928,7 @@ pub fn add_page_numbers(
             label.replace('(', "\\(").replace(')', "\\)")
         );
 
-        let stream = lopdf::Stream::new(lopdf::dictionary! {}, content.into_bytes());
+        let stream = lopdf::Stream::new(dictionary! {}, content.into_bytes());
         let stream_id = doc.add_object(Object::Stream(stream));
 
         // Append to page contents
@@ -999,7 +1058,7 @@ pub fn redact_pdf(
         // Activate clip with even-odd rule (W*) + no-op path paint (n)
         pre.push_str("W* n\n");
 
-        let pre_stream = lopdf::Stream::new(lopdf::dictionary! {}, pre.into_bytes());
+        let pre_stream = lopdf::Stream::new(dictionary! {}, pre.into_bytes());
         let pre_id = doc.add_object(Object::Stream(pre_stream));
 
         // Build post-redaction stream:
@@ -1022,7 +1081,7 @@ pub fn redact_pdf(
             ));
         }
 
-        let post_stream = lopdf::Stream::new(lopdf::dictionary! {}, post.into_bytes());
+        let post_stream = lopdf::Stream::new(dictionary! {}, post.into_bytes());
         let post_id = doc.add_object(Object::Stream(post_stream));
 
         // Rewrite page Contents: [pre_clip, ...original..., post_redact]
@@ -1101,12 +1160,12 @@ mod tests {
     fn create_test_pdf(path: &str, num_pages: usize) {
         let mut doc = Document::with_version("1.5");
         let pages_id = doc.new_object_id();
-        let font_id = doc.add_object(lopdf::dictionary! {
+        let font_id = doc.add_object(dictionary! {
             "Type" => "Font",
             "Subtype" => "Type1",
             "BaseFont" => "Helvetica",
         });
-        let font_dict_id = doc.add_object(lopdf::dictionary! {
+        let font_dict_id = doc.add_object(dictionary! {
             "F1" => Object::Reference(font_id),
         });
 
@@ -1117,16 +1176,16 @@ mod tests {
                 i
             );
             let content_id = doc.add_object(Object::Stream(lopdf::Stream::new(
-                lopdf::dictionary! {},
+                dictionary! {},
                 content.into_bytes(),
             )));
 
-            let page_id = doc.add_object(lopdf::dictionary! {
+            let page_id = doc.add_object(dictionary! {
                 "Type" => "Page",
                 "Parent" => Object::Reference(pages_id),
                 "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
                 "Contents" => Object::Reference(content_id),
-                "Resources" => lopdf::dictionary! {
+                "Resources" => dictionary! {
                     "Font" => Object::Reference(font_dict_id),
                 },
             });
@@ -1136,14 +1195,14 @@ mod tests {
         let kids: Vec<Object> = page_ids.iter().map(|id| Object::Reference(*id)).collect();
         doc.objects.insert(
             pages_id,
-            Object::Dictionary(lopdf::dictionary! {
+            Object::Dictionary(dictionary! {
                 "Type" => "Pages",
                 "Kids" => Object::Array(kids),
                 "Count" => Object::Integer(num_pages as i64),
             }),
         );
 
-        let catalog_id = doc.add_object(lopdf::dictionary! {
+        let catalog_id = doc.add_object(dictionary! {
             "Type" => "Catalog",
             "Pages" => Object::Reference(pages_id),
         });
