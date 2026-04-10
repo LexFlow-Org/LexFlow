@@ -2185,7 +2185,7 @@ mod dynamic_tests {
     fn dyn_save_and_recover_single_record() {
         let password = "DynTest_Password1!";
         let (vault, dek) = create_vault(password).unwrap();
-        let mut vault = vault;
+        let _vault = vault;
 
         // Create a realistic legal practice record
         let practice = json!({
@@ -2245,7 +2245,7 @@ mod dynamic_tests {
     #[test]
     fn dyn_save_100_records_all_recoverable() {
         let password = "Stress100Records!1";
-        let (vault, dek) = create_vault(password).unwrap();
+        let (_vault, dek) = create_vault(password).unwrap();
 
         let mut entries = std::collections::BTreeMap::new();
         let mut expected = std::collections::HashMap::new();
@@ -2754,7 +2754,7 @@ mod dynamic_tests {
         let pwd1 = "OldPassword_2024!";
         let pwd2 = "NewPassword_2024!";
 
-        let (mut vault, dek1) = create_vault(pwd1).unwrap();
+        let (vault, dek1) = create_vault(pwd1).unwrap();
         let mut vault = vault;
 
         // Add records
@@ -2977,7 +2977,6 @@ mod exhaustive_tests {
     use crate::vault_engine::*;
     use serde_json::json;
     use std::time::Instant;
-    use zeroize::Zeroizing;
 
     fn make_practice(i: usize) -> serde_json::Value {
         json!({
@@ -3084,7 +3083,7 @@ mod exhaustive_tests {
             "test".into(),
             encrypt_practice(&dek, &json!({"secret": "data"})),
         );
-        let kek_old = derive_kek(pwd_old, &vault.kdf).unwrap();
+        let _kek_old = derive_kek(pwd_old, &vault.kdf).unwrap();
 
         // Change password: new KEK wraps same DEK
         let new_params = KdfParams {
@@ -3379,7 +3378,7 @@ mod exhaustive_tests {
         let bytes = serialize_vault(&vault).unwrap();
 
         // Open should work (fallback tries v1 computation)
-        let (opened, dek2) = open_vault(pwd, &bytes).unwrap();
+        let (_opened, dek2) = open_vault(pwd, &bytes).unwrap();
         assert_eq!(dek.as_ref() as &[u8], dek2.as_ref() as &[u8]);
     }
 
@@ -3667,13 +3666,11 @@ mod exhaustive_tests {
 #[cfg(test)]
 mod full_coverage_tests {
     use crate::io::*;
-    use crate::lockout;
     use crate::validation;
     use crate::vault_engine::*;
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
     use serde_json::json;
-    use std::sync::{atomic::AtomicU32, Arc};
-    use std::time::Instant;
+    use std::sync::Arc;
     use zeroize::Zeroizing;
 
     fn make_dek() -> Zeroizing<Vec<u8>> {
@@ -3979,7 +3976,7 @@ mod full_coverage_tests {
         }
 
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("settings.json");
+        let _path = tmp.path().join("settings.json");
 
         let test_settings = json!({
             "theme": "dark",
@@ -4397,7 +4394,7 @@ mod full_coverage_tests {
         let password = "AvvRossi_Studio2026!";
 
         // === MORNING: Create vault and add first practice ===
-        let (vault, dek) = create_vault(password).unwrap();
+        let (vault, _dek) = create_vault(password).unwrap();
         let serialized = serialize_vault(&vault).unwrap();
 
         // Reopen vault (simulate app restart)
@@ -4623,7 +4620,7 @@ mod full_coverage_tests {
     #[test]
     fn scenario_heavy_editing_version_cap() {
         let password = "StudioLegale2026!X";
-        let (vault, dek) = create_vault(password).unwrap();
+        let (vault, _dek) = create_vault(password).unwrap();
         let serialized = serialize_vault(&vault).unwrap();
         let (_, dek) = open_vault(password, &serialized).unwrap();
 
@@ -5069,12 +5066,10 @@ mod full_coverage_tests {
 
 #[cfg(test)]
 mod extreme_tests {
-    use crate::crypto;
     use crate::io::*;
     use crate::vault_engine::*;
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
     use serde_json::json;
-    use std::collections::BTreeMap;
     use std::sync::{
         atomic::{AtomicU32, Ordering},
         Arc,
@@ -5451,7 +5446,7 @@ mod extreme_tests {
     #[test]
     fn corruption_record_encrypted_with_wrong_key() {
         let password = "WrongKey_2026!X";
-        let (mut vault, dek) = create_vault(password).unwrap();
+        let (mut vault, _dek) = create_vault(password).unwrap();
 
         // Cifra un record con una DEK diversa (simulando corruzione selettiva)
         let foreign_dek = make_dek();
@@ -5771,7 +5766,7 @@ mod extreme_tests {
         let p_version = p_entry.versions[0].clone();
         let c_version = c_entry.versions[0].clone();
 
-        let mut spliced_entry = RecordEntry {
+        let spliced_entry = RecordEntry {
             versions: vec![RecordVersion {
                 v: 1,
                 ts: p_version.ts,
