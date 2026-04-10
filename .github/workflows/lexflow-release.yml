@@ -100,6 +100,26 @@ jobs:
           echo "Typst sidecar ready: $OUT ($(wc -c < "$OUT") bytes)"
           rm -rf "$WORKDIR"
 
+      - name: Fetch qpdf sidecar (Linux)
+        run: |
+          set -e
+          mkdir -p src-tauri/binaries
+          OUT="src-tauri/binaries/qpdf-x86_64-unknown-linux-gnu"
+          if [ -f "$OUT" ]; then echo "qpdf sidecar already exists"; exit 0; fi
+          VERSION=$(curl -s https://api.github.com/repos/qpdf/qpdf/releases/latest | grep '"tag_name"' | sed 's/.*"v\?\(.*\)".*/\1/')
+          URL="https://github.com/qpdf/qpdf/releases/download/v${VERSION}/qpdf-${VERSION}-bin-linux-x86_64.zip"
+          echo "Downloading qpdf $VERSION from $URL"
+          WORKDIR=$(mktemp -d)
+          curl -fSL -o "$WORKDIR/qpdf.zip" "$URL"
+          unzip -q "$WORKDIR/qpdf.zip" -d "$WORKDIR/qpdf"
+          EXTRACTED=$(find "$WORKDIR/qpdf" -name "qpdf" -type f | head -1)
+          if [ -z "$EXTRACTED" ]; then echo "ERROR: qpdf binary not found"; ls -R "$WORKDIR/qpdf"; exit 1; fi
+          cp "$EXTRACTED" "$OUT"
+          chmod +x "$OUT"
+          strip "$OUT" 2>/dev/null || true
+          echo "qpdf sidecar ready: $OUT ($(wc -c < "$OUT") bytes)"
+          rm -rf "$WORKDIR"
+
       - name: Determine Version Tag
         id: get_version
         run: |
@@ -265,6 +285,25 @@ jobs:
           strip -x "$UNIVERSAL" 2>/dev/null || true
           echo "Universal sidecar ready: $UNIVERSAL ($(wc -c < "$UNIVERSAL") bytes)"
 
+      - name: Fetch qpdf sidecars (macOS universal)
+        run: |
+          set -e
+          brew install qpdf
+          QPDF_BIN=$(which qpdf)
+          echo "qpdf installed at: $QPDF_BIN"
+          # Copy for both architectures
+          cp "$QPDF_BIN" src-tauri/binaries/qpdf-aarch64-apple-darwin
+          cp "$QPDF_BIN" src-tauri/binaries/qpdf-x86_64-apple-darwin
+          chmod +x src-tauri/binaries/qpdf-aarch64-apple-darwin src-tauri/binaries/qpdf-x86_64-apple-darwin
+          # Create universal binary via lipo
+          lipo -create \
+            src-tauri/binaries/qpdf-aarch64-apple-darwin \
+            src-tauri/binaries/qpdf-x86_64-apple-darwin \
+            -output src-tauri/binaries/qpdf-universal-apple-darwin 2>/dev/null || \
+            cp src-tauri/binaries/qpdf-aarch64-apple-darwin src-tauri/binaries/qpdf-universal-apple-darwin
+          chmod +x src-tauri/binaries/qpdf-universal-apple-darwin
+          echo "qpdf universal sidecar ready"
+
       - name: Build macOS DMG
         uses: tauri-apps/tauri-action@6a45448f17a006facb105cc5257b3edbc353038a
         env:
@@ -386,6 +425,22 @@ jobs:
           Copy-Item $exe.FullName $out
           Write-Host "Typst sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
 
+      - name: Fetch qpdf sidecar (Windows)
+        shell: powershell
+        run: |
+          $out = "src-tauri/binaries/qpdf-x86_64-pc-windows-msvc.exe"
+          if (Test-Path $out) { Write-Host "qpdf sidecar already exists"; exit 0 }
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/qpdf/qpdf/releases/latest"
+          $version = $release.tag_name -replace '^v', ''
+          $url = "https://github.com/qpdf/qpdf/releases/download/v${version}/qpdf-${version}-msvc64.zip"
+          Write-Host "Downloading qpdf $version from $url"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\qpdf-windows.zip"
+          Expand-Archive -Path "$env:TEMP\qpdf-windows.zip" -DestinationPath "$env:TEMP\qpdf-win" -Force
+          $exe = Get-ChildItem -Recurse -Filter "qpdf.exe" -Path "$env:TEMP\qpdf-win" | Select-Object -First 1
+          if (-not $exe) { Write-Error "qpdf.exe not found in archive"; exit 1 }
+          Copy-Item $exe.FullName $out
+          Write-Host "qpdf sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
+
       - name: Build Windows MSI (Lite)
         shell: powershell
         run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi
@@ -484,6 +539,22 @@ jobs:
           if (-not $exe) { Write-Error "typst.exe not found in archive"; exit 1 }
           Copy-Item $exe.FullName $out
           Write-Host "Typst sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
+
+      - name: Fetch qpdf sidecar (Windows offline)
+        shell: powershell
+        run: |
+          $out = "src-tauri/binaries/qpdf-x86_64-pc-windows-msvc.exe"
+          if (Test-Path $out) { Write-Host "qpdf sidecar already exists"; exit 0 }
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/qpdf/qpdf/releases/latest"
+          $version = $release.tag_name -replace '^v', ''
+          $url = "https://github.com/qpdf/qpdf/releases/download/v${version}/qpdf-${version}-msvc64.zip"
+          Write-Host "Downloading qpdf $version from $url"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\qpdf-windows.zip"
+          Expand-Archive -Path "$env:TEMP\qpdf-windows.zip" -DestinationPath "$env:TEMP\qpdf-win" -Force
+          $exe = Get-ChildItem -Recurse -Filter "qpdf.exe" -Path "$env:TEMP\qpdf-win" | Select-Object -First 1
+          if (-not $exe) { Write-Error "qpdf.exe not found in archive"; exit 1 }
+          Copy-Item $exe.FullName $out
+          Write-Host "qpdf sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
 
       - name: Write WebView2 offline config
         shell: powershell
