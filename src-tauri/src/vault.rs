@@ -383,6 +383,7 @@ pub(crate) fn vault_exists(state: State<AppState>) -> bool {
 
 /// Internal unlock used by both the Tauri command and bio_unlock_vault.
 /// Takes password by value to allow zeroization.
+#[allow(dead_code)] // Used by bio.rs on desktop; unused on Android where bio path differs
 pub(crate) fn unlock_vault_with_password(state: &State<AppState>, password: String) -> Value {
     unlock_vault_inner(state, password)
 }
