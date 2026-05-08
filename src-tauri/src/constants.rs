@@ -32,7 +32,14 @@ pub(crate) const VAULT_RECORDS_DIR: &str = "records";
 pub(crate) const AES_KEY_LEN: usize = 32;
 pub(crate) const NONCE_LEN: usize = 12;
 
-pub(crate) const ARGON2_M_COST: u32 = 16384;
+/// Salt length for Argon2id KDF (>=16 bytes per OWASP).
+pub(crate) const SALT_LEN: usize = 16;
+/// HMAC-SHA256 output length.
+#[allow(dead_code)]
+pub(crate) const MAC_LEN: usize = 32;
+
+// OWASP 2024 baseline: m>=19456, p>=1, t>=2; LexFlow uses m=65536 ("stronger" profile)
+pub(crate) const ARGON2_M_COST: u32 = 65536;
 pub(crate) const ARGON2_T_COST: u32 = 3;
 pub(crate) const ARGON2_P_COST: u32 = 1;
 

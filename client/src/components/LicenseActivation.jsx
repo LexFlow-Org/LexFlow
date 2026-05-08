@@ -25,10 +25,10 @@ export default function LicenseActivation({ children }) {
   const [showKey, setShowKey] = useState(false);
   const [shakeInput, setShakeInput] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState(0); // countdown brute-force
+  const [lockoutEndAt, setLockoutEndAt] = useState(null);    // ms timestamp (drives countdown)
   const [gracePeriod, setGracePeriod] = useState(null); // { inGrace: bool, days: number }
   const inputRef = useRef(null);
   const toastTimer = useRef(null);
-  const lockoutTimer = useRef(null);
 
   // ── Check iniziale ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -60,34 +60,37 @@ export default function LicenseActivation({ children }) {
     if (toast) {
       clearTimeout(toastTimer.current);
       // Non auto-chiudere il toast di lockout — resta finché il countdown è attivo
-      if (lockoutSeconds > 0) return;
+      if (lockoutEndAt) return;
       toastTimer.current = setTimeout(() => setToast(null), toast.type === 'success' ? 2500 : 5000);
     }
     return () => clearTimeout(toastTimer.current);
-  }, [toast, lockoutSeconds]);
+  }, [toast, lockoutEndAt]);
 
-  // ── Lockout countdown ─────────────────────────────────────────────────────
+  // ── Lockout countdown — timestamp-driven so we don't drift across re-renders
   useEffect(() => {
-    if (lockoutSeconds <= 0) return;
+    if (!lockoutEndAt) return;
 
     const fmt = (s) => {
       const mm = String(Math.floor(s / 60)).padStart(2, '0');
       const ss = String(s % 60).padStart(2, '0');
       return `Troppi tentativi falliti. Riprova tra ${mm}:${ss}`;
     };
-    setToast(prev => prev ? { ...prev, detail: fmt(lockoutSeconds) } : prev);
 
-    const tickLockout = (prev) => {
-      const next = prev - 1;
-      if (next <= 0) { clearInterval(lockoutTimer.current); setToast(null); return 0; }
-      setToast(t => t ? { ...t, detail: fmt(next) } : t);
-      return next;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((lockoutEndAt - Date.now()) / 1000));
+      setLockoutSeconds(remaining);
+      if (remaining === 0) {
+        setLockoutEndAt(null);
+        setToast(null);
+        return;
+      }
+      setToast(t => t ? { ...t, detail: fmt(remaining) } : t);
     };
 
-    lockoutTimer.current = setInterval(() => setLockoutSeconds(tickLockout), 1000);
-
-    return () => clearInterval(lockoutTimer.current);
-  }, [lockoutSeconds > 0]); // eslint-disable-line react-hooks/exhaustive-deps -- only re-run when lockout starts/stops
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lockoutEndAt]);
 
   // ── Sanitizza input ───────────────────────────────────────────────────────
   function handleInputChange(e) {
@@ -109,6 +112,10 @@ export default function LicenseActivation({ children }) {
   // ── Attivazione ───────────────────────────────────────────────────────────
   function handleActivationResponse(response) {
     if (response.success) {
+      // Clear license key from state IMMEDIATELY — don't keep secrets in memory
+      // through the 1800ms transition timeout.
+      setLicense('');
+      setShowKey(false);
       const title = response.lawyerTitle || 'Avv.';
       const cleanName = (response.lawyerName || '').replace(/^(Avv\.|Avv|Avvocato|Praticante)\.?\s+/i, '').trim();
       const parts = [response.client, cleanName ? `${title} ${cleanName}` : ''].filter(Boolean);
@@ -123,7 +130,7 @@ export default function LicenseActivation({ children }) {
 
     if (response.locked) {
       const secs = Math.max(1, Math.round(response.remaining || 300));
-      setLockoutSeconds(secs);
+      setLockoutEndAt(Date.now() + secs * 1000);
       const mm = String(Math.floor(secs / 60)).padStart(2, '0');
       const ss = String(secs % 60).padStart(2, '0');
       setToast({
@@ -136,8 +143,8 @@ export default function LicenseActivation({ children }) {
 
     const errMsg = response.error || 'Chiave non valida o scaduta.';
     const isBurned = errMsg.includes('già stata utilizzata');
-    setToast({ 
-      type: 'error', 
+    setToast({
+      type: 'error',
       text: isBurned ? 'Chiave già utilizzata' : errMsg,
       detail: isBurned ? 'Questa licenza è monouso e risulta già attivata. Non può essere riutilizzata su nessun dispositivo. Contatta il supporto per ottenere una nuova chiave.' : undefined,
     });
@@ -156,7 +163,8 @@ export default function LicenseActivation({ children }) {
     }
 
     if (!key.startsWith('LXFW.') || key.split('.').length !== 3) {
-      setToast({ type: 'error', text: 'Formato non valido.', detail: 'La chiave deve iniziare con LXFW. e contenere 3 segmenti separati da punto.' });
+      // Don't reveal exact internal schema — just say it's invalid.
+      setToast({ type: 'error', text: 'Formato licenza non valido' });
       triggerShake();
       return;
     }
@@ -214,8 +222,9 @@ export default function LicenseActivation({ children }) {
 
   const getMaskedKey = () => {
     if (showKey) return license;
-    if (license.length > 20) {
-      return license.slice(0, 8) + '•'.repeat(Math.min(license.length - 16, 40)) + license.slice(-8);
+    if (license.length > 8) {
+      // Show only first 8 chars + ***  — minimise disclosure.
+      return license.slice(0, 8) + '***';
     }
     return license;
   };
@@ -300,15 +309,18 @@ export default function LicenseActivation({ children }) {
 
       {/* ── Toast ── */}
       {toast && (
-        <div className={`lic-toast ${toast.type}`} role="alert">
+        <div className={`lic-toast ${toast.type}`}>
           <div className="lic-toast-icon">
             {toast.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
           </div>
           <div className="lic-toast-body">
-            <span className="lic-toast-title">{toast.text}</span>
-            {toast.detail && <span className="lic-toast-detail">{toast.detail}</span>}
+            {/* Title is asserted once, then countdown updates announce politely */}
+            <span className="lic-toast-title" role="alert">{toast.text}</span>
+            {toast.detail && (
+              <span className="lic-toast-detail" aria-live="polite">{toast.detail}</span>
+            )}
           </div>
-          <button className="lic-toast-close" onClick={() => setToast(null)}>&times;</button>
+          <button className="lic-toast-close" type="button" aria-label="Chiudi" onClick={() => setToast(null)}>&times;</button>
         </div>
       )}
     </div>

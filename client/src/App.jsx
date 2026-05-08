@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
 import * as api from './tauri-api';
@@ -16,7 +16,6 @@ import { useTheme } from './hooks/useTheme';
 import WindowControls from './components/WindowControls';
 import PracticeDetail from './components/PracticeDetail';
 import CreatePracticeModal from './components/CreatePracticeModal';
-import ErrorBoundary from './ErrorBoundary';
 import TccLocationBanner from './components/TccLocationBanner';
 import CommandPalette from './components/CommandPalette';
 import Breadcrumb from './components/Breadcrumb';
@@ -51,16 +50,20 @@ const preloadPages = () => {
 
 export default function App() {
   const navigate = useNavigate();
-  
+  const location = useLocation();
+  const contentRef = useRef(null);
+
   // --- STATI GLOBALI DI SICUREZZA ---
   // License gating is handled by the LicenseActivation component
   const [isLocked, setIsLocked] = useState(() => {
     try {
       const params = new URLSearchParams(globalThis.location.search);
       const e2eFlag = params.get('e2e');
-      const isLocalhost = ['localhost', '127.0.0.1'].includes(globalThis.location.hostname);
-      // If ?e2e=1 on localhost (or NODE env is test), start unlocked so tests can hit LicenseActivation.
-      if (e2eFlag === '1' && (isLocalhost || import.meta.env.MODE === 'test')) return false;
+      // SECURITY: in Tauri release builds the webview origin is `tauri://localhost`,
+      // which would match the old "isLocalhost" check.  We restrict the E2E bypass
+      // to ONLY test mode (Vite test/dev), preventing any chance of a packaged
+      // build accepting `?e2e=1` on the URL bar.
+      if (e2eFlag === '1' && import.meta.env.MODE === 'test') return false;
     } catch { console.debug('[App] E2E param check skipped'); }
     return true;
   });
@@ -82,6 +85,11 @@ export default function App() {
   const agendaRef = useRef([]);
   const [settings, setSettings] = useState({});
   const [selectedId, setSelectedId] = useState(null);
+
+  // Scroll reset on route change (NOT on every selectedId tick: dentro
+  // /pratiche il dettaglio gestisce il proprio scroll; resettare anche su
+  // selectedId rompeva il "torna in cima" all'apertura di un fascicolo).
+  useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [location.pathname]);
 
   const [showCreate, setShowCreate] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -137,8 +145,9 @@ export default function App() {
     
     // Solo eventi intenzionali — mousemove e scroll generano troppi eventi
     // e thrashano il main thread (specialmente su Android). mousedown/keydown/touchstart
-    // sono sufficienti per rilevare attività utente reale.
-    const events = ['mousedown', 'keydown', 'touchstart'];
+    // /pointerdown sono sufficienti per rilevare attività utente reale.
+    // pointerdown copre stylus / penna / dispositivi misti (Pointer Events spec).
+    const events = ['mousedown', 'keydown', 'touchstart', 'pointerdown'];
     let lastPing = 0;
     const throttledPing = () => {
       const now = Date.now();
@@ -223,18 +232,25 @@ export default function App() {
     const handleShortcut = (e) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
+      // Non intercettare se l'utente sta digitando in un input/textarea/contenteditable.
+      // Eccezione: ⌘K resta sempre attivo (apre command palette anche durante editing).
+      const target = e.target;
+      const isTyping = target && typeof target.matches === 'function' &&
+        target.matches('input, textarea, select, [contenteditable], [contenteditable="true"]');
       switch (e.key) {
-        case 'k': // ⌘K — Command Palette (search)
+        case 'k': // ⌘K — Command Palette (search) — resta attiva anche durante editing
           e.preventDefault();
           setCmdPaletteOpen(prev => !prev);
           break;
         case 'n': // ⌘N — Nuovo fascicolo
+          if (isTyping) return;
           if (!e.shiftKey) {
             e.preventDefault();
             setShowCreate(true);
           }
           break;
         case 'l': // ⌘L — Blocca vault
+          if (isTyping) return;
           e.preventDefault();
           handleManualLock();
           break;
@@ -368,13 +384,13 @@ export default function App() {
   }, [loadAllData]);
 
   // E2E bypass: when testing, make it easy to skip the login gate.
-  // This is guarded so it only activates on localhost or in test builds.
+  // SECURITY: only honored in Vite test mode — Tauri release builds use
+  // `tauri://localhost` as origin and we explicitly exclude that path.
   useEffect(() => {
     try {
       const params = new URLSearchParams(globalThis.location.search);
       const e2eFlag = params.get('e2e');
-      const isLocalhost = ['localhost', '127.0.0.1'].includes(globalThis.location.hostname);
-      if (e2eFlag === '1' && (isLocalhost || import.meta.env.MODE === 'test')) {
+      if (e2eFlag === '1' && import.meta.env.MODE === 'test') {
         // Give the app a tick to finish initial mounts
         setTimeout(() => { handleUnlock(); }, 50);
       }
@@ -434,6 +450,14 @@ export default function App() {
 
   const selectedPractice = practices.find(p => p.id === selectedId);
 
+  // Memoizza il valore del context per evitare re-render dei consumer
+  // quando cambiano solo reference di funzioni stabili.
+  const ctxValue = useMemo(
+    () => ({ practices, agendaEvents, settings, savePractices, saveAgenda }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [practices, agendaEvents, settings]
+  );
+
   // Gate 2: Vault — richiede password (o biometria)
   if (isLocked) {
     return (
@@ -448,25 +472,42 @@ export default function App() {
 
   return (
     <LicenseActivation>
-      <ErrorBoundary>
-      <AppProvider value={{ practices, agendaEvents, settings, savePractices, saveAgenda }}>
+      {/* main.jsx fornisce già un ErrorBoundary di radice — niente nesting qui */}
+      <AppProvider value={ctxValue}>
+      {/* Skip link — primo elemento focusabile della pagina (WCAG 2.4.1 Bypass Blocks) */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100000] focus:bg-primary focus:text-primary-ink focus:px-3 focus:py-2 focus:rounded focus:font-semibold focus:shadow-lg"
+      >
+        Salta al contenuto principale
+      </a>
       <div className="flex h-screen bg-background text-text-primary overflow-hidden border border-border/30 rounded-lg shadow-lg relative">
-        
-        {/* Privacy Shield */}
+
+        {/* Privacy Shield — alertdialog modale (semantica corretta) */}
         {privacyEnabled && blurred && (
-          <button 
-            type="button"
-            className="fixed inset-0 z-[9999] bg-background/95 blur-overlay flex items-center justify-center transition-opacity duration-300 cursor-pointer animate-fade-in border-none outline-none w-full"
-            onClick={handleManualLock}
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="privacy-shield-title"
+            aria-describedby="privacy-shield-desc"
+            className="fixed inset-0 z-[9999] bg-background/95 blur-overlay flex items-center justify-center animate-fade-in"
           >
             <div className="text-center">
               <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse border border-primary/20">
-                <Lock size={40} className="text-primary" />
+                <Lock size={40} className="text-primary" aria-hidden="true" />
               </div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">LexFlow Protetto</h2>
-              <p className="text-text-muted text-sm mt-2">Contenuto nascosto per privacy.<br/>Clicca per bloccare il Vault.</p>
+              <h2 id="privacy-shield-title" className="text-2xl font-bold text-white tracking-tight">LexFlow Protetto</h2>
+              <p id="privacy-shield-desc" className="text-text-muted text-sm mt-2">Contenuto nascosto per privacy.</p>
+              <button
+                type="button"
+                onClick={handleManualLock}
+                className="btn-primary mt-6"
+                autoFocus
+              >
+                Blocca il Vault
+              </button>
             </div>
-          </button>
+          </div>
         )}
 
         {/* Sidebar desktop (≥1024px) + Liquid Curtain mobile (<1024px) */}
@@ -498,7 +539,7 @@ export default function App() {
             else if (result.field === 'timeLogs') navigate('/ore');
           }}
         />
-        <main className="flex-1 h-screen overflow-hidden relative flex flex-col bg-background pt-[env(titlebar-area-height,0px)]">
+        <main id="main" tabIndex={-1} className="flex-1 h-screen overflow-hidden relative flex flex-col bg-background pt-[env(titlebar-area-height,0px)] focus:outline-none">
           <WindowControls />
           <TccLocationBanner />
           <Toaster
@@ -527,8 +568,8 @@ export default function App() {
             }}
           />
 
-          <div className="flex-1 overflow-auto p-4 pt-3 sm:p-8 sm:pt-4">
-            <Breadcrumb />
+          <div ref={contentRef} className={`flex-1 ${selectedId && location.pathname === '/pratiche' ? 'overflow-hidden' : 'overflow-auto p-4 pt-3 sm:p-8 sm:pt-4'}`}>
+            {!(selectedId && location.pathname === '/pratiche') && <Breadcrumb />}
             <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 size={24} className="animate-spin text-primary" /></div>}>
             <Routes>
               <Route path="/" element={
@@ -608,7 +649,6 @@ export default function App() {
         )}
       </div>
     </AppProvider>
-    </ErrorBoundary>
     </LicenseActivation>
   );
 }

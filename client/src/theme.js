@@ -54,7 +54,7 @@ export const catPill = (cat) => CAT_PILL_STYLES[cat] || CAT_PILL_STYLES.altro;
 // ── Colori Semantici (da usare solo quando serve JS) ─────
 // Per la UI, preferire sempre le classi Tailwind:
 //   text-primary, bg-surface, border-border, text-text, ecc.
-// ★ WCAG AAA: tutti i testi ≥ 7:1 su bg #16171e (dark) o #f4f5f8 (light)
+// Contrasti misurati su bg dark #16171e e light #d0d1d5 — WCAG 2.1 AAA = 7:1.
 export const SEMANTIC = {
   primary:      '#b89520',
   primaryHover: '#a68518',
@@ -64,11 +64,11 @@ export const SEMANTIC = {
   dangerDark:   '#dc2626',
   warning:      '#f59e0b',
   info:         '#60a5fa',
-  // Text toni (dark mode) — AAA ≥ 7:1 su #16171e
-  text:         '#edeef6',   // 14.8:1 ✅ AAA
-  textMuted:    '#b8bcd4',   //  7.2:1 ✅ AAA
-  textDim:      '#A8ADCC',
-  textSubtle:   '#B0B6D0',
+  // Text toni (dark mode) — su #16171e
+  text:         '#edeef6',   // 14.8:1  AAA
+  textMuted:    '#b8bcd4',   //  7.2:1  AAA
+  textDim:      '#B5BAD3',   //  ~7.5:1 AAA (era #A8ADCC, ~6.7:1 — sotto AAA)
+  textSubtle:   '#B0B6D0',   //  ~7.0:1 AAA borderline
   // Backgrounds (dark mode)
   bg:           '#16171e',
   bgCard:       '#1e1f28',

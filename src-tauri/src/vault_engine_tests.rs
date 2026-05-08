@@ -519,15 +519,22 @@ mod tests {
             b"orphan with original",
         )
         .unwrap();
-        let orphan_no_orig = dir.path().join(".missing.tmp.99999");
+        // Use a safe-listed filename so the orphan recovery accepts it
+        let orphan_no_orig = dir.path().join(".settings.json.tmp.99999");
         std::fs::write(&orphan_no_orig, b"orphan without original").unwrap();
+        // Also test that unknown filenames are rejected
+        let orphan_unknown = dir.path().join(".malicious.tmp.88888");
+        std::fs::write(&orphan_unknown, b"attacker file").unwrap();
 
         crate::setup::cleanup_orphan_tmp_files(dir.path());
 
         // Orphan with original → deleted
         assert!(!dir.path().join(".vault.lex.tmp.12345").exists());
-        // Orphan without original → recovered as "missing"
-        assert!(dir.path().join("missing").exists());
+        // Orphan with safe-listed name and no original → recovered
+        assert!(dir.path().join("settings.json").exists());
+        // Orphan with unknown name → deleted (security)
+        assert!(!orphan_unknown.exists());
+        assert!(!dir.path().join("malicious").exists());
         // Original vault untouched
         assert_eq!(std::fs::read_to_string(&vault_path).unwrap(), "real data");
     }

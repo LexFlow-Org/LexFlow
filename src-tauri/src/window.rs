@@ -12,7 +12,9 @@ pub(crate) fn set_content_protection(app: AppHandle, enabled: bool) -> bool {
     #[cfg(not(target_os = "android"))]
     {
         if let Some(w) = app.get_webview_window("main") {
-            let _ = w.set_content_protected(enabled);
+            if let Err(e) = w.set_content_protected(enabled) {
+                eprintln!("[window] WARN: set_content_protected failed: {}", e);
+            }
             true
         } else {
             false
@@ -21,6 +23,10 @@ pub(crate) fn set_content_protection(app: AppHandle, enabled: bool) -> bool {
     #[cfg(target_os = "android")]
     {
         // Su Android FLAG_SECURE è gestito via tauri mobile — sempre attivo per sicurezza
+        // TODO(audit:SEC-WINDOW-1): verify FLAG_SECURE is actually applied via the
+        // Android mobile config (see src-tauri/gen/android/.../AndroidManifest.xml
+        // and the Activity onCreate). Returning true here is currently a stub and
+        // may give a false sense of protection if FLAG_SECURE is not wired up.
         let _ = (app, enabled);
         true
     }
@@ -45,7 +51,16 @@ pub(crate) fn ping_activity(state: State<AppState>) {
 }
 
 #[tauri::command]
-pub(crate) fn set_autolock_minutes(state: State<AppState>, minutes: u32) {
+pub(crate) fn set_autolock_minutes(state: State<AppState>, minutes: u32) -> Result<(), String> {
+    // VALIDATION-WINDOW-1: bound the autolock value before persisting.
+    const AUTOLOCK_MIN: u32 = 1;
+    const AUTOLOCK_MAX: u32 = 1440; // 24h
+    if !(AUTOLOCK_MIN..=AUTOLOCK_MAX).contains(&minutes) {
+        return Err(format!(
+            "autolock minutes must be in [{}, {}]",
+            AUTOLOCK_MIN, AUTOLOCK_MAX
+        ));
+    }
     // SECURITY FIX (Gemini Audit Chunk 15): log mutex poisoning
     match state.autolock_minutes.lock() {
         Ok(mut guard) => *guard = minutes,
@@ -56,6 +71,7 @@ pub(crate) fn set_autolock_minutes(state: State<AppState>, minutes: u32) {
     }
     // PERF: wake autolock thread to recalculate with new timeout
     notify_autolock_condvar(&state);
+    Ok(())
 }
 
 #[tauri::command]
@@ -74,7 +90,9 @@ pub(crate) fn get_autolock_minutes(state: State<AppState>) -> u32 {
 pub(crate) fn window_minimize(app: AppHandle) {
     #[cfg(not(target_os = "android"))]
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.minimize();
+        if let Err(e) = w.minimize() {
+            eprintln!("[window] WARN: minimize failed: {}", e);
+        }
     }
     #[cfg(target_os = "android")]
     {
@@ -87,9 +105,11 @@ pub(crate) fn window_maximize(app: AppHandle) {
     #[cfg(not(target_os = "android"))]
     if let Some(w) = app.get_webview_window("main") {
         if w.is_maximized().unwrap_or(false) {
-            let _ = w.unmaximize();
-        } else {
-            let _ = w.maximize();
+            if let Err(e) = w.unmaximize() {
+                eprintln!("[window] WARN: unmaximize failed: {}", e);
+            }
+        } else if let Err(e) = w.maximize() {
+            eprintln!("[window] WARN: maximize failed: {}", e);
         }
     }
     #[cfg(target_os = "android")]
@@ -102,8 +122,12 @@ pub(crate) fn window_maximize(app: AppHandle) {
 pub(crate) fn show_main_window(app: AppHandle) {
     #[cfg(not(target_os = "android"))]
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.set_focus();
+        if let Err(e) = w.show() {
+            eprintln!("[window] WARN: show failed: {}", e);
+        }
+        if let Err(e) = w.set_focus() {
+            eprintln!("[window] WARN: set_focus failed: {}", e);
+        }
     }
     #[cfg(target_os = "android")]
     {

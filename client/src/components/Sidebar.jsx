@@ -72,17 +72,20 @@ function DesktopNavItem({ item }) {
   return (
     <NavLink
       to={item.path}
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-300 group relative cursor-pointer ${
+      end={item.path === '/'}
+      aria-current={isActive ? 'page' : undefined}
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-300 group relative cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)] ${
         isActive
           ? 'bg-primary scale-[1.02] sidebar-nav-active'
           : 'text-text-dim hover:text-primary hover:bg-primary-soft'
       }`}
     >
       {isActive && (
-        <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full sidebar-nav-active-bar" />
+        <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full sidebar-nav-active-bar" aria-hidden="true" />
       )}
       <item.icon
         size={20}
+        aria-hidden="true"
         className={`transition-colors duration-300 ${
           isActive ? 'sidebar-nav-active' : 'group-hover:scale-110'
         }`}
@@ -222,21 +225,31 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  // Scroll lock
+  // ESC chiude il curtain
   useEffect(() => {
-    if (isOpen) {
-      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-      document.body.style.setProperty('--scrollbar-width', `${scrollbarWidth}px`);
-      document.body.dataset.scrollLocked = '';
-      document.body.style.overflow = 'hidden';
-    } else {
-      delete document.body.dataset.scrollLocked;
-      document.body.style.overflow = '';
-      document.body.style.removeProperty('--scrollbar-width');
-    }
+    if (!isOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, handleClose]);
+
+  // Scroll lock — preserva il valore precedente di overflow per non sbattere
+  // un altro consumer (es. ModalOverlay) che potrebbe averlo già impostato.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.setProperty('--scrollbar-width', `${scrollbarWidth}px`);
+    document.body.dataset.scrollLocked = '';
+    document.body.style.overflow = 'hidden';
     return () => {
       delete document.body.dataset.scrollLocked;
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
       document.body.style.removeProperty('--scrollbar-width');
     };
   }, [isOpen]);
@@ -305,8 +318,10 @@ function MobileSidebar({ isOpen, onToggle, version, onLock, theme, onToggleTheme
                   >
                     <NavLink
                       to={item.path}
+                      end={item.path === '/'}
                       onClick={handleClose}
                       data-active={isActive}
+                      aria-current={isActive ? 'page' : undefined}
                       className="curtain-nav-link"
                     >
                       <item.icon

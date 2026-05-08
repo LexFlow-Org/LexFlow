@@ -1,15 +1,32 @@
-import { useState, useEffect, useMemo, useRef, memo } from 'react';
+import { useState, useEffect, useMemo, useRef, memo, useLayoutEffect } from 'react';
 import PropTypes from 'prop-types';
 import { CalendarClock, ChevronRight, Check, Calendar, FolderOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
-import { formatDateIT, mapAgendaToScheduleItems } from '../utils/helpers';
+import { formatDateIT, mapAgendaToScheduleItems, parseLocalYMD } from '../utils/helpers';
 
 const TYPE_LABELS = { civile: 'Civile', penale: 'Penale', amm: 'Amministrativo', lavoro: 'Lavoro', stra: 'Stragiudiziale' };
 
+/**
+ * Compute urgency level + UI metadata from a row's day-diff.
+ *   diff < 0   → overdue (rosso)
+ *   diff === 0 → today  (giallo)
+ *   diff > 0   → future (neutro)
+ */
+function computeUrgency(d) {
+  if (typeof d?.diff !== 'number') return { level: 'future', borderClass: 'border-l-border' };
+  if (d.diff < 0) return { level: 'overdue', borderClass: 'border-l-danger' };
+  if (d.diff === 0) return { level: 'today', borderClass: 'border-l-warning' };
+  return { level: 'future', borderClass: 'border-l-border' };
+}
+
+const URGENCY_LABEL = { overdue: 'in ritardo', today: 'oggi', future: 'in arrivo' };
+
 const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate }) {
   const [showPopover, setShowPopover] = useState(false);
+  const [popoverFlipUp, setPopoverFlipUp] = useState(false);
   const popRef = useRef(null);
+  const popoverContentRef = useRef(null);
 
   // Close popover on outside click
   useEffect(() => {
@@ -19,26 +36,47 @@ const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate 
     return () => document.removeEventListener('mousedown', handler);
   }, [showPopover]);
 
-  const handleClick = () => {
-    if (d.practiceId) {
-      // Has a linked practice — show popover with choice: Agenda or Fascicolo
-      setShowPopover(true);
-    } else {
-      // No linked practice — navigate directly to agenda
-      const timeParam = d.timeStart ? `&time=${d.timeStart}` : '';
-      if (onNavigate) onNavigate('/agenda?date=' + d.date + timeParam);
-    }
+  // FIX-21: flip popover above the row when it would overflow viewport bottom
+  useLayoutEffect(() => {
+    if (!showPopover) { setPopoverFlipUp(false); return; }
+    const el = popoverContentRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.bottom > window.innerHeight - 12) setPopoverFlipUp(true);
+  }, [showPopover]);
+
+  const navigateToAgenda = () => {
+    const timeParam = d.timeStart ? `&time=${d.timeStart}` : '';
+    if (onNavigate) onNavigate('/agenda?date=' + d.date + timeParam);
   };
+
+  // FIX-22: click ALWAYS navigates to agenda; popover offers an extra
+  // "vai al fascicolo" branch only when a practice is linked. No more
+  // ambiguity ("nothing happens until you pick from popover").
+  const handleClick = () => {
+    if (d.practiceId) setShowPopover(v => !v);
+    else navigateToAgenda();
+  };
+
+  const urgency = computeUrgency(d);
+  // FIX-20: empty/whitespace label fallback
+  const safeLabel = (d.label && d.label.trim()) || 'Scadenza senza titolo';
+  // FIX-17: descriptive aria-label
+  const ariaLabel = `${safeLabel}, ${formatDateIT(d.date)}, ${URGENCY_LABEL[urgency.level]}`;
+
   return (
     <div className="relative" ref={popRef}>
       <button
         type="button"
-        className="flex items-center gap-3 p-3 rounded-xl bg-surface hover:bg-card transition cursor-pointer group border border-border hover:border-border text-left w-full"
+        aria-label={ariaLabel}
+        aria-haspopup={d.practiceId ? 'menu' : undefined}
+        aria-expanded={d.practiceId ? showPopover : undefined}
+        className={`flex items-center gap-3 p-3 rounded-xl bg-cat-scadenza border-l-4 ${urgency.borderClass} hover:bg-card transition cursor-pointer group border border-border hover:border-border text-left w-full`}
         onClick={handleClick}
       >
       <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-cat-scadenza" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-text">{d.label}</p>
+        <p className="text-sm font-bold text-text truncate">{safeLabel}</p>
         <div className="flex items-center gap-2 mt-1">
           <FolderOpen size={11} className="text-text-muted flex-shrink-0" />
           {d.client && d.client !== 'Agenda' ? (
@@ -59,11 +97,15 @@ const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate 
 
     {/* Popover: Apri in Agenda / Vai al Fascicolo */}
     {showPopover && (
-      <div className="absolute right-4 top-full mt-1 z-50 flex flex-col gap-1 p-1.5 rounded-xl bg-card border border-border shadow-2xl min-w-[180px] animate-slide-up">
-        <button onClick={() => { setShowPopover(false); if (onNavigate) { const timeParam = d.timeStart ? `&time=${d.timeStart}` : ''; onNavigate('/agenda?date=' + d.date + timeParam); } }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-card transition">
+      <div
+        ref={popoverContentRef}
+        role="menu"
+        className={`absolute right-4 z-50 flex flex-col gap-1 p-1.5 rounded-xl bg-card border border-border shadow-2xl min-w-[180px] animate-slide-up ${popoverFlipUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+      >
+        <button role="menuitem" onClick={() => { setShowPopover(false); navigateToAgenda(); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-card transition">
           <Calendar size={14} className="text-primary" /> Apri in Agenda
         </button>
-        <button onClick={() => { setShowPopover(false); onSelectPractice(d.practiceId); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-card transition">
+        <button role="menuitem" onClick={() => { setShowPopover(false); onSelectPractice?.(d.practiceId); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white hover:bg-card transition">
           <FolderOpen size={14} className="text-primary" /> Vai al Fascicolo
         </button>
       </div>
@@ -125,13 +167,43 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
   }, [settings]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // FIX-19: when notifications get disabled mid-edit, clear the dirty flag
+  // so the "Salva" button doesn't reappear with stale state on re-enable.
+  useEffect(() => {
+    if (settings?.notifyEnabled === false && briefingDirty) setBriefingDirty(false);
+    // intentionally only on notifyEnabled flip
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.notifyEnabled]);
+
+  // FIX-15: read the freshest agendaEvents at save-time. Without the ref, the
+  // sync would carry the snapshot captured at component-mount in the closure,
+  // missing edits the user just made before tapping "Salva".
+  const agendaRef = useRef(agendaEvents);
+  useEffect(() => { agendaRef.current = agendaEvents; }, [agendaEvents]);
+
   const handleBriefingSave = async () => {
+    // FIX-18: warn on duplicate / out-of-order briefing times
+    const times = [briefingMattina, briefingPomeriggio, briefingSera].filter(Boolean);
+    const uniq = new Set(times);
+    if (uniq.size !== times.length) {
+      toast.error('Gli orari briefing devono essere distinti');
+      return;
+    }
+    if (briefingMattina && briefingPomeriggio && briefingMattina >= briefingPomeriggio) {
+      toast.error('Mattina deve precedere Pomeriggio');
+      return;
+    }
+    if (briefingPomeriggio && briefingSera && briefingPomeriggio >= briefingSera) {
+      toast.error('Pomeriggio deve precedere Sera');
+      return;
+    }
+
     try {
       const updated = { ...settings, briefingMattina, briefingPomeriggio, briefingSera };
       await api.saveSettings(updated);
       // Sync backend scheduler con formato corretto: briefingTimes (array) + items preservati
-      const briefingTimes = [briefingMattina, briefingPomeriggio, briefingSera].filter(Boolean);
-      const items = mapAgendaToScheduleItems(agendaEvents, settings?.preavviso || 30);
+      const briefingTimes = times;
+      const items = mapAgendaToScheduleItems(agendaRef.current, settings?.preavviso || 30);
       await api.syncNotificationSchedule({ briefingTimes, items });
       setBriefingDirty(false);
       // Propagate to parent so all pages see the updated briefing times
@@ -156,9 +228,21 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    /** Parse date string and return days-diff from today, or null if invalid */
+    /**
+     * Parse date string and return days-diff from today, or null if invalid.
+     * FIX-14: `new Date("YYYY-MM-DD")` parses as UTC midnight, which on
+     * negative-UTC users wrongly classifies a "today" deadline as "yesterday".
+     * Use parseLocalYMD when the input is YMD; fall back to Date for ISO
+     * timestamps.
+     */
     const daysDiff = (dateStr) => {
-      const d = new Date(dateStr);
+      if (!dateStr) return null;
+      let d;
+      if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        d = parseLocalYMD(dateStr);
+      } else {
+        d = new Date(dateStr);
+      }
       if (Number.isNaN(d.getTime())) return null;
       d.setHours(0, 0, 0, 0);
       return Math.ceil((d - today) / (1000 * 60 * 60 * 24));
@@ -189,7 +273,9 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
         source: 'agenda',
       });
     });
-    all.sort((a, b) => new Date(a.date) - new Date(b.date));
+    // Sort lexicographically — YYYY-MM-DD strings sort the same way as their
+    // local-midnight Dates and avoid the UTC-parse trap of `new Date(ymd)`.
+    all.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
     return {
       allDeadlines: all,

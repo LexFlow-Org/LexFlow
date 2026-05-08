@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, memo, useId } from 'react';
 import PropTypes from 'prop-types';
 import {
   Search,
@@ -11,6 +11,7 @@ import {
   Fingerprint,
   FileText
 } from 'lucide-react';
+import { useDebounce } from '../hooks/useDebounce';
 
 // Mappa dei colori e stili per ogni materia
 const SUBJECT_STYLES = {
@@ -22,6 +23,17 @@ const SUBJECT_STYLES = {
   soc: { color: 'text-materia-soc', bg: 'bg-materia-soc/10', border: 'border-materia-soc/20', label: 'Societario', stripe: 'bg-materia-soc', dot: 'bg-materia-soc' },
   default: { color: 'text-text-dim', bg: 'bg-surface', border: 'border-border', label: 'Altro', stripe: 'bg-text-dim', dot: 'bg-text-dim' }
 };
+
+// FIX-59: types hoistato a module scope (era ricreato ad ogni render)
+const TYPES = [
+  { id: 'all', label: 'Tutte le materie' },
+  { id: 'civile', label: 'Civile' },
+  { id: 'penale', label: 'Penale' },
+  { id: 'lavoro', label: 'Lavoro' },
+  { id: 'amm', label: 'Amministrativo' },
+  { id: 'stra', label: 'Stragiudiziale' },
+  { id: 'soc', label: 'Societario' },
+];
 
 // PERF: memoized row component — prevents re-rendering all 100+ rows when
 // parent state changes (e.g. search input, filter toggles).
@@ -36,7 +48,8 @@ const PracticeRow = memo(function PracticeRow({ practice: p, onSelect }) {
       <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${style.stripe}`} />
 
       <div className="flex items-center gap-6 flex-1 min-w-0">
-        <div className={`w-14 h-14 rounded-2xl flex-shrink-0 flex items-center justify-center transition-colors group-hover:scale-110 ${style.bg} ${style.color}`}>
+        {/* FIX-56: aggiunto transition-transform per animare lo scale icon */}
+        <div className={`w-14 h-14 rounded-2xl flex-shrink-0 flex items-center justify-center transition-colors transition-transform group-hover:scale-110 ${style.bg} ${style.color}`}>
           <Briefcase size={26} />
         </div>
 
@@ -96,17 +109,16 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
 
-  const safePractices = useMemo(() => Array.isArray(practices) ? practices : [], [practices]);
+  // IDs stabili per label-input pairing (FIX-53/54)
+  const idPrefix = useId();
+  const searchId = `${idPrefix}-search`;
+  const statusId = `${idPrefix}-status`;
+  const typeId = `${idPrefix}-type`;
 
-  const types = [
-    { id: 'all', label: 'Tutte le materie' },
-    { id: 'civile', label: 'Civile' },
-    { id: 'penale', label: 'Penale' },
-    { id: 'lavoro', label: 'Lavoro' },
-    { id: 'amm', label: 'Amministrativo' },
-    { id: 'stra', label: 'Stragiudiziale' },
-    { id: 'soc', label: 'Societario' },
-  ];
+  // FIX-55: search debouncing con hook esistente — riduce ricomputazioni filter
+  const debouncedSearch = useDebounce(searchTerm, 200);
+
+  const safePractices = useMemo(() => Array.isArray(practices) ? practices : [], [practices]);
 
   const stats = useMemo(() => ({
     total: safePractices.length,
@@ -115,19 +127,27 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
   }), [safePractices]);
 
   const filteredPractices = useMemo(() => {
+    const lowerSearch = debouncedSearch.toLowerCase();
     return safePractices.filter(p => {
       if (!p) return false;
-      const matchesSearch = 
-        (p.client?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-        (p.object?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-        (p.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
-      
+      const matchesSearch =
+        (p.client?.toLowerCase() || '').includes(lowerSearch) ||
+        (p.object?.toLowerCase() || '').includes(lowerSearch) ||
+        (p.code?.toLowerCase() || '').includes(lowerSearch);
+
       const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
       const matchesType = filterType === 'all' || p.type === filterType;
-      
+
       return matchesSearch && matchesStatus && matchesType;
     });
-  }, [safePractices, searchTerm, filterStatus, filterType]);
+  }, [safePractices, debouncedSearch, filterStatus, filterType]);
+
+  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || searchTerm !== '';
+  const resetFilters = () => {
+    setSearchTerm('');
+    setFilterStatus('all');
+    setFilterType('all');
+  };
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -137,9 +157,10 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
           <h1 className="text-4xl font-black text-text tracking-tight">Fascicoli</h1>
           <p className="text-text-dim text-sm uppercase tracking-label font-medium opacity-60">Gestione Archivio Digitale</p>
         </div>
-        <button 
-          onClick={() => typeof onNewPractice === 'function' && onNewPractice()} 
-          className="btn-primary flex items-center gap-2 px-7 py-3.5 hover:scale-[1.02] active:scale-[0.98] transition-colors"
+        <button
+          onClick={() => typeof onNewPractice === 'function' && onNewPractice()}
+          /* FIX-56: aggiunto transition-transform per animare lo scale */
+          className="btn-primary flex items-center gap-2 px-7 py-3.5 hover:scale-[1.02] active:scale-[0.98] transition-colors transition-transform"
         >
           <Plus size={18} strokeWidth={3} />
           <span className="font-bold uppercase tracking-widest text-xs">Nuovo Fascicolo</span>
@@ -206,21 +227,29 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
       {/* Toolbar dei Filtri */}
       <div className="bg-surface p-2 rounded-[24px] border border-border flex flex-col lg:flex-row items-center gap-2">
         <div className="relative flex-1 group w-full">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={20} />
-          <input 
-            type="text" 
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" size={20} aria-hidden="true" />
+          {/* FIX-53: visually-hidden label per pairing accessibile */}
+          <label htmlFor={searchId} className="sr-only">Cerca fascicoli</label>
+          <input
+            id={searchId}
+            type="text"
             placeholder="Cerca per cliente, oggetto, RG..."
-            className="w-full pl-14 pr-6 py-4 bg-transparent border-none focus:ring-0 text-sm text-text placeholder:text-text-dim/20"
+            /* FIX-57: placeholder colore opaco (era text-text-dim/20 sotto AA) */
+            className="w-full pl-14 pr-6 py-4 bg-transparent border-none focus:ring-0 text-sm text-text placeholder:text-text-dim"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
+
         <div className="flex items-center gap-2 w-full lg:w-auto p-2 lg:p-0 border-t lg:border-t-0 lg:border-l border-border">
           <div className="flex items-center gap-4 px-4 h-10">
-            <Filter size={14} className="text-text-dim opacity-50" />
-            
-            <select 
+            <Filter size={14} className="text-text-dim opacity-50" aria-hidden="true" />
+
+            {/* FIX-54: aria-label sui select */}
+            <label htmlFor={statusId} className="sr-only">Filtra per stato</label>
+            <select
+              id={statusId}
+              aria-label="Filtra per stato"
               className="bg-transparent border-none text-xs font-black uppercase tracking-label text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-colors p-0"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -232,12 +261,15 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
 
             <div className="w-[1px] h-4 bg-border" />
 
-            <select 
+            <label htmlFor={typeId} className="sr-only">Filtra per materia</label>
+            <select
+              id={typeId}
+              aria-label="Filtra per materia"
               className="bg-transparent border-none text-xs font-black uppercase tracking-label text-text opacity-60 focus:ring-0 cursor-pointer hover:text-primary hover:opacity-100 transition-colors p-0"
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
             >
-              {types.map(t => (
+              {TYPES.map(t => (
                 <option key={t.id} value={t.id} className="bg-card text-text">{t.label}</option>
               ))}
             </select>
@@ -253,13 +285,24 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         ))
       ) : (
         <div className="glass-card p-24 flex flex-col items-center justify-center text-center space-y-6 border border-dashed border-border">
-          <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center text-text-dim/20">
+          {/* FIX-57: opacità più leggibile sull'icona empty state */}
+          <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center text-text-dim">
             <Search size={40} />
           </div>
           <div className="space-y-2">
             <h3 className="text-xl font-bold text-text">Nessun fascicolo trovato</h3>
             <p className="text-text-muted text-sm max-w-xs mx-auto">Affina i filtri di ricerca o crea una nuova pratica digitale per iniziare.</p>
           </div>
+          {/* FIX-58: CTA reset filtri quando ci sono filtri attivi */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="btn-primary px-5 py-2.5 text-xs font-bold uppercase tracking-widest"
+            >
+              Reset filtri
+            </button>
+          )}
         </div>
       )}
       </div>

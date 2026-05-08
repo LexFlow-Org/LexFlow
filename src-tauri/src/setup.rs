@@ -22,9 +22,35 @@ use tauri::{AppHandle, Emitter, Manager};
 //  STARTUP CLEANUP
 // ═══════════════════════════════════════════════════════════
 
+/// Known safe vault filenames that may be promoted from .tmp recovery.
+/// Any .tmp file whose original name is NOT in this list will be deleted
+/// instead of promoted — prevents attacker-crafted file injection.
+const SAFE_VAULT_FILENAMES: &[&str] = &[
+    "vault.lex",
+    "vault.salt",
+    "vault.verify",
+    "license.json",
+    ".license-sentinel",
+    ".burned-keys",
+    ".lockout",
+    ".machine-id",
+    "settings.json",
+    "vault.audit",
+    "notification-schedule.json",
+    "search_index.enc",
+    "header.enc",
+    "index.enc",
+];
+
 /// Clean up orphan .tmp files left by crashed atomic writes.
-/// If foo.tmp exists but foo doesn't → rename as recovery.
+/// If foo.tmp exists but foo doesn't → rename as recovery (only if foo is a known safe filename).
 /// If both exist → delete .tmp (it's an incomplete write).
+///
+/// MEDIUM (audit): tightened filename parser. We now require the strict form
+/// `^\.?<safe_name>\.tmp\.[0-9]+$` (regex without an actual regex crate) and we
+/// verify the recovered file's first bytes match a known vault magic header
+/// before promoting it. This prevents an attacker who can drop arbitrary files
+/// into the vault dir from injecting their own "vault.lex" via an orphan .tmp.
 #[allow(dead_code)] // Called from setup_desktop; unused on Android
 pub(crate) fn cleanup_orphan_tmp_files(vault_dir: &std::path::Path) {
     let entries = match fs::read_dir(vault_dir) {
@@ -37,14 +63,36 @@ pub(crate) fn cleanup_orphan_tmp_files(vault_dir: &std::path::Path) {
             continue;
         }
         let tmp_path = entry.path();
-        // Extract the original filename by removing .tmp.XXXXX suffix
-        // Format: .filename.tmp.12345 → filename
-        let original_name = name
-            .trim_start_matches('.')
-            .split(".tmp.")
-            .next()
-            .unwrap_or("");
-        if original_name.is_empty() {
+
+        // MEDIUM (audit): strict parse — `^\.?<original>\.tmp\.<digits>$`
+        // 1. Strip a single optional leading dot.
+        let stripped = name.strip_prefix('.').unwrap_or(&name);
+        // 2. Split exactly once on ".tmp.".
+        let mut parts = stripped.splitn(2, ".tmp.");
+        let original_name = match parts.next() {
+            Some(s) if !s.is_empty() => s,
+            _ => continue,
+        };
+        let suffix = match parts.next() {
+            Some(s) => s,
+            None => continue,
+        };
+        // 3. Suffix must be only digits — reject e.g. ".tmp.abc" or ".tmp.123.evil".
+        if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+            eprintln!(
+                "[LexFlow] SECURITY: rejecting tmp file {:?} (non-numeric suffix)",
+                name
+            );
+            let _ = fs::remove_file(&tmp_path);
+            continue;
+        }
+        // 4. The original filename must be a strict whitelist match, no path components.
+        if original_name.contains('/') || original_name.contains('\\') {
+            eprintln!(
+                "[LexFlow] SECURITY: rejecting tmp file {:?} (path separators)",
+                name
+            );
+            let _ = fs::remove_file(&tmp_path);
             continue;
         }
         let original_path = vault_dir.join(original_name);
@@ -56,8 +104,36 @@ pub(crate) fn cleanup_orphan_tmp_files(vault_dir: &std::path::Path) {
                 name
             );
             let _ = fs::remove_file(&tmp_path);
-        } else {
-            // Original missing — .tmp might be the only copy, attempt recovery
+        } else if SAFE_VAULT_FILENAMES.contains(&original_name) {
+            // MEDIUM (audit): before promoting, verify the file looks like a real vault
+            // artefact. For VAULT_FILE we check the magic header; for the others we
+            // require a non-zero, bounded size.
+            // TODO(audit:MEDIUM-recovery): make recovery user-confirmed (skip auto-promotion)
+            //   and route through a FE prompt — auto-rename can still hand control to an
+            //   attacker who managed to drop a crafted tmp file with valid magic.
+            let header_ok = match original_name {
+                "vault.lex" => {
+                    // Read the first VAULT_MAGIC.len() bytes and compare.
+                    let mut buf = vec![0u8; VAULT_MAGIC.len()];
+                    use std::io::Read;
+                    std::fs::File::open(&tmp_path)
+                        .and_then(|mut f| f.read_exact(&mut buf))
+                        .ok()
+                        .map(|_| buf == VAULT_MAGIC)
+                        .unwrap_or(false)
+                }
+                _ => fs::metadata(&tmp_path)
+                    .map(|m| m.len() > 0 && m.len() < 100 * 1024 * 1024)
+                    .unwrap_or(false),
+            };
+            if !header_ok {
+                eprintln!(
+                    "[LexFlow] SECURITY: tmp file {:?} failed header/size check, deleting",
+                    name
+                );
+                let _ = fs::remove_file(&tmp_path);
+                continue;
+            }
             eprintln!(
                 "[LexFlow] Cleanup: recovering orphan tmp {:?} → {:?}",
                 name, original_name
@@ -66,6 +142,13 @@ pub(crate) fn cleanup_orphan_tmp_files(vault_dir: &std::path::Path) {
                 eprintln!("[LexFlow] WARNING: failed to recover {:?}, deleting", name);
                 let _ = fs::remove_file(&tmp_path);
             }
+        } else {
+            // Original missing but filename is NOT in the safe list — delete to prevent injection
+            eprintln!(
+                "[LexFlow] SECURITY: refusing to promote unknown tmp file {:?} (original {:?} not in safe list), deleting",
+                name, original_name
+            );
+            let _ = fs::remove_file(&tmp_path);
         }
     }
 }
@@ -89,7 +172,7 @@ pub(crate) fn cleanup_orphan_tmp_files(vault_dir: &std::path::Path) {
 /// verification code. This check is a "speed bump" — it stops naive patchers and automated
 /// tools but not a determined reverse engineer. Defense-in-depth: combine with code signing,
 /// notarization (macOS), and Gatekeeper/SmartScreen at the OS level.
-pub(crate) fn verify_binary_integrity() {
+pub(crate) fn verify_binary_integrity(app_handle: &AppHandle) {
     // Build the integrity seed from all security-critical constants
     let mut integrity_seed = Vec::with_capacity(256);
     integrity_seed.extend_from_slice(b"LEXFLOW-INTEGRITY-V2:");
@@ -99,7 +182,7 @@ pub(crate) fn verify_binary_integrity() {
     integrity_seed.extend_from_slice(&ARGON2_M_COST.to_le_bytes());
     integrity_seed.extend_from_slice(&ARGON2_T_COST.to_le_bytes());
     integrity_seed.extend_from_slice(&ARGON2_P_COST.to_le_bytes());
-    integrity_seed.extend_from_slice(&PUBLIC_KEY_BYTES);
+    integrity_seed.extend_from_slice(&*PUBLIC_KEY_BYTES);
     integrity_seed.extend_from_slice(&crate::lockout::DEK_WIPE_THRESHOLD.to_le_bytes());
 
     // Self-referential HMAC: key = SHA-256(seed), msg = seed
@@ -121,12 +204,49 @@ pub(crate) fn verify_binary_integrity() {
         <Hmac<Sha256> as Mac>::new_from_slice(&hmac_key).expect("HMAC can take key of any size");
     verify_mac.update(&integrity_seed);
     if verify_mac.verify_slice(&expected_bytes).is_err() {
-        eprintln!("[SECURITY] Binary integrity HMAC mismatch!");
-        eprintln!("  Expected (build.rs): {}", expected);
-        eprintln!("  Computed (runtime):  {}", computed_hex);
-        // Non-fatal: the vault crypto (AES-256-GCM-SIV + Argon2id) is the real
-        // protection. This check detects accidental constant corruption, not
-        // deliberate tampering (an attacker can patch any check out of a binary).
+        // HIGH-1 (audit): do NOT log expected/computed hex — leaking them would help an
+        // attacker patch the binary in a self-consistent way. Log a single sentinel line.
+        eprintln!("[SECURITY] INTEGRITY MISMATCH");
+
+        // HIGH-1 (audit): persist a permanent crash-log entry so the violation survives
+        // process exit even if the FE never picks up the event. Best-effort — never
+        // panic from inside the integrity check.
+        if let Some(data_dir) = dirs::data_dir() {
+            let crash_dir = data_dir.join("com.pietrolongo.lexflow");
+            let _ = fs::create_dir_all(&crash_dir);
+            let crash_log = crash_dir.join("integrity-violations.log");
+            let line = format!(
+                "{} INTEGRITY MISMATCH (hex withheld)\n",
+                chrono::Utc::now().to_rfc3339()
+            );
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&crash_log)
+                .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+        }
+
+        // HIGH-1 (audit): also append to the in-app audit log so admins can see this
+        // alongside vault events. Best-effort: requires AppState — fall back silently
+        // if state is not yet attached at startup.
+        if let Some(state) = app_handle.try_state::<AppState>() {
+            let _ = crate::audit::append_audit_log(
+                &state,
+                "integrity.violation: HMAC mismatch (hex withheld)",
+            );
+        }
+
+        // DESIGN CHOICE: Non-fatal today. The vault crypto (AES-256-GCM-SIV + Argon2id)
+        // remains the real data protection layer. We still want to surface the violation
+        // to the user via a banner.
+        //
+        // TODO(audit:HIGH-1): make integrity violation BLOCKING in production with
+        // user-confirmation modal. Refuse to proceed (or wipe DEK) unless the user
+        // explicitly clicks "I understand the risk".
+        let _ = app_handle.emit("lf-integrity-warning", json!({
+            "kind": "integrity_mismatch",
+            // Hex values intentionally omitted from the FE event — see HIGH-1.
+        }));
     }
 }
 
@@ -149,9 +269,14 @@ pub(crate) fn autolock_loop(ah: AppHandle) {
     let (lock, cvar) = &*pair;
 
     loop {
+        // CRIT-4 (BE-T3 ASYNC-1): v4 vaults store the unlock material in `vault_dek` rather
+        // than `vault_key`. Checking only `vault_key` made autolock a silent no-op for v4
+        // vaults — the timeout would never fire. Check BOTH slots.
         let is_unlocked = {
             let state = ah.state::<AppState>();
-            state.vault_key.lock().map(|k| k.is_some()).unwrap_or(false)
+            let vk_unlocked = state.vault_key.lock().map(|k| k.is_some()).unwrap_or(false);
+            let vd_unlocked = state.vault_dek.lock().map(|k| k.is_some()).unwrap_or(false);
+            vk_unlocked || vd_unlocked
         };
         if !is_unlocked {
             // Vault is locked — sleep long, nothing to check
@@ -212,9 +337,18 @@ fn copy_dir_non_overwrite(src: &std::path::Path, dest_dir: &std::path::Path) {
         Err(_) => return,
     };
     for entry in entries.flatten() {
+        // L6: Skip symlinks to prevent symlink-following attacks during migration
+        let path = entry.path();
+        if path.is_symlink() {
+            eprintln!(
+                "[SECURITY] Skipping symlink during copy_dir_non_overwrite: {:?}",
+                path
+            );
+            continue;
+        }
         let dest = dest_dir.join(entry.file_name());
         if !dest.exists() {
-            let _ = fs::copy(entry.path(), &dest);
+            let _ = fs::copy(&path, &dest);
         }
     }
 }
@@ -356,11 +490,20 @@ fn check_tcc_location(app: &tauri::App) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
-    let path_str = exe.to_string_lossy();
+    let path_str = exe.to_string_lossy().to_string();
 
-    // Canonical check: /Applications/ or ~/Applications/
-    let in_applications = path_str.starts_with("/Applications/")
-        || path_str.contains("/Users/") && path_str.contains("/Applications/");
+    // MEDIUM (audit): the previous substring check `path.contains("/Applications/")`
+    // matched any directory whose name happens to contain "Applications" — including
+    // attacker-controlled paths like /tmp/Applications/evil.app. Use canonicalised
+    // prefix matching against the real /Applications and ~/Applications dirs.
+    let user_apps = dirs::home_dir().map(|h| h.join("Applications"));
+    let path_p = std::path::Path::new(&path_str).canonicalize().ok();
+    let in_applications = path_p.as_ref().is_some_and(|p| {
+        p.starts_with("/Applications")
+            || user_apps
+                .as_ref()
+                .is_some_and(|ua| p.starts_with(ua))
+    });
 
     // Also reject DMG / Translocation paths
     let in_transient = path_str.contains("/Volumes/")
@@ -462,8 +605,8 @@ fn clear_webview_cache_on_upgrade(app_version: &str, app_data_dir: &std::path::P
         }
     }
 
-    // Persist current version so we don't wipe again on next launch
-    let _ = std::fs::write(&marker_file, app_version);
+    // L8: Use secure_write (0o600 permissions) for integrity protection
+    let _ = crate::io::secure_write(&marker_file, app_version.as_bytes());
     eprintln!(
         "[LexFlow] WebView cache cleared for upgrade to {} ✓",
         app_version
@@ -496,16 +639,26 @@ fn garbage_collect_temp_files() {
         let mut cleaned = 0u32;
         let mut bytes_freed = 0u64;
 
-        // 1. System temp dir — clean "lexflow_*" files (Typst intermediates, etc.)
+        // 1. System temp dir — clean "lexflow_app_*" files (Typst intermediates, etc.)
+        // L7: use more specific prefix to avoid accidentally deleting other apps' files
+        // LOW (audit): use symlink_metadata + skip symlinks so a malicious symlink
+        // can't trick the GC into deleting outside our temp area.
         let temp_dir = std::env::temp_dir();
         if let Ok(entries) = fs::read_dir(&temp_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
-                if !name_str.starts_with("lexflow_") {
+                if !name_str.starts_with("lexflow_app_") {
                     continue;
                 }
-                if let Ok(meta) = entry.metadata() {
+                if let Ok(meta) = fs::symlink_metadata(entry.path()) {
+                    if meta.file_type().is_symlink() {
+                        eprintln!(
+                            "[LexFlow] GC: skipping symlink {:?} for safety",
+                            entry.path()
+                        );
+                        continue;
+                    }
                     let age = meta
                         .modified()
                         .or_else(|_| meta.created())
@@ -517,6 +670,7 @@ fn garbage_collect_temp_files() {
                             if meta.is_dir() {
                                 let _ = fs::remove_dir_all(entry.path());
                             } else {
+                                // Only operate on regular files
                                 let _ = fs::remove_file(entry.path());
                             }
                             cleaned += 1;
@@ -540,6 +694,14 @@ fn garbage_collect_temp_files() {
             gc_directory(&cache_dir, max_age, now, &mut cleaned, &mut bytes_freed);
         }
 
+        // LOW (audit): Linux GC arm — wipe stale entries from the XDG cache dir
+        // (~/.cache/com.pietrolongo.lexflow) that the WebKitGTK cache wipe didn't catch.
+        #[cfg(target_os = "linux")]
+        if let Some(cache) = dirs::cache_dir() {
+            let cache_dir = cache.join("com.pietrolongo.lexflow");
+            gc_directory(&cache_dir, max_age, now, &mut cleaned, &mut bytes_freed);
+        }
+
         #[cfg(target_os = "android")]
         if let Ok(cache_dir) = std::env::var("TMPDIR") {
             let p = std::path::PathBuf::from(cache_dir);
@@ -559,6 +721,8 @@ fn garbage_collect_temp_files() {
 }
 
 /// Scan a directory and remove files/dirs older than `max_age`.
+/// LOW (audit): uses `symlink_metadata` + skips symlinks so a malicious symlink in
+/// the cache dir cannot trick us into deleting files outside the cache.
 #[allow(dead_code)]
 fn gc_directory(
     dir: &std::path::Path,
@@ -575,7 +739,14 @@ fn gc_directory(
         Err(_) => return,
     };
     for entry in entries.flatten() {
-        if let Ok(meta) = entry.metadata() {
+        if let Ok(meta) = fs::symlink_metadata(entry.path()) {
+            if meta.file_type().is_symlink() {
+                eprintln!(
+                    "[LexFlow] GC: skipping symlink {:?} for safety",
+                    entry.path()
+                );
+                continue;
+            }
             let age = meta
                 .modified()
                 .or_else(|_| meta.created())
@@ -703,9 +874,24 @@ pub(crate) fn setup_desktop(
     // ── WebView cache invalidation on version change ────────────
     // Must run BEFORE the WebView loads the frontend.
     let app_version = app.package_info().version.to_string();
+    // LOW (audit): silent /tmp fallback was a footgun — vault data would land in
+    // world-readable /tmp if dirs::data_dir() ever returned None. Treat it as fatal.
     let app_data_root = dirs::data_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .ok_or_else(|| {
+            "FATAL: cannot resolve OS data dir; refusing to fall back to /tmp".to_string()
+        })?
         .join("com.pietrolongo.lexflow");
+    // MEDIUM (audit): ensure the app data root exists with 0700 (owner-only) on Unix.
+    let _ = fs::create_dir_all(&app_data_root);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&app_data_root) {
+            let mut perms = meta.permissions();
+            perms.set_mode(0o700);
+            let _ = fs::set_permissions(&app_data_root, perms);
+        }
+    }
     clear_webview_cache_on_upgrade(&app_version, &app_data_root);
 
     // ── Garbage collection of stale temp files (background) ─────
@@ -759,20 +945,25 @@ pub(crate) fn setup_desktop(
         //     • -f (force) re-registration of the current bundle so
         //       macOS re-indexes metadata and routes notifications
         //       to the freshly-installed instance.
-        {
+        // HIGH (audit): the inner `return Ok(())` calls below used to abort the entire
+        // setup_desktop function whenever LS introspection failed (e.g. exe_path missing,
+        // unable to walk to .app bundle). That meant the cron job, autolock thread, window
+        // events, and system tray were never set up — turning a cosmetic LS issue into a
+        // total app failure. Wrap the LS block in an inline closure so any "early return"
+        // here only skips the LS cleanup and the rest of setup_desktop still runs.
+        let _ls_result: Result<(), String> = (|| {
             let app_version = app.package_info().version.to_string();
             let bid = bundle_id.clone();
 
             // 1. Resolve canonical path of the running .app bundle
             //    Contents/MacOS/lexflow → Contents/MacOS → Contents → LexFlow.app
             let Ok(exe_path) = std::env::current_exe() else {
-                eprintln!("[LexFlow] LaunchServices: cannot resolve current_exe, skipping");
-                // fall through — the #[cfg] block ends below
-                return Ok(());
+                // macOS-specific cleanup failed, continue setup
+                return Err("cannot resolve current_exe".to_string());
             };
             let Some(app_path) = exe_path.ancestors().nth(3).map(|p| p.to_path_buf()) else {
-                eprintln!("[LexFlow] LaunchServices: cannot walk to .app bundle, skipping");
-                return Ok(());
+                // macOS-specific cleanup failed, continue setup
+                return Err("cannot walk to .app bundle".to_string());
             };
             let canonical_path = std::fs::canonicalize(&app_path).unwrap_or(app_path);
             let path_str = canonical_path.to_string_lossy().to_string();
@@ -794,10 +985,24 @@ pub(crate) fn setup_desktop(
                 //    We store a small state file in ~/Library/Application Support/
                 //    com.pietrolongo.lexflow/ with the format "path|version".
                 //    If it matches, the expensive lsregister dump is skipped entirely.
-                let state_dir = dirs::data_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                    .join("com.pietrolongo.lexflow");
+                // LOW (audit): refuse silent /tmp fallback for the LS state dir as well.
+                let Some(data_dir) = dirs::data_dir() else {
+                    return Err(
+                        "cannot resolve data dir for LS state, skipping cleanup".to_string()
+                    );
+                };
+                let state_dir = data_dir.join("com.pietrolongo.lexflow");
                 let _ = std::fs::create_dir_all(&state_dir);
+                // MEDIUM (audit): 0700 on Unix
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Ok(meta) = std::fs::metadata(&state_dir) {
+                        let mut perms = meta.permissions();
+                        perms.set_mode(0o700);
+                        let _ = std::fs::set_permissions(&state_dir, perms);
+                    }
+                }
                 let state_file = state_dir.join("ls_cleanup_state.txt");
                 let current_signature = format!("{}|{}", path_str, app_version);
 
@@ -817,6 +1022,10 @@ pub(crate) fn setup_desktop(
                     run_ls_cleanup(bid, path_str, state_file, current_signature);
                 }
             }
+            Ok(())
+        })();
+        if let Err(e) = _ls_result {
+            eprintln!("[setup] macOS LS cleanup skipped: {}", e);
         }
     }
 
@@ -867,6 +1076,14 @@ pub(crate) fn setup_window_events(app: &tauri::App) {
                 if w_clone.is_fullscreen().unwrap_or(false) {
                     let _ = w_clone.set_fullscreen(false);
                 }
+                // SECURITY: Clear vault keys server-side BEFORE notifying the frontend.
+                // This ensures keys are wiped even if the frontend is frozen/unresponsive
+                // and cannot process the lf-lock event.
+                {
+                    let state = app_handle.state::<AppState>();
+                    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                }
                 // Trigger autolock before hiding — vault locks when user closes window
                 let _ = w_clone.emit("lf-lock", ());
                 let _ = w_clone.hide();
@@ -911,6 +1128,7 @@ pub(crate) fn setup_system_tray(app: &mut tauri::App) -> Result<(), Box<dyn std:
             "quit" => {
                 let state = app.state::<AppState>();
                 *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 app.exit(0);
             }
             _ => {}
@@ -936,12 +1154,41 @@ pub(crate) fn setup_system_tray(app: &mut tauri::App) -> Result<(), Box<dyn std:
 /// to a temp placeholder and no vault I/O should occur.
 #[cfg(target_os = "android")]
 pub(crate) fn setup_android(app: &mut tauri::App) {
-    let real_dir = app
-        .path()
-        .app_data_dir()
-        .expect("FATAL: Android could not resolve app_data_dir");
+    // LOW (audit): replace bare expect("FATAL: ...") with structured error reporting.
+    // We still abort, but FE gets a chance to surface the failure via an event before
+    // the process dies — instead of a silent panic that looks like a corrupted install.
+    let real_dir = match app.path().app_data_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            let msg = format!("Android could not resolve app_data_dir: {}", e);
+            eprintln!("[LexFlow] FATAL: {}", msg);
+            let _ = app.handle().emit(
+                "lf-fatal-startup-error",
+                json!({ "kind": "android.app_data_dir", "message": msg }),
+            );
+            std::process::exit(1);
+        }
+    };
     let vault_dir = real_dir.join("lexflow-vault");
-    fs::create_dir_all(&vault_dir).expect("FATAL: cannot create Android vault directory");
+    if let Err(e) = fs::create_dir_all(&vault_dir) {
+        let msg = format!("cannot create Android vault directory: {}", e);
+        eprintln!("[LexFlow] FATAL: {}", msg);
+        let _ = app.handle().emit(
+            "lf-fatal-startup-error",
+            json!({ "kind": "android.vault_dir", "message": msg }),
+        );
+        std::process::exit(1);
+    }
+    // MEDIUM (audit): apply 0700 to vault_dir on Unix (Android is Unix).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&vault_dir) {
+            let mut perms = meta.permissions();
+            perms.set_mode(0o700);
+            let _ = fs::set_permissions(&vault_dir, perms);
+        }
+    }
     *app.state::<AppState>()
         .data_dir
         .write()

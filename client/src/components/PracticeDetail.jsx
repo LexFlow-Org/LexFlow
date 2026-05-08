@@ -1,179 +1,19 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useDebouncedCallback } from '../hooks/useDebounce';
+import { useState, useEffect, useCallback, useRef, useMemo, useId } from 'react';
 import PropTypes from 'prop-types';
 import {
   ArrowLeft, Calendar, FileText,
   Clock, Plus, Trash2, Send, FolderOpen,
   FolderPlus, Lock, ChevronDown, Check,
-  FilePlus, Info, Fingerprint, ShieldCheck, Download, X, Users, BellRing, Shield
+  FilePlus, Info, ShieldCheck, Download, X, Users, BellRing, Shield
 } from 'lucide-react';
 import { exportPracticeTypstPDF } from '../utils/typstPdfGenerator';
 import ExportWarningModal from './ExportWarningModal';
 import ConfirmDialog from './ConfirmDialog';
 import ModalOverlay from './ModalOverlay';
+import BiometricLockScreen from './BiometricLockScreen';
 import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
 import { formatDateIT } from '../utils/helpers';
-
-/* ---------- Biometric Lock Screen (extracted to reduce cognitive complexity) ---------- */
-function BiometricLockScreen({ practice, onBack, onUnlock }) {
-  const [bioAttempted, setBioAttempted] = useState(false);
-  const [bioConfigured, setBioConfigured] = useState(null); // null = checking, true/false
-  const [showPasswordFallback, setShowPasswordFallback] = useState(false);
-  const [practicePassword, setPracticePassword] = useState('');
-  const [practicePasswordError, setPracticePasswordError] = useState('');
-
-  // Check if biometrics are configured on mount
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const available = await api.checkBio();
-        if (!available) { if (!cancelled) { setBioConfigured(false); setShowPasswordFallback(true); } return; }
-        const saved = await api.hasBioSaved();
-        if (!cancelled) {
-          setBioConfigured(saved);
-          if (!saved) setShowPasswordFallback(true); // Not configured → show password directly
-        }
-      } catch {
-        if (!cancelled) { setBioConfigured(false); setShowPasswordFallback(true); }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Auto-trigger biometric only if configured
-  useEffect(() => {
-    if (bioConfigured !== true || bioAttempted) return;
-    setBioAttempted(true);
-    const attemptBio = async () => {
-      try {
-        const result = await api.bioLogin();
-        if (result) onUnlock();
-      } catch (err) {
-        console.debug('[PracticeDetail] Biometric auth failed or dismissed', err);
-      }
-    };
-    if (document.hasFocus()) {
-      attemptBio();
-    } else {
-      const onFocus = () => {
-        window.removeEventListener('focus', onFocus);
-        attemptBio();
-      };
-      window.addEventListener('focus', onFocus);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onUnlock is stable via useCallback; bioAttempted gate prevents re-runs
-  }, [bioConfigured, bioAttempted]);
-
-  const retryBiometric = async () => {
-    try {
-      const result = await api.bioLogin();
-      if (result) { onUnlock(); return; }
-      toast.error('Verifica biometrica non riuscita. Riprova.');
-    } catch (err) {
-      console.debug('[PracticeDetail] Biometric retry failed', err);
-      toast.error('Verifica biometrica fallita. Usa la password.');
-    }
-  };
-
-  const handlePasswordFallback = async (e) => {
-    e.preventDefault();
-    if (!practicePassword) return;
-    setPracticePasswordError('');
-    try {
-      const result = await api.verifyVaultPassword(practicePassword);
-      if (result?.valid) { setPracticePassword(''); onUnlock(); return; }
-      setPracticePasswordError('Password errata');
-    } catch (err) {
-      console.debug('[PracticeDetail] Password verification failed', err);
-      setPracticePasswordError('Errore verifica password');
-    }
-  };
-
-  return (
-    <div className="h-full flex flex-col bg-background animate-fade-in">
-      <div className="flex items-center px-6 py-4 border-b border-border">
-        <button onClick={onBack} className="p-2 hover:bg-card-hover rounded-full transition-colors text-text-dim hover:text-text">
-          <ArrowLeft size={20} />
-        </button>
-        <div className="ml-4">
-          <h1 className="text-xl font-bold text-text">{practice.client}</h1>
-          <p className="text-xs text-text-dim mt-0.5">{practice.code ? `RG ${practice.code}` : practice.object}</p>
-        </div>
-      </div>
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-6 max-w-xs">
-          {/* Icon: fingerprint if configured, lock if not */}
-          <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto border border-primary/20 animate-pulse">
-            {bioConfigured ? <Fingerprint size={36} className="text-primary" /> : <Lock size={36} className="text-primary" />}
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-text mb-2">Verifica Identità</h2>
-            <p className="text-sm text-text-muted">
-              {bioConfigured === null && 'Verifica in corso...'}
-              {bioConfigured === false && 'Inserisci la Master Password per accedere.'}
-              {bioConfigured === true && (bioAttempted ? 'Autenticazione non riuscita. Riprova o usa la password.' : 'Autenticazione biometrica in corso...')}
-            </p>
-            {bioConfigured === false && (
-              <p className="text-2xs text-warning mt-2 font-semibold">Biometria non configurata — usa la password</p>
-            )}
-          </div>
-          {/* Biometric retry + fallback (only when bio IS configured) */}
-          {bioConfigured === true && bioAttempted && !showPasswordFallback && (
-            <div className="space-y-3">
-              <button onClick={retryBiometric} className="btn-primary px-8 py-3 text-sm w-full">
-                <Fingerprint size={18} /> Riprova Biometria
-              </button>
-              <button 
-                onClick={() => setShowPasswordFallback(true)} 
-                className="w-full text-text-dim hover:text-text text-xs font-semibold transition-colors py-2"
-              >
-                Usa la Master Password
-              </button>
-            </div>
-          )}
-          {/* Password form */}
-          {showPasswordFallback && (
-            <form onSubmit={handlePasswordFallback} className="space-y-3 text-left">
-              <label htmlFor="pd-bio-pwd" className="text-2xs font-bold text-text-dim uppercase tracking-label ml-1 block">Master Password</label>
-              <input
-                id="pd-bio-pwd"
-                type="password"
-                className="input-field w-full py-3 px-4 rounded-xl bg-surface border-border text-text placeholder:text-text-dim text-sm"
-                placeholder="Inserisci la password..."
-                value={practicePassword}
-                onChange={e => setPracticePassword(e.target.value)}
-                autoFocus
-              />
-              {practicePasswordError && (
-                <p className="text-danger text-xs-p font-semibold">{practicePasswordError}</p>
-              )}
-              <button type="submit" className="btn-primary w-full py-3 text-sm">
-                <Lock size={16} /> Sblocca Fascicolo
-              </button>
-              {bioConfigured === true && (
-                <button 
-                  type="button"
-                  onClick={() => { setShowPasswordFallback(false); setPracticePassword(''); setPracticePasswordError(''); }} 
-                  className="w-full text-text-dim hover:text-text text-xs font-semibold transition-colors py-2"
-                >
-                  Torna alla Biometria
-                </button>
-              )}
-            </form>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-BiometricLockScreen.propTypes = {
-  practice: PropTypes.object.isRequired,
-  onBack: PropTypes.func.isRequired,
-  onUnlock: PropTypes.func.isRequired,
-};
 
 /* ---------- Helpers ---------- */
 // Pallino scadenza: usa bg-cat-scadenza per coerenza con DeadlinesPage e AgendaPage.
@@ -190,6 +30,17 @@ function getDeadlineLabel(diff) {
   if (diff === 0) return 'OGGI';
   if (diff === 1) return 'Domani';
   return `tra ${diff}gg`;
+}
+
+/**
+ * Combina data + orario (HH:mm) in millisecondi epoch per ordinamento stabile.
+ * Se manca l'orario, usa 00:00.
+ */
+function deadlineSortKey(d) {
+  const [hh = '00', mm = '00'] = (d.time || '00:00').split(':');
+  const dt = new Date(d.date);
+  dt.setHours(Number(hh) || 0, Number(mm) || 0, 0, 0);
+  return dt.getTime();
 }
 
 /* ---------- Status Dropdown ---------- */
@@ -212,6 +63,8 @@ function StatusDropdown({ status, onChangeStatus }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${
           status === 'active'
             ? 'bg-surface text-text border-border hover:bg-card'
@@ -224,7 +77,7 @@ function StatusDropdown({ status, onChangeStatus }) {
         <ChevronDown size={14} className="text-text-dim" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 bg-card border border-border rounded-xl shadow-2xl z-50 py-1 min-w-[200px] animate-fade-in">
+        <div className="absolute right-0 top-full mt-2 bg-card border border-border rounded-xl shadow-2xl z-50 py-1 min-w-[200px] animate-fade-in" role="listbox">
           <button onClick={() => doSet('active')}
             className={`w-full flex items-center gap-3 px-5 py-3.5 text-xs hover:bg-surface transition-colors text-left ${status === 'active' ? 'bg-surface' : ''}`}>
             <span className="text-success font-bold">● Attivo</span>
@@ -244,6 +97,41 @@ StatusDropdown.propTypes = {
   onChangeStatus: PropTypes.func.isRequired,
 };
 
+/* ---------- Diary Note (memo per-note: evita re-format toLocaleString su ogni render) ---------- */
+function DiaryNoteRow({ note, idx, onDelete }) {
+  // FIX-25: precomputa il label una volta sola per nota
+  const dateLabel = useMemo(() => {
+    const d = new Date(note.date);
+    return `${d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })} • ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
+  }, [note.date]);
+
+  return (
+    <div className="flex gap-4 group animate-fade-in">
+      <div className="flex flex-col items-center pt-1">
+        <div className="w-2.5 h-2.5 rounded-full bg-primary ring-2 ring-primary/20" />
+        <div className="w-px h-full bg-border my-1" />
+      </div>
+      <div className="flex-1 rounded-2xl bg-surface border border-border p-4 hover:bg-card hover:border-border transition-colors">
+        <div className="flex justify-between items-start mb-2.5">
+          <span className="text-xs-p font-semibold text-primary/90 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/15">
+            {dateLabel}
+          </span>
+          <button onClick={() => onDelete(idx)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-danger-soft text-text-dim hover:text-danger transition-colors" aria-label="Elimina nota">
+            <Trash2 size={14} />
+          </button>
+        </div>
+        <p className="text-sm text-text leading-relaxed whitespace-pre-wrap">{note.text}</p>
+      </div>
+    </div>
+  );
+}
+
+DiaryNoteRow.propTypes = {
+  note: PropTypes.shape({ text: PropTypes.string, date: PropTypes.string }).isRequired,
+  idx: PropTypes.number.isRequired,
+  onDelete: PropTypes.func.isRequired,
+};
+
 /* ---------- Main Component ---------- */
 export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvents, onNavigate }) {
   const [activeTab, setActiveTab] = useState('diary'); // diary, docs, deadlines, info
@@ -254,31 +142,64 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   const [exportMode, setExportMode] = useState('standard'); // standard | compressed | secured
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showSecureConfirm, setShowSecureConfirm] = useState(false);
-  
+  const exportMenuRef = useRef(null); // FIX-14: outside-click su menu export
+
   // Stati per i form
   const [newNote, setNewNote] = useState('');
+  const [submittingNote, setSubmittingNote] = useState(false); // FIX-18
   const [newDeadlineLabel, setNewDeadlineLabel] = useState('');
   const [newDeadlineDate, setNewDeadlineDate] = useState('');
   const [newDeadlineTime, setNewDeadlineTime] = useState('09:00');
   const [newDeadlineRemind, setNewDeadlineRemind] = useState(null); // null = usa preavviso globale
   const [newDeadlineCustomTime, setNewDeadlineCustomTime] = useState('08:00'); // per preavviso "Alle"
+  const [submittingDeadline, setSubmittingDeadline] = useState(false); // FIX-19
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // ARIA tabs ids (FIX-17) — un namespace stabile
+  const tabsBaseId = useId();
+
   // --- Helpers ---
-  // PERF: debounce saves to avoid encrypting+writing on every keystroke
-  const { debounced: debouncedUpdate } = useDebouncedCallback(
-    (updated) => onUpdate(updated), 500
-  );
-  const update = (changes) => debouncedUpdate({ ...practice, ...changes });
+  // FIX-1 + FIX-2: nessun debouncing per CRUD (delete/insert su folders/attachments/
+  // diary/deadlines/status). Il fascicolo non ha campi di testo a editing inline,
+  // quindi la versione debounced era una sorgente di bug (collasso di edit rapidi)
+  // più che una vera ottimizzazione. saveNow ritorna una Promise reale e non
+  // catturare uno stato stale, perché parte sempre dall'oggetto `practice` corrente.
+  const saveNow = useCallback(async (changes) => {
+    return Promise.resolve(onUpdate({ ...practice, ...changes }));
+  }, [onUpdate, practice]);
 
   const handleBioUnlock = useCallback(() => setBiometricVerified(true), []);
 
-  // Backwards-compatible folders array (old data has folderPath as string)
-  const folders = (() => {
+  // FIX-13: Backwards-compatible folders array memoizzato per dipendenze stabili
+  const folders = useMemo(() => {
     if (Array.isArray(practice.folders) && practice.folders.length > 0) return practice.folders;
     if (practice.folderPath) return [{ path: practice.folderPath, name: practice.folderPath.split('/').pop(), addedAt: practice.createdAt || new Date().toISOString() }];
     return [];
-  })();
+  }, [practice.folders, practice.folderPath, practice.createdAt]);
+
+  // FIX-12: scadenze unificate + ordinate per data+orario, memoizzate
+  const allDeadlines = useMemo(() => {
+    const practiceDeadlines = (practice.deadlines || []).map((d, idx) => ({
+      ...d, source: 'practice', idx,
+    }));
+    const agendaDeadlines = (agendaEvents || [])
+      .filter(e => e.category === 'scadenza' && e.practiceId === practice.id && !e.autoSync && !e.completed)
+      .map(e => ({
+        label: e.title, date: e.date, time: e.timeStart, source: 'agenda', id: e.id,
+      }));
+    // FIX-10: ordina per data + orario (epoch ms), non solo data
+    return [...practiceDeadlines, ...agendaDeadlines].sort((a, b) => deadlineSortKey(a) - deadlineSortKey(b));
+  }, [practice.deadlines, agendaEvents, practice.id]);
+
+  // FIX-14: chiudi menu export al click fuori (mirror StatusDropdown)
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const onMouseDown = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) setShowExportMenu(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [showExportMenu]);
 
   // Se il fascicolo è protetto e non verificato, mostra schermata di blocco
   if (practice.biometricProtected && !biometricVerified) {
@@ -294,24 +215,31 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   // --- Handlers: Folder ---
   const linkFolder = async () => {
     const folder = await api.selectFolder();
-    if (folder) {
-      const newFolder = { path: folder, name: folder.split('/').pop(), addedAt: new Date().toISOString() };
-      const updatedFolders = [...folders, newFolder];
-      try {
-        await update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
-        toast.success('Cartella collegata');
-      } catch {
-        toast.error('Impossibile collegare la cartella. Verifica i permessi.');
-      }
+    if (!folder) return;
+    // FIX-24: dedupe folders by path
+    if (folders.some(f => f.path === folder)) {
+      toast('Cartella già collegata', { icon: 'ℹ️' });
+      return;
+    }
+    const newFolder = { path: folder, name: folder.split('/').pop(), addedAt: new Date().toISOString() };
+    const updatedFolders = [...folders, newFolder];
+    try {
+      await saveNow({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
+      toast.success('Cartella collegata');
+    } catch (err) {
+      // FIX-22
+      console.error('[PracticeDetail] linkFolder failed', err);
+      toast.error('Impossibile collegare la cartella. Verifica i permessi.');
     }
   };
 
   const removeFolder = async (idx) => {
     const updatedFolders = folders.filter((_, i) => i !== idx);
     try {
-      await update({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
+      await saveNow({ folders: updatedFolders, folderPath: updatedFolders[0]?.path || null });
       toast.success('Cartella scollegata');
-    } catch {
+    } catch (err) {
+      console.error('[PracticeDetail] removeFolder failed', err);
       toast.error('Impossibile rimuovere il collegamento alla cartella.');
     }
   };
@@ -344,7 +272,12 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
   /** Shared helper: show loading toast → run PDF export → post-process → resolve toast */
   const runPdfExport = async () => {
-    const modeLabel = exportMode === 'compressed' ? 'Compressione' : exportMode === 'protected' ? 'Protezione' : 'Generazione';
+    // FIX-3: corretto modeLabel per usare 'secured' (non 'protected')
+    const modeLabel = exportMode === 'compressed'
+      ? 'Compressione'
+      : exportMode === 'secured'
+        ? 'Protezione'
+        : 'Generazione';
     const toastId = toast.loading(`${modeLabel} PDF in corso…`, { duration: 30000 });
     try {
       const result = await exportPracticeTypstPDF(practice);
@@ -356,17 +289,28 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       }
 
       const savedPath = result.path || '';
+      const fileName = savedPath.split(/[/\\]/).pop() || 'PDF';
 
       // Post-processing based on export mode
       if (exportMode === 'compressed' && savedPath) {
         try {
           const compResult = await api.compressPdf(savedPath, savedPath);
-          if (compResult?.details?.saved_percent > 0) {
-            toast.dismiss(toastId);
-            toast.success(`PDF compresso e salvato! (-${compResult.details.saved_percent}%)`, { duration: 6000 });
-            return;
+          toast.dismiss(toastId);
+          // FIX-8: emetti SEMPRE un toast risultato — distingui caso "no savings"
+          const saved = compResult?.details?.saved_percent ?? 0;
+          if (saved > 0) {
+            toast.success(`PDF compresso e salvato! (-${saved}%)`, { duration: 6000 });
+          } else {
+            toast.success(`PDF salvato (compressione: nessun risparmio).\n${fileName}`, { duration: 6000 });
           }
-        } catch (e) { console.warn('[Export] Compression failed (non-critical):', e); }
+          return;
+        } catch (e) {
+          // FIX-4: errore esplicito invece di fall-through con success
+          console.error('[Export] Compression failed:', e);
+          toast.dismiss(toastId);
+          toast.error('Compressione fallita — il PDF è stato salvato senza compressione.');
+          return;
+        }
       }
 
       if (exportMode === 'secured' && savedPath) {
@@ -375,13 +319,22 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             noCopy: true, noPrint: true, noModify: true, watermark: 'RISERVATO',
           });
           toast.dismiss(toastId);
-          toast.success(`PDF blindato e salvato!\n${secResult?.message || 'Protezione completa applicata.'}`, { duration: 6000 });
+          // FIX-5: copy onesta sui limiti reali della protezione qpdf
+          toast.success(
+            `PDF blindato e salvato!\n${secResult?.message || 'Protezione applicata (qpdf owner restrictions; rimovibili da qualunque tool che ignori il flag --extract). NON usare per documenti riservati a controparti.'}`,
+            { duration: 8000 }
+          );
           return;
-        } catch (e) { console.warn('[Export] Secure failed (non-critical):', e); }
+        } catch (e) {
+          // FIX-4: errore esplicito invece di fall-through con success
+          console.error('[Export] Secure failed:', e);
+          toast.dismiss(toastId);
+          toast.error('Protezione fallita — il PDF è stato salvato senza sicurezza completa.');
+          return;
+        }
       }
 
       toast.dismiss(toastId);
-      const fileName = savedPath.split(/[/\\]/).pop() || 'PDF';
       toast.success(`PDF salvato con successo!\n${fileName}`, { duration: 6000 });
     } catch (err) {
       console.error('[PracticeDetail] PDF export failed:', err);
@@ -415,20 +368,20 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
     if (e) e.preventDefault();
     if (!exportPwd) return;
     setShowExportPwdModal(false);
+    // FIX-26: copia la password in ref transitorio e zerizza subito dopo
+    const pwd = exportPwd;
+    setExportPwd('');
     try {
-      const result = await api.verifyVaultPassword(exportPwd);
+      const result = await api.verifyVaultPassword(pwd);
       if (!result?.valid) {
         toast.error('Password non corretta. Esportazione non autorizzata.');
-        setExportPwd('');
         return;
       }
     } catch (err) {
       console.error('[PracticeDetail] Export password verification failed:', err);
       toast.error('Impossibile verificare la password. Riprova.');
-      setExportPwd('');
       return;
     }
-    setExportPwd('');
     await runPdfExport();
   };
 
@@ -438,7 +391,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       const result = await api.selectFile();
       if (result?.name && result?.path) {
         const attachments = [...(practice.attachments || []), { name: result.name, path: result.path, addedAt: new Date().toISOString() }];
-        await update({ attachments });
+        await saveNow({ attachments });
         toast.success('Documento aggiunto al vault');
       }
     } catch (err) {
@@ -450,9 +403,10 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   const removeAttachment = async (idx) => {
     const attachments = (practice.attachments || []).filter((_, i) => i !== idx);
     try {
-      await update({ attachments });
+      await saveNow({ attachments });
       toast.success('Documento rimosso');
-    } catch {
+    } catch (err) {
+      console.error('[PracticeDetail] removeAttachment failed', err);
       toast.error('Impossibile rimuovere il documento.');
     }
   };
@@ -467,23 +421,28 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   // --- Handlers: Diary ---
   const addNote = async (e) => {
     e.preventDefault();
-    if (!newNote.trim()) return;
+    if (!newNote.trim() || submittingNote) return;
+    setSubmittingNote(true); // FIX-18
     const note = { text: newNote, date: new Date().toISOString() };
     try {
-      await update({ diary: [note, ...(practice.diary || [])] });
+      await saveNow({ diary: [note, ...(practice.diary || [])] });
       setNewNote('');
       toast.success('Nota aggiunta');
-    } catch {
+    } catch (err) {
+      console.error('[PracticeDetail] addNote failed', err);
       toast.error('Impossibile salvare la nota. Riprova.');
+    } finally {
+      setSubmittingNote(false);
     }
   };
 
   const deleteNote = async (idx) => {
     const updatedDiary = (practice.diary || []).filter((_, i) => i !== idx);
     try {
-      await update({ diary: updatedDiary });
+      await saveNow({ diary: updatedDiary });
       toast.success('Nota eliminata');
-    } catch {
+    } catch (err) {
+      console.error('[PracticeDetail] deleteNote failed', err);
       toast.error('Impossibile eliminare la nota.');
     }
   };
@@ -498,43 +457,49 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   // --- Handlers: Deadlines ---
   const addDeadline = async (e) => {
     e.preventDefault();
-    if (!newDeadlineLabel.trim() || !newDeadlineDate) return;
-    
-    const newD = { 
-      date: newDeadlineDate, 
+    if (!newDeadlineLabel.trim() || !newDeadlineDate || submittingDeadline) return;
+    setSubmittingDeadline(true); // FIX-19
+
+    const newD = {
+      date: newDeadlineDate,
       label: newDeadlineLabel.trim(),
       time: newDeadlineTime || '09:00',
     };
-    // Salva preavviso solo se specifico (non null/globale)
+    // FIX-20: salva preavviso usando un campo separato `customAt` invece del sentinel 'custom'
     if (newDeadlineRemind === 'custom') {
       newD.remindMinutes = 'custom';
       newD.customRemindTime = newDeadlineCustomTime;
+      newD.customAt = newDeadlineCustomTime; // alias semantico
     } else if (newDeadlineRemind !== null) {
       newD.remindMinutes = newDeadlineRemind;
     }
 
     const deadlines = [...(practice.deadlines || []), newD];
-    deadlines.sort((a, b) => new Date(a.date) - new Date(b.date));
-    
+    deadlines.sort((a, b) => deadlineSortKey(a) - deadlineSortKey(b));
+
     try {
-      await update({ deadlines });
+      await saveNow({ deadlines });
       setNewDeadlineLabel('');
       setNewDeadlineDate('');
       setNewDeadlineTime('09:00');
       setNewDeadlineRemind(null);
       setNewDeadlineCustomTime('08:00');
       toast.success('Scadenza aggiunta');
-    } catch {
+    } catch (err) {
+      console.error('[PracticeDetail] addDeadline failed', err);
       toast.error('Impossibile salvare la scadenza. Riprova.');
+    } finally {
+      setSubmittingDeadline(false);
     }
   };
 
   const deleteDeadline = async (idx) => {
     const deadlines = (practice.deadlines || []).filter((_, i) => i !== idx);
     try {
-      await update({ deadlines });
+      await saveNow({ deadlines });
       toast.success('Scadenza eliminata');
-    } catch {
+    } catch (err) {
+      console.error('[PracticeDetail] deleteDeadline failed', err);
       toast.error('Impossibile eliminare la scadenza.');
     }
   };
@@ -559,7 +524,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
       {/* Top Bar */}
       <div className="flex items-center justify-between px-6 py-4 bg-card sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-card-hover rounded-full transition-colors text-text-dim hover:text-text">
+          <button onClick={onBack} className="p-2 hover:bg-card-hover rounded-full transition-colors text-text-dim hover:text-text" aria-label="Torna ai fascicoli">
             <ArrowLeft size={20} />
           </button>
           <div>
@@ -574,15 +539,16 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
             </p>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <StatusDropdown
             status={practice.status}
             onChangeStatus={async (newStatus) => {
               try {
-                await update({ status: newStatus });
+                await saveNow({ status: newStatus });
                 toast.success(newStatus === 'active' ? 'Fascicolo riaperto' : 'Fascicolo archiviato');
-              } catch {
+              } catch (err) {
+                console.error('[PracticeDetail] update status failed', err);
                 toast.error('Impossibile aggiornare lo stato del fascicolo.');
               }
             }}
@@ -590,43 +556,58 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
         </div>
       </div>
 
-      {/* Tabs — Segmented Control moderno */}
+      {/* Tabs — WAI-ARIA tabs pattern (FIX-17) */}
       <div className="px-6 py-3">
-        <div className="tab-switcher">
-          {TABS.map(({ id, label, icon: Icon, count }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className="tab-btn"
-              data-active={activeTab === id}
-            >
-              <Icon size={14} />
-              {label}
-              {count > 0 && (
-                <span className={`text-2xs px-1.5 py-0.5 rounded-full ${
-                  activeTab === id ? 'bg-primary-soft text-primary' : 'bg-surface text-text-dim'
-                }`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="tab-switcher" role="tablist" aria-label="Sezioni fascicolo">
+          {TABS.map(({ id, label, icon: Icon, count }) => {
+            const tabId = `${tabsBaseId}-tab-${id}`;
+            const panelId = `${tabsBaseId}-panel-${id}`;
+            const selected = activeTab === id;
+            return (
+              <button
+                key={id}
+                id={tabId}
+                role="tab"
+                aria-selected={selected}
+                aria-controls={panelId}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setActiveTab(id)}
+                className="tab-btn"
+                data-active={selected}
+              >
+                <Icon size={14} />
+                {label}
+                {count > 0 && (
+                  <span className={`text-2xs px-1.5 py-0.5 rounded-full ${
+                    selected ? 'bg-primary-soft text-primary' : 'bg-surface text-text-dim'
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 custom-scrollbar">
-        
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 no-scrollbar">
+
         {/* ═══ TAB: DIARIO CRONOLOGICO ═══ */}
         {activeTab === 'diary' && (
-          <div className="max-w-3xl mx-auto h-full flex flex-col">
+          <div
+            id={`${tabsBaseId}-panel-diary`}
+            role="tabpanel"
+            aria-labelledby={`${tabsBaseId}-tab-diary`}
+            className="max-w-3xl mx-auto h-full flex flex-col"
+          >
             {/* Header Diario con Export */}
             {practice.diary && practice.diary.length > 0 && (
               <div className="flex items-center justify-between mb-5">
                 <span className="text-xs font-bold text-text-dim uppercase tracking-label">
                   {practice.diary.length} {practice.diary.length === 1 ? 'annotazione' : 'annotazioni'}
                 </span>
-                <div className="relative">
+                <div className="relative" ref={exportMenuRef}>
                   <div className="flex items-center rounded-xl border border-border overflow-hidden">
                     <button
                       onClick={handleExport}
@@ -637,13 +618,16 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                     </button>
                     <button
                       onClick={() => setShowExportMenu(v => !v)}
+                      aria-haspopup="listbox"
+                      aria-expanded={showExportMenu}
+                      aria-label="Modalità esportazione"
                       className="px-2 py-2.5 bg-card text-text-dim hover:bg-card-hover hover:text-text border-l border-border transition-colors"
                     >
                       <ChevronDown size={14} />
                     </button>
                   </div>
                   {showExportMenu && (
-                    <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg z-50 py-1 min-w-[200px] animate-fade-in">
+                    <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg z-50 py-1 min-w-[200px] animate-fade-in" role="listbox">
                       {[
                         { id: 'standard', label: 'Standard', desc: 'PDF senza modifiche' },
                         { id: 'compressed', label: 'Compresso', desc: 'Ottimizzato per PEC' },
@@ -670,15 +654,22 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   <Shield size={20} className="text-primary mt-0.5 shrink-0" />
                   <div className="flex-1">
                     <h4 className="text-sm font-bold text-text mb-2">Esporta PDF Protetto</h4>
+                    {/* FIX-21: verra' → verrà */}
                     <p className="text-xs text-text-muted leading-relaxed mb-3">
-                      Il PDF verra' esportato con le seguenti protezioni:
+                      Il PDF verrà esportato con le seguenti protezioni:
                     </p>
                     <ul className="text-xs text-text-dim space-y-1 mb-4">
                       <li className="flex items-center gap-2"><Check size={12} className="text-success" /> Copia/incolla testo bloccata</li>
                       <li className="flex items-center gap-2"><Check size={12} className="text-success" /> Stampa bloccata</li>
                       <li className="flex items-center gap-2"><Check size={12} className="text-success" /> Modifica bloccata</li>
-                      <li className="flex items-center gap-2"><Check size={12} className="text-success" /> Watermark "RISERVATO" applicato</li>
+                      <li className="flex items-center gap-2"><Check size={12} className="text-success" /> Watermark &ldquo;RISERVATO&rdquo; applicato</li>
                     </ul>
+                    {/* FIX-5: avviso onesto sui limiti */}
+                    <p className="text-2xs text-warning leading-relaxed mb-4 font-semibold">
+                      Avviso: queste protezioni sono &ldquo;owner restrictions&rdquo; di qpdf — possono essere
+                      rimosse da qualsiasi tool che ignori il flag <code>--extract</code>.
+                      NON usare per documenti riservati a controparti.
+                    </p>
                     <div className="flex gap-2">
                       <button onClick={() => setShowSecureConfirm(false)}
                         className="px-4 py-2 rounded-lg text-xs font-bold text-text-muted bg-surface border border-border hover:bg-card-hover transition-colors">
@@ -702,29 +693,21 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </div>
               )}
               {practice.diary?.map((note, idx) => (
-                <div key={note.date + idx} className="flex gap-4 group animate-fade-in">
-                  <div className="flex flex-col items-center pt-1">
-                    <div className="w-2.5 h-2.5 rounded-full bg-primary ring-2 ring-primary/20" />
-                    <div className="w-px h-full bg-border my-1" />
-                  </div>
-                  <div className="flex-1 rounded-2xl bg-surface border border-border p-4 hover:bg-card hover:border-border transition-colors">
-                    <div className="flex justify-between items-start mb-2.5">
-                      <span className="text-xs-p font-semibold text-primary/90 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/15">
-                        {new Date(note.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(note.date).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}
-                      </span>
-                      <button onClick={() => confirmDeleteNote(idx)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-danger-soft text-text-dim hover:text-danger transition-colors">
-                         <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <p className="text-sm text-text leading-relaxed whitespace-pre-wrap">{note.text}</p>
-                  </div>
-                </div>
+                <DiaryNoteRow
+                  key={`${note.date}_${idx}`}
+                  note={note}
+                  idx={idx}
+                  onDelete={confirmDeleteNote}
+                />
               ))}
             </div>
 
-            <form onSubmit={addNote} className="flex-shrink-0 bg-background pt-4 border-t border-border">
+            <form onSubmit={addNote} className="flex-shrink-0 bg-background pt-4 pb-4 border-t border-border">
               <div className="relative">
+                {/* FIX-16: visually-hidden label per textarea diario */}
+                <label htmlFor="pd-diary-note" className="sr-only">Nuova nota di diario</label>
                 <textarea
+                  id="pd-diary-note"
                   className="w-full min-h-[80px] pr-14 pl-4 py-3 resize-none rounded-2xl bg-surface border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 focus:bg-card outline-none transition-colors"
                   placeholder="Scrivi una nota di udienza, una telefonata o un appunto..."
                   value={newNote}
@@ -738,7 +721,8 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 />
                 <button
                   type="submit"
-                  disabled={!newNote.trim()}
+                  disabled={!newNote.trim() || submittingNote}
+                  aria-label="Aggiungi nota"
                   className="absolute right-3 bottom-3 w-9 h-9 flex items-center justify-center bg-primary rounded-xl hover:bg-primary-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <Send size={15} className="text-black" />
@@ -750,10 +734,15 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
         {/* ═══ TAB: DOCUMENTI ═══ */}
         {activeTab === 'docs' && (
-          <div className="max-w-3xl mx-auto">
+          <div
+            id={`${tabsBaseId}-panel-docs`}
+            role="tabpanel"
+            aria-labelledby={`${tabsBaseId}-tab-docs`}
+            className="max-w-3xl mx-auto"
+          >
             {/* 2 Card azione */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-              <button 
+              <button
                 type="button"
                 onClick={handleUploadPDF}
                 className="glass-card p-6 flex items-center gap-4 cursor-pointer hover:bg-surface hover:border-border transition-colors border border-border group text-left w-full"
@@ -793,23 +782,30 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {/* FIX-15: rimosso overlay-button trick — ora una <button> contiene il label,
+                      il delete è un sibling visualmente sovrapposto. FIX-23: chiave inclusa idx per dedupe. */}
                   {practice.attachments.map((att, idx) => (
-                    <div key={att.path || att.name}
-                      className="glass-card p-3 flex items-center gap-3 group hover:border-primary/30 transition-colors text-left w-full relative"
-                    >
-                      <button type="button"
+                    <div key={`${att.path || att.name}_${idx}`} className="glass-card p-1 flex items-stretch gap-1 group hover:border-primary/30 transition-colors">
+                      <button
+                        type="button"
                         onClick={() => att.path && api.openPath(att.path)}
-                        className="absolute inset-0 z-0 cursor-pointer"
+                        className="flex-1 flex items-center gap-3 p-3 text-left rounded-lg hover:bg-card transition-colors min-w-0"
                         aria-label={`Apri ${att.name}`}
-                      />
-                      <FileText size={16} className="text-text-muted flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-text truncate">{att.name}</p>
-                        <p className="text-2xs text-text-dim">
-                          {att.addedAt ? formatDateIT(att.addedAt, '') : ''}
-                        </p>
-                      </div>
-                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveAttachment(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-colors relative z-[1]">
+                      >
+                        <FileText size={16} className="text-text-muted flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-text truncate">{att.name}</p>
+                          <p className="text-2xs text-text-dim">
+                            {att.addedAt ? formatDateIT(att.addedAt, '') : ''}
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => confirmRemoveAttachment(idx)}
+                        className="opacity-0 group-hover:opacity-100 px-3 text-text-dim hover:text-danger transition-colors flex items-center"
+                        aria-label={`Rimuovi ${att.name}`}
+                      >
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -829,23 +825,29 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {/* FIX-15: idem — pulsante label + sibling delete */}
                   {folders.map((fld, idx) => (
-                    <div key={fld.path}
-                      className="glass-card p-3 flex items-center gap-3 group hover:border-warning-border transition-colors text-left w-full relative"
-                    >
-                      <button type="button"
+                    <div key={`${fld.path}_${idx}`} className="glass-card p-1 flex items-stretch gap-1 group hover:border-warning-border transition-colors">
+                      <button
+                        type="button"
                         onClick={() => openFolderAtPath(fld.path)}
-                        className="absolute inset-0 z-0 cursor-pointer"
+                        className="flex-1 flex items-center gap-3 p-3 text-left rounded-lg hover:bg-card transition-colors min-w-0"
                         aria-label={`Apri ${fld.name}`}
-                      />
-                      <FolderOpen size={16} className="text-text-muted flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-text truncate">{fld.name}</p>
-                        <p className="text-2xs text-text-dim">
-                          {fld.addedAt ? formatDateIT(fld.addedAt, '') : ''}
-                        </p>
-                      </div>
-                      <button onClick={(e) => { e.stopPropagation(); confirmRemoveFolder(idx); }} className="opacity-0 group-hover:opacity-100 p-2 text-text-dim hover:text-danger transition-colors relative z-[1]">
+                      >
+                        <FolderOpen size={16} className="text-text-muted flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-text truncate">{fld.name}</p>
+                          <p className="text-2xs text-text-dim">
+                            {fld.addedAt ? formatDateIT(fld.addedAt, '') : ''}
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => confirmRemoveFolder(idx)}
+                        className="opacity-0 group-hover:opacity-100 px-3 text-text-dim hover:text-danger transition-colors flex items-center"
+                        aria-label={`Rimuovi ${fld.name}`}
+                      >
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -858,22 +860,34 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
         {/* ═══ TAB: SCADENZE ═══ */}
         {activeTab === 'deadlines' && (
-          <div className="max-w-3xl mx-auto">
+          <div
+            id={`${tabsBaseId}-panel-deadlines`}
+            role="tabpanel"
+            aria-labelledby={`${tabsBaseId}-tab-deadlines`}
+            className="max-w-3xl mx-auto"
+          >
             <form onSubmit={addDeadline} className="mb-6 space-y-3">
               <div className="flex gap-2">
+                {/* FIX-16: visually-hidden labels per ogni input */}
+                <label htmlFor="pd-deadline-label" className="sr-only">Descrizione scadenza</label>
                 <input
+                  id="pd-deadline-label"
                   className="input-field flex-1"
                   placeholder="Descrizione scadenza..."
                   value={newDeadlineLabel}
                   onChange={e => setNewDeadlineLabel(e.target.value)}
                 />
+                <label htmlFor="pd-deadline-date" className="sr-only">Data scadenza</label>
                 <input
+                  id="pd-deadline-date"
                   type="date"
                   className="input-field w-40"
                   value={newDeadlineDate}
                   onChange={e => setNewDeadlineDate(e.target.value)}
                 />
+                <label htmlFor="pd-deadline-time" className="sr-only">Orario scadenza</label>
                 <input
+                  id="pd-deadline-time"
                   type="time"
                   className="input-field w-28"
                   value={newDeadlineTime}
@@ -882,7 +896,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 <button
                   type="submit"
                   className="btn-primary px-4 flex items-center gap-1.5 text-xs font-bold"
-                  disabled={!newDeadlineLabel.trim() || !newDeadlineDate}
+                  disabled={!newDeadlineLabel.trim() || !newDeadlineDate || submittingDeadline}
                 >
                   <Plus size={14} /> Aggiungi
                 </button>
@@ -927,7 +941,9 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                       }`}>
                       Alle
                     </button>
+                    <label htmlFor="pd-deadline-customat" className="sr-only">Orario notifica personalizzato</label>
                     <input
+                      id="pd-deadline-customat"
                       type="time"
                       value={newDeadlineCustomTime}
                       onFocus={() => setNewDeadlineRemind('custom')}
@@ -942,18 +958,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
             <div className="space-y-2">
               {(() => {
-                const today = new Date(); today.setHours(0,0,0,0);
-                // Combine practice deadlines + agenda scadenze linked to this practice
-                const practiceDeadlines = (practice.deadlines || []).map((d, idx) => ({
-                  ...d, source: 'practice', idx,
-                }));
-                const agendaDeadlines = (agendaEvents || [])
-                  .filter(e => e.category === 'scadenza' && e.practiceId === practice.id && !e.autoSync && !e.completed)
-                  .map(e => ({
-                    label: e.title, date: e.date, source: 'agenda', id: e.id,
-                  }));
-                const allDeadlines = [...practiceDeadlines, ...agendaDeadlines]
-                  .sort((a, b) => new Date(a.date) - new Date(b.date));
+                const today = new Date(); today.setHours(0, 0, 0, 0);
 
                 if (allDeadlines.length === 0) {
                   return (
@@ -964,13 +969,16 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   );
                 }
 
-                return allDeadlines.map((d, idx) => {
-                  const dDate = new Date(d.date); dDate.setHours(0,0,0,0);
+                return allDeadlines.map((d) => {
+                  const dDate = new Date(d.date); dDate.setHours(0, 0, 0, 0);
                   const diff = Math.ceil((dDate - today) / (1000 * 60 * 60 * 24));
                   const dotColor = getDeadlineDotColor(diff);
                   const deadlineLabel = getDeadlineLabel(diff);
-                  const key = d.source === 'agenda' ? `agenda_${d.id}` : `${d.date}_${d.label}_${idx}`;
-                  
+                  // FIX-11: chiave stabile basata su data+label+id/idx
+                  const key = d.source === 'agenda'
+                    ? `agenda_${d.id}`
+                    : `practice_${d.date}_${d.label}_${d.idx ?? ''}`;
+
                   const handleDeadlineClick = () => {
                     if (onNavigate) {
                       const timeParam = d.time ? `&time=${d.time}` : '';
@@ -978,8 +986,24 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                     }
                   };
 
+                  // FIX-7: handler keydown per Enter/Space sui ruoli button
+                  const handleKeyDown = (e) => {
+                    if (!onNavigate) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleDeadlineClick();
+                    }
+                  };
+
                   return (
-                    <div key={key} className={`glass-card p-4 group hover:border-primary/30 transition-colors ${onNavigate ? 'cursor-pointer' : ''}`} onClick={handleDeadlineClick} role={onNavigate ? 'button' : undefined} tabIndex={onNavigate ? 0 : undefined}>
+                    <div
+                      key={key}
+                      className={`glass-card p-4 group hover:border-primary/30 transition-colors ${onNavigate ? 'cursor-pointer' : ''}`}
+                      onClick={onNavigate ? handleDeadlineClick : undefined}
+                      onKeyDown={onNavigate ? handleKeyDown : undefined}
+                      role={onNavigate ? 'button' : undefined}
+                      tabIndex={onNavigate ? 0 : undefined}
+                    >
                       <div className="flex items-center gap-3">
                         <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
                         <p className="text-sm text-text font-bold flex-1">{d.label}</p>
@@ -987,7 +1011,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                           {deadlineLabel}
                         </div>
                         {d.source === 'practice' && (
-                          <button onClick={(e) => { e.stopPropagation(); confirmDeleteDeadline(d.idx); }} className="opacity-0 group-hover:opacity-100 p-1.5 text-text-dim hover:text-danger transition-colors">
+                          <button onClick={(e) => { e.stopPropagation(); confirmDeleteDeadline(d.idx); }} className="opacity-0 group-hover:opacity-100 p-1.5 text-text-dim hover:text-danger transition-colors" aria-label="Elimina scadenza">
                             <Trash2 size={14} />
                           </button>
                         )}
@@ -1000,7 +1024,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                         {d.remindMinutes != null && (
                           <span className="text-2xs font-semibold text-text-muted bg-card border border-border px-1.5 py-0.5 rounded-lg flex items-center gap-1">
                             <BellRing size={10} /> {d.remindMinutes === 'custom'
-                              ? `alle ${d.customRemindTime || '—'}`
+                              ? `alle ${d.customAt || d.customRemindTime || '—'}`
                               : d.remindMinutes >= 1440
                                 ? `${d.remindMinutes / 1440}g`
                                 : d.remindMinutes >= 60
@@ -1019,7 +1043,12 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
 
         {/* ═══ TAB: INFO PRATICA ═══ */}
         {activeTab === 'info' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          <div
+            id={`${tabsBaseId}-panel-info`}
+            role="tabpanel"
+            aria-labelledby={`${tabsBaseId}-tab-info`}
+            className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl mx-auto"
+          >
             {/* Dati Generali */}
             <div className="glass-card p-6">
               <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-5 border-b border-border pb-2 flex items-center gap-2"><FileText size={14} className="text-text-muted" /> Dati Generali</h3>
@@ -1027,7 +1056,7 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                 <div>
                   <span className="block text-2xs font-bold text-text-dim uppercase tracking-wider mb-1">Materia</span>
                   <span className="text-text font-medium capitalize">{
-                    {civile:'Civile', penale:'Penale', lavoro:'Lavoro', amm:'Amministrativo', stra:'Stragiudiziale', soc:'Societario'}[practice.type] || practice.type
+                    { civile: 'Civile', penale: 'Penale', lavoro: 'Lavoro', amm: 'Amministrativo', stra: 'Stragiudiziale', soc: 'Societario' }[practice.type] || practice.type
                   }</span>
                 </div>
                 <div>
@@ -1101,13 +1130,16 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
                   <p className="text-text-dim text-2xs">Inserisci la Master Password per esportare</p>
                 </div>
               </div>
-              <button onClick={() => setShowExportPwdModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim hover:text-text transition-colors group">
+              <button onClick={() => setShowExportPwdModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim hover:text-text transition-colors group" aria-label="Chiudi">
                 <X size={18} className="group-hover:rotate-90 transition-transform" />
               </button>
             </div>
             {/* Form */}
             <form onSubmit={handleExportWithPassword} className="px-6 pb-6">
+              {/* FIX-16: visually-hidden label */}
+              <label htmlFor="pd-export-pwd" className="sr-only">Master Password</label>
               <input
+                id="pd-export-pwd"
                 type="password"
                 className="w-full py-3 px-4 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim text-sm focus:border-primary/40 outline-none transition-colors mb-4"
                 placeholder="Master Password…"

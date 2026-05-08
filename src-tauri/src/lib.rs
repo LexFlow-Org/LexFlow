@@ -35,6 +35,20 @@ use std::fs;
 #[allow(unused_imports)] // needed for get_webview_window in run() event handler
 use tauri::Manager;
 
+/// Redact panic message contents that may contain secrets, and cap length.
+/// Used by the panic hook before persisting to crash.log.
+#[cfg(not(target_os = "android"))]
+fn redact_panic_message(msg: &str) -> String {
+    let m = msg.to_lowercase();
+    const SECRET_PATTERNS: &[&str] = &[
+        "password", " key", "dek", "kek", "hmac", "secret", "token", "recovery",
+    ];
+    if SECRET_PATTERNS.iter().any(|p| m.contains(p)) {
+        return "[REDACTED — message contained possible secret pattern]".to_string();
+    }
+    msg.chars().take(256).collect()
+}
+
 #[cfg(mobile)]
 #[tauri::mobile_entry_point]
 pub fn mobile_entry() {
@@ -46,7 +60,13 @@ pub fn run() {
     // Double-init causes panic: "attempted to set a logger after already initialized"
 
     // ── SECURITY: disable core dumps (prevents DEK/plaintext in crash dumps)
-    security::disable_core_dumps();
+    // SEC-SE-4 (audit): disable_core_dumps now returns Result<(), String>; we log
+    // the failure but continue startup — refusing to launch on a setrlimit failure
+    // would brick the app on platforms where the call is denied (e.g. some CI
+    // sandboxes), and the in-memory DEK is still zeroized via Drop on crash.
+    if let Err(e) = security::disable_core_dumps() {
+        eprintln!("[LexFlow] SECURITY: disable_core_dumps failed: {}", e);
+    }
 
     // ── Panic Logger ────────────────────────────────────────────
     #[cfg(not(target_os = "android"))]
@@ -63,13 +83,15 @@ pub fn run() {
                 .location()
                 .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
                 .unwrap_or_else(|| "unknown location".to_string());
-            let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            let raw_message = if let Some(s) = info.payload().downcast_ref::<&str>() {
                 s.to_string()
             } else if let Some(s) = info.payload().downcast_ref::<String>() {
                 s.clone()
             } else {
                 "unknown panic payload".to_string()
             };
+            // SECURITY: redact possible secret patterns and cap length BEFORE persist.
+            let message = redact_panic_message(&raw_message);
 
             let entry = format!(
                 "\n═══ CRASH {} ═══\nLocation: {}\nMessage: {}\nThread: {:?}\n",
@@ -87,14 +109,27 @@ pub fn run() {
                     }
                 }
             }
-            let _ = std::fs::OpenOptions::new()
+            let write_result = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&crash_log)
                 .and_then(|mut f| {
                     use std::io::Write;
-                    f.write_all(entry.as_bytes())
+                    f.write_all(entry.as_bytes())?;
+                    // SECURITY: ensure crash log is 0600 on Unix (owner-only read/write).
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let _ = std::fs::set_permissions(
+                            &crash_log,
+                            std::fs::Permissions::from_mode(0o600),
+                        );
+                    }
+                    Ok(())
                 });
+            let _ = write_result;
+            // NOTE: do NOT persist process arguments or env vars in panic-related output —
+            // they may contain credentials, tokens, or vault paths.
             eprintln!("{}", entry);
         }));
     }
@@ -148,7 +183,7 @@ pub fn run() {
     builder
         .manage(AppState::new(data_dir, security_dir))
         .setup(move |app| {
-            setup::verify_binary_integrity();
+            setup::verify_binary_integrity(app.handle());
 
             #[cfg(not(target_os = "android"))]
             {
@@ -230,6 +265,7 @@ pub fn run() {
             // Files
             files::select_file,
             files::select_files,
+            files::read_file_base64,
             files::select_folder,
             files::open_path,
             files::select_pdf_save_path,
@@ -238,16 +274,10 @@ pub fn run() {
             files::list_folder_contents,
             files::warm_swift,
             // Notifications
-            notifications::send_notification,
-            notifications::send_urgent_notification,
-            notifications::send_actionable_notification,
             notifications::sync_notification_schedule,
-            notifications::test_notification,
             // License
             license::check_license,
-            license::verify_license,
             license::activate_license,
-            license::get_machine_fingerprint,
             // Document Tools
             doc_tools::pdf_info,
             doc_tools::merge_pdfs,
@@ -258,7 +288,6 @@ pub fn run() {
             doc_tools::add_watermark,
             doc_tools::pdf_to_text,
             doc_tools::images_to_pdf,
-            doc_tools::protect_pdf,
             doc_tools::rotate_pdf,
             doc_tools::reorder_pages,
             doc_tools::add_page_numbers,

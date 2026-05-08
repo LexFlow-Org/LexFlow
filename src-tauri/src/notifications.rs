@@ -2,20 +2,16 @@
 //  NOTIFICATIONS — Desktop cron, briefings, reminders
 // ═══════════════════════════════════════════════════════════
 
-#![allow(unused_imports)]
-
 use crate::constants::*;
-use crate::crypto::{decrypt_data, encrypt_data};
+use crate::crypto::encrypt_data;
 use crate::io::{atomic_write_with_sync, safe_bounded_read};
 use crate::platform::{decrypt_local_with_migration, get_local_encryption_key};
-use crate::state::{notify_autolock_condvar, AppState};
+use crate::state::AppState;
 use chrono::TimeZone as _;
 use serde_json::{json, Value};
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use sha2::{Digest, Sha256};
-use std::fs;
-use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
-use zeroize::Zeroizing;
 
 /// Setup notification permissions and send welcome notification on first launch.
 #[allow(unused_variables)]
@@ -59,43 +55,30 @@ pub(crate) fn setup_notification_permissions(
     }
 }
 
-#[tauri::command]
-pub(crate) fn send_notification(app: AppHandle, title: String, body: String) {
-    let t = title.clone();
-    let b = body.clone();
-    let ah = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        use tauri_plugin_notification::NotificationExt;
-        if let Err(e) = ah.notification().builder().title(&t).body(&b).show() {
-            eprintln!(
-                "[LexFlow] Native notification failed: {:?}, emitting event fallback",
-                e
-            );
-            let _ = ah.emit(
-                "show-notification",
-                serde_json::json!({"title": t, "body": b}),
-            );
-        }
-    });
-}
+/// Hard cap on the schedule payload coming from the FE (1 MiB is generous —
+/// real schedules with 1000+ items serialize to ~100 KiB).
+const MAX_SCHEDULE_PAYLOAD: usize = 1024 * 1024;
 
-/// Test notification — dev-only command to verify the notification pipeline.
-#[tauri::command]
-pub(crate) fn test_notification(app: AppHandle) -> bool {
-    let ah = app.clone();
-    app.run_on_main_thread(move || {
-        use tauri_plugin_notification::NotificationExt;
-        if let Err(e) = ah
-            .notification()
-            .builder()
-            .title("LexFlow — Test Notifica")
-            .body("Le notifiche funzionano correttamente!")
-            .show()
-        {
-            eprintln!("[LexFlow] Test notification failed: {:?}", e);
-        }
-    })
-    .is_ok()
+/// Read the `hide_notification_details` settings flag without decrypting the
+/// vault. Defaults to false. When true, briefing/reminder titles and bodies
+/// are replaced with a generic placeholder so the OS never sees client names,
+/// case numbers, or court details.
+fn hide_notification_details(data_dir: &std::path::Path) -> bool {
+    let path = data_dir.join(SETTINGS_FILE);
+    if !path.exists() {
+        return false;
+    }
+    let dec = match decrypt_local_with_migration(&path) {
+        Some(d) => d,
+        None => return false,
+    };
+    let v: Value = match serde_json::from_slice(&dec) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    v.get("hide_notification_details")
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -121,6 +104,16 @@ pub(crate) fn sync_notification_schedule(
             return false;
         }
     };
+    // VALIDATION: hard cap on schedule payload to prevent OOM / DoS via
+    // a malicious or malformed FE call.
+    if plaintext.len() > MAX_SCHEDULE_PAYLOAD {
+        eprintln!(
+            "[LexFlow] sync_notification_schedule rejected: payload {} bytes > {} bytes",
+            plaintext.len(),
+            MAX_SCHEDULE_PAYLOAD
+        );
+        return false;
+    }
     match encrypt_data(&key, &plaintext) {
         Ok(encrypted) => {
             let written =
@@ -161,8 +154,31 @@ pub(crate) fn read_notification_schedule(data_dir: &std::path::Path) -> Option<V
         if let Ok(text) = std::str::from_utf8(&raw) {
             if let Ok(val) = serde_json::from_str::<Value>(text) {
                 let key = get_local_encryption_key();
-                if let Ok(enc) = encrypt_data(&key, &serde_json::to_vec(&val).unwrap_or_default()) {
-                    let _ = atomic_write_with_sync(&path, &enc);
+                // SECURITY FIX (BE-8 audit): do not silently lose data on
+                // serialization/encryption/write failure. If the migration
+                // write fails, treat the migration as failed and return None
+                // so the caller does not believe the file is now encrypted.
+                let bytes = match serde_json::to_vec(&val) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        eprintln!(
+                            "[LexFlow] schedule migration serialize failed: {} — keeping plaintext",
+                            e
+                        );
+                        return Some(val);
+                    }
+                };
+                let enc = match encrypt_data(&key, &bytes) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!("[LexFlow] schedule migration encrypt failed: {}", e);
+                        return Some(val);
+                    }
+                };
+                if let Err(e) = atomic_write_with_sync(&path, &enc) {
+                    eprintln!("[LexFlow] schedule migration write failed: {}", e);
+                    // Don't claim the on-disk migration succeeded — caller still
+                    // gets the parsed value but the file remains plaintext.
                 }
                 return Some(val);
             }
@@ -177,6 +193,11 @@ pub(crate) fn read_notification_schedule(data_dir: &std::path::Path) -> Option<V
 
 /// Determine the briefing filter parameters based on the hour of the briefing.
 /// Returns (filter_date, time_from, period_label).
+///
+/// SEMANTICS (audit):
+///   - filter_date is the date whose items are summarised in the briefing.
+///   - period_label is the user-visible word ("oggi", "questo pomeriggio",
+///     "domani") and depends on day_offset, NOT on briefing_hour alone.
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn briefing_filter_params<'a>(
     briefing_hour: u32,
@@ -184,20 +205,26 @@ fn briefing_filter_params<'a>(
     tomorrow: &'a str,
     day_offset_is_zero: bool,
 ) -> Option<(&'a str, &'a str, &'a str)> {
+    // For day_offset != 0 we always summarise "tomorrow" of the briefing day.
+    if !day_offset_is_zero {
+        return Some((tomorrow, "00:00", "domani"));
+    }
     if briefing_hour < 12 {
         Some((today, "00:00", "oggi"))
     } else if briefing_hour < 18 {
         Some((today, "13:00", "questo pomeriggio"))
-    } else if day_offset_is_zero {
-        Some((tomorrow, "00:00", "domani"))
     } else {
-        None
+        Some((tomorrow, "00:00", "domani"))
     }
 }
 
-/// Count relevant (non-completed) items for a given date/time filter.
-fn count_relevant_items(items: &[Value], filter_date: &str, time_from: &str) -> usize {
-    items
+/// Collect the (filtered, sorted) relevant items for a given date/time filter.
+fn collect_relevant_items<'a>(
+    items: &'a [Value],
+    filter_date: &str,
+    time_from: &str,
+) -> Vec<&'a Value> {
+    let mut out: Vec<&Value> = items
         .iter()
         .filter(|i| {
             let d = i.get("date").and_then(|d| d.as_str()).unwrap_or("");
@@ -208,7 +235,13 @@ fn count_relevant_items(items: &[Value], filter_date: &str, time_from: &str) -> 
                 .unwrap_or(false);
             d == filter_date && !done && t >= time_from
         })
-        .count()
+        .collect();
+    out.sort_by(|a, b| {
+        let ta = a.get("time").and_then(|v| v.as_str()).unwrap_or("");
+        let tb = b.get("time").and_then(|v| v.as_str()).unwrap_or("");
+        ta.cmp(tb)
+    });
+    out
 }
 
 /// Build briefing notification title + body.
@@ -218,7 +251,9 @@ fn build_briefing_notification(
     time_from: &str,
     period_label: &str,
 ) -> (String, String) {
-    let relevant_count = count_relevant_items(items, filter_date, time_from);
+    // DRY: collect once, derive both count and body from the same list.
+    let relevant_items = collect_relevant_items(items, filter_date, time_from);
+    let relevant_count = relevant_items.len();
     let title = if relevant_count == 0 {
         format!("LexFlow — Nessun impegno {}", period_label)
     } else {
@@ -232,23 +267,6 @@ fn build_briefing_notification(
     let body = if relevant_count == 0 {
         format!("Nessun impegno in programma per {}.", period_label)
     } else {
-        let mut relevant_items: Vec<&Value> = items
-            .iter()
-            .filter(|i| {
-                let d = i.get("date").and_then(|d| d.as_str()).unwrap_or("");
-                let t = i.get("time").and_then(|t| t.as_str()).unwrap_or("00:00");
-                let done = i
-                    .get("completed")
-                    .and_then(|c| c.as_bool())
-                    .unwrap_or(false);
-                d == filter_date && !done && t >= time_from
-            })
-            .collect();
-        relevant_items.sort_by(|a, b| {
-            let ta = a.get("time").and_then(|v| v.as_str()).unwrap_or("");
-            let tb = b.get("time").and_then(|v| v.as_str()).unwrap_or("");
-            ta.cmp(tb)
-        });
         format_item_list(&relevant_items, relevant_count)
     };
     (title, body)
@@ -281,10 +299,11 @@ fn compute_remind_time(
     item_local: chrono::DateTime<chrono::Local>,
 ) -> chrono::DateTime<chrono::Local> {
     let item_date = item.get("date").and_then(|d| d.as_str()).unwrap_or("");
+    // BUG FIX (audit): require exact "HH:MM" shape — len == 5 AND ':' at index 2.
     let custom_remind_time = item
         .get("customRemindTime")
         .and_then(|v| v.as_str())
-        .filter(|s| s.len() >= 5);
+        .filter(|s| s.len() == 5 && s.as_bytes().get(2) == Some(&b':'));
     let remind_min = item
         .get("remindMinutes")
         .and_then(|v| v.as_i64())
@@ -293,7 +312,18 @@ fn compute_remind_time(
         let crt_str = format!("{} {}", item_date, crt);
         chrono::NaiveDateTime::parse_from_str(&crt_str, "%Y-%m-%d %H:%M")
             .ok()
-            .and_then(|dt| chrono::Local.from_local_datetime(&dt).single())
+            // DST FIX: .single() returns None on ambiguous (fall back) times.
+            // Prefer .earliest() and warn via stderr if ambiguous.
+            .and_then(|dt| {
+                let mapped = chrono::Local.from_local_datetime(&dt);
+                if matches!(mapped, chrono::LocalResult::Ambiguous(..)) {
+                    eprintln!(
+                        "[LexFlow] DST ambiguous customRemindTime '{}' — picking earliest",
+                        crt_str
+                    );
+                }
+                mapped.earliest()
+            })
             .unwrap_or(item_local - chrono::Duration::minutes(remind_min))
     } else {
         item_local - chrono::Duration::minutes(remind_min)
@@ -334,7 +364,19 @@ fn parse_item_datetime(item: &Value) -> Option<chrono::DateTime<chrono::Local>> 
     let dt_str = format!("{} {}", item_date, item_time);
     chrono::NaiveDateTime::parse_from_str(&dt_str, "%Y-%m-%d %H:%M")
         .ok()
-        .and_then(|dt| chrono::Local.from_local_datetime(&dt).single())
+        .and_then(|dt| {
+            // DST FIX: .single() drops ambiguous local times. Use .earliest()
+            // and log when the input is ambiguous so we don't silently miss
+            // notifications during a fall-back hour.
+            let mapped = chrono::Local.from_local_datetime(&dt);
+            if matches!(mapped, chrono::LocalResult::Ambiguous(..)) {
+                eprintln!(
+                    "[LexFlow] DST ambiguous item datetime '{}' — picking earliest",
+                    dt_str
+                );
+            }
+            mapped.earliest()
+        })
 }
 
 /// Compute a stable i32 notification ID from a seed string.
@@ -662,7 +704,17 @@ fn schedule_briefing_aot(
     let date_str = target_date.format("%Y-%m-%d").to_string();
     let dt_str = format!("{} {}", date_str, time_str);
     let target_dt = chrono::NaiveDateTime::parse_from_str(&dt_str, "%Y-%m-%d %H:%M").ok()?;
-    let target_local = chrono::Local.from_local_datetime(&target_dt).single()?;
+    // DST FIX: .single() returns None on ambiguous local times.
+    let target_local = {
+        let mapped = chrono::Local.from_local_datetime(&target_dt);
+        if matches!(mapped, chrono::LocalResult::Ambiguous(..)) {
+            eprintln!(
+                "[LexFlow] DST ambiguous briefing target '{}' — picking earliest",
+                dt_str
+            );
+        }
+        mapped.earliest()?
+    };
     if target_local <= now || target_local > horizon {
         return None;
     }
@@ -672,10 +724,12 @@ fn schedule_briefing_aot(
         .next()
         .and_then(|h| h.parse().ok())
         .unwrap_or(8);
+    // BUG FIX (audit L676): pass today_str and the briefing's own date_str
+    // consistently; the period label is derived from day_offset, not by
+    // a re-call with swapped arguments.
+    let _ = today_str;
     let (filter_date, time_from, period_label) =
-        briefing_filter_params(briefing_hour, &date_str, tomorrow_str, day_offset == 0).or_else(
-            || briefing_filter_params(briefing_hour, today_str, tomorrow_str, day_offset == 0),
-        )?;
+        briefing_filter_params(briefing_hour, &date_str, tomorrow_str, day_offset == 0)?;
     let (title, body_str) =
         build_briefing_notification(items, filter_date, time_from, period_label);
     let notif_id = hash_notification_id(&format!("briefing-{}-{}", date_str, time_str));
@@ -721,12 +775,37 @@ pub(crate) async fn desktop_cron_job(app: AppHandle) {
         }
         last_processed_minute = current_minute.clone();
 
-        let data_dir = app
-            .state::<AppState>()
+        // CONCURRENCY/SEC: integration with vault lock state — if locked, only
+        // fire generic-body notifications (no PII like client/case names) so
+        // the OS lockscreen / notification center never reveals confidential
+        // case data while the user is away.
+        let app_state = app.state::<AppState>();
+        let unlocked = app_state
+            .vault_dek
+            .lock()
+            .map(|k| k.is_some())
+            .unwrap_or_else(|e| {
+                eprintln!("[LexFlow Cron] vault_dek mutex poisoned: {}", e);
+                e.into_inner().is_some()
+            })
+            || app_state
+                .vault_key
+                .lock()
+                .map(|k| k.is_some())
+                .unwrap_or_else(|e| {
+                    eprintln!("[LexFlow Cron] vault_key mutex poisoned: {}", e);
+                    e.into_inner().is_some()
+                });
+
+        let data_dir = app_state
             .data_dir
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+
+        // SEC: read settings flag (best effort) — when set, we suppress
+        // titles/bodies even when the vault is unlocked.
+        let hide_details = !unlocked || hide_notification_details(&data_dir);
 
         let schedule_data = match read_notification_schedule(&data_dir) {
             Some(v) => v,
@@ -796,12 +875,12 @@ pub(crate) async fn desktop_cron_job(app: AppHandle) {
             if briefing_key != current_minute {
                 continue;
             }
-            fire_desktop_briefing(&app, time_str, items, &today, &tomorrow);
+            fire_desktop_briefing(&app, time_str, items, &today, &tomorrow, hide_details);
             eprintln!("[LexFlow Cron] ✓ Briefing fired: {}", briefing_key);
         }
 
         // Check per-item reminders — GROUP by fire minute to avoid notification spam
-        fire_grouped_desktop_reminders(&app, items, &current_minute);
+        fire_grouped_desktop_reminders(&app, items, &current_minute, hide_details);
     }
 }
 
@@ -814,6 +893,7 @@ fn fire_desktop_briefing(
     items: &[Value],
     today: &str,
     tomorrow: &str,
+    hide_details: bool,
 ) {
     let briefing_hour: u32 = time_str
         .split(':')
@@ -827,6 +907,11 @@ fn fire_desktop_briefing(
     } else {
         (tomorrow, "00:00", "domani")
     };
+    if hide_details {
+        // PII-safe fallback: no titles, no bodies — just a generic alert.
+        fire_urgent_desktop_notification(app, "LexFlow", "Hai un impegno");
+        return;
+    }
     let (title, body_str) =
         build_briefing_notification(items, filter_date, time_from, period_label);
 
@@ -843,7 +928,12 @@ fn fire_desktop_briefing(
 ///
 /// Critical events (udienza/scadenza) are always elevated to time-sensitive.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minute: &str) {
+fn fire_grouped_desktop_reminders(
+    app: &AppHandle,
+    items: &[Value],
+    current_minute: &str,
+    hide_details: bool,
+) {
     // Collect all items whose remind time matches this minute
     let mut matching: Vec<&Value> = Vec::new();
     let mut any_critical = false;
@@ -883,6 +973,16 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
     }
 
     if matching.is_empty() {
+        return;
+    }
+
+    // PII-safe fallback when vault is locked or user opted in.
+    if hide_details {
+        fire_urgent_desktop_notification(app, "LexFlow", "Hai un impegno");
+        eprintln!(
+            "[LexFlow Cron] ✓ Reminder fired (PII-safe, {} events suppressed)",
+            matching.len()
+        );
         return;
     }
 
@@ -957,80 +1057,13 @@ fn fire_grouped_desktop_reminders(app: &AppHandle, items: &[Value], current_minu
 }
 
 // ═══════════════════════════════════════════════════════════
-//  TIME-SENSITIVE NOTIFICATIONS (tauri_plugin_notification)
-// ═══════════════════════════════════════════════════════════
-//
-// On macOS, when the user has Focus Mode (Do Not Disturb) enabled, regular
-// notifications are silenced. For a legal app, missing a court deadline
-// because of DND is unacceptable.
-//
-// tauri_plugin_notification delivers native OS notifications on all platforms.
-// On macOS, to make these time-sensitive, the user should add LexFlow
-// to their Focus Mode allowed apps in System Settings → Focus → LexFlow.
-
-/// Send an urgent notification via tauri_plugin_notification.
-/// Works on all platforms (macOS, Windows, Linux).
-#[tauri::command]
-pub(crate) fn send_urgent_notification(app: AppHandle, title: String, body: String) {
-    let t = title;
-    let b = body;
-    let ah = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        use tauri_plugin_notification::NotificationExt;
-        let _ = ah.notification().builder().title(&t).body(&b).show();
-    });
-}
-
-// ═══════════════════════════════════════════════════════════
-//  ACTIONABLE TOASTS
-// ═══════════════════════════════════════════════════════════
-//
-// On Windows 11, we can add interactive buttons directly inside the
-// notification banner. The user sees "Scadenza Fascicolo" with two buttons:
-//   [✅ Completato]  [⏰ Posticipa 1h]
-//
-// When the user clicks a button, Windows sends an activation callback to
-// our running process. We handle it via a Tauri event, allowing the frontend
-// to update the database without even opening the main window.
-//
-// This is pure IPC: Windows → LexFlow binary → vault update. Zero internet.
-
-/// Send a notification with action buttons (Windows) or standard notification (other OS).
-/// Emits a frontend event so the UI can show in-app action buttons.
-#[tauri::command]
-pub(crate) fn send_actionable_notification(
-    app: AppHandle,
-    title: String,
-    body: String,
-    event_id: String,
-    actions: Value,
-) {
-    let _ = &actions; // Used for documentation; actual button labels are hardcoded
-
-    let t = title.clone();
-    let b = body.clone();
-    let eid = event_id.clone();
-    let ah = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        use tauri_plugin_notification::NotificationExt;
-        if let Err(e) = ah.notification().builder().title(&t).body(&b).show() {
-            eprintln!("[LexFlow] Actionable notification failed: {:?}", e);
-        }
-        // Emit event so the frontend can show in-app action buttons
-        let _ = ah.emit(
-            "notification-action",
-            json!({
-                "eventId": eid,
-                "title": t,
-                "body": b,
-            }),
-        );
-    });
-}
-
-// ═══════════════════════════════════════════════════════════
 //  DESKTOP CRON NOTIFICATION DELIVERY (tauri_plugin_notification)
 // ═══════════════════════════════════════════════════════════
+//
+// NOTE: On macOS, when the user has Focus Mode (Do Not Disturb) enabled,
+// regular notifications are silenced. For a legal app, missing a court
+// deadline because of DND is unacceptable. The user must add LexFlow to
+// their Focus Mode allowed apps in System Settings → Focus → LexFlow.
 
 /// Fire a desktop notification on macOS / Windows / Linux.
 /// Used by the desktop cron job for ALL events (briefings, reminders).

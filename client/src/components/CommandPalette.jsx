@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, FileText, Calendar, Users, Clock, X, ArrowRight } from 'lucide-react';
+import PropTypes from 'prop-types';
+import { Search, FileText, Calendar, Users, Clock, ArrowRight } from 'lucide-react';
 import * as api from '../tauri-api';
 
 const TYPE_ICONS = {
@@ -16,11 +17,12 @@ const TYPE_LABELS = {
   timeLogs: 'Ore',
 };
 
+// Design tokens (CSS variables) for type colors — no more hardcoded Tailwind palette
 const TYPE_COLORS = {
-  practices: 'text-blue-400',
-  agenda: 'text-amber-400',
-  contacts: 'text-emerald-400',
-  timeLogs: 'text-purple-400',
+  practices: 'text-[var(--info,#60a5fa)]',
+  agenda: 'text-[var(--warning,#fbbf24)]',
+  contacts: 'text-[var(--success,#34d399)]',
+  timeLogs: 'text-[var(--accent,#a78bfa)]',
 };
 
 export default function CommandPalette({ isOpen, onClose, onNavigate }) {
@@ -29,7 +31,25 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
+  const dialogRef = useRef(null);
   const debounceRef = useRef(null);
+  const previousFocusRef = useRef(null);
+
+  // Body scroll lock + focus capture/restore
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    previousFocusRef.current = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      const prev = previousFocusRef.current;
+      if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+        try { prev.focus(); } catch { /* ignore */ }
+      }
+    };
+  }, [isOpen]);
 
   // Focus input when opened
   useEffect(() => {
@@ -37,11 +57,13 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
       setQuery('');
       setResults([]);
       setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      const id = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(id);
     }
+    return undefined;
   }, [isOpen]);
 
-  // Global shortcut ⌘K / Ctrl+K
+  // Global shortcut Cmd+K / Ctrl+K + ESC
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -70,6 +92,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
       setResults(res || []);
       setSelectedIndex(0);
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.warn('[CommandPalette] search error:', e);
       setResults([]);
     } finally {
@@ -84,48 +107,88 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
     debounceRef.current = setTimeout(() => doSearch(val), 150);
   };
 
-  // Keyboard navigation
-  const handleKeyDown = (e) => {
+  const handleSelect = useCallback((result) => {
+    onClose();
+    if (onNavigate) onNavigate(result);
+  }, [onClose, onNavigate]);
+
+  // Keyboard navigation in input + Tab focus trap inside dialog
+  const handleInputKeyDown = (e) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(i => Math.min(i + 1, results.length - 1));
+      setSelectedIndex((i) => Math.min(i + 1, Math.max(0, results.length - 1)));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex(i => Math.max(i - 1, 0));
+      setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter' && results[selectedIndex]) {
       e.preventDefault();
       handleSelect(results[selectedIndex]);
     }
   };
 
-  const handleSelect = (result) => {
-    onClose();
-    if (onNavigate) onNavigate(result);
+  // Trap Tab inside the dialog
+  const handleDialogKeyDown = (e) => {
+    if (e.key !== 'Tab') return;
+    const root = dialogRef.current;
+    if (!root) return;
+    const focusable = Array.from(
+      root.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((n) => n.offsetParent !== null);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   };
 
   if (!isOpen) return null;
 
+  const highlightedId = results.length > 0 ? `cmd-option-${selectedIndex}` : undefined;
+
   return (
-    <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh]"
-         onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh]"
+      onClick={onClose}
+    >
       <div className="absolute inset-0 bg-black/60 blur-overlay-sm" />
-      <div className="relative w-full max-w-xl mx-4 bg-[var(--bg-card)] border border-[var(--border)]
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cmd-palette-title"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleDialogKeyDown}
+        className="relative w-full max-w-xl mx-4 bg-[var(--bg-card)] border border-[var(--border)]
                       rounded-2xl shadow-2xl overflow-hidden"
-           onClick={e => e.stopPropagation()}>
+      >
+        <h2 id="cmd-palette-title" className="sr-only">Palette comandi</h2>
 
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
-          <Search size={18} className="text-[var(--text-dim)] shrink-0" />
+          <Search size={18} className="text-[var(--text-dim)] shrink-0" aria-hidden="true" />
           <input
             ref={inputRef}
             value={query}
             onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
+            onKeyDown={handleInputKeyDown}
             placeholder="Cerca fascicoli, contatti, eventi..."
             className="flex-1 bg-transparent text-[var(--text)] placeholder:text-[var(--text-dim)]
                        text-sm outline-none"
             autoComplete="off"
             spellCheck={false}
+            role="combobox"
+            aria-label="Cerca comandi"
+            aria-expanded={results.length > 0}
+            aria-controls="cmd-listbox"
+            aria-autocomplete="list"
+            aria-activedescendant={highlightedId}
           />
           <kbd className="hidden sm:inline text-2xs text-[var(--text-dim)] bg-[var(--bg)]
                          px-1.5 py-0.5 rounded border border-[var(--border)] font-mono">
@@ -143,25 +206,31 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
 
           {!loading && query.length >= 2 && results.length === 0 && (
             <div className="px-4 py-8 text-center text-sm text-[var(--text-dim)]">
-              Nessun risultato per "{query}"
+              Nessun risultato per &quot;{query}&quot;
             </div>
           )}
 
           {!loading && results.length > 0 && (
-            <ul className="py-2">
+            <ul id="cmd-listbox" role="listbox" className="py-2">
               {results.map((r, i) => {
                 const Icon = TYPE_ICONS[r.field] || FileText;
                 const label = TYPE_LABELS[r.field] || r.field;
                 const colorClass = TYPE_COLORS[r.field] || 'text-[var(--text-dim)]';
                 const isSelected = i === selectedIndex;
+                const optionId = `cmd-option-${i}`;
 
                 return (
-                  <li key={r.id + r.field}
-                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors
+                  <li
+                    key={`${r.field}-${r.id}`}
+                    id={optionId}
+                    role="option"
+                    aria-selected={isSelected}
+                    className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors
                         ${isSelected ? 'bg-[var(--primary-soft)]' : 'hover:bg-[var(--bg-hover)]'}`}
-                      onClick={() => handleSelect(r)}
-                      onMouseEnter={() => setSelectedIndex(i)}>
-                    <Icon size={16} className={`shrink-0 ${colorClass}`} />
+                    onClick={() => handleSelect(r)}
+                    onMouseEnter={() => setSelectedIndex(i)}
+                  >
+                    <Icon size={16} className={`shrink-0 ${colorClass}`} aria-hidden="true" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-[var(--text)] truncate">
                         {r.title || r.id}
@@ -175,7 +244,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
                     <span className={`text-2xs uppercase tracking-wider ${colorClass} shrink-0`}>
                       {label}
                     </span>
-                    {isSelected && <ArrowRight size={14} className="text-[var(--text-dim)] shrink-0" />}
+                    {isSelected && <ArrowRight size={14} className="text-[var(--text-dim)] shrink-0" aria-hidden="true" />}
                   </li>
                 );
               })}
@@ -202,3 +271,9 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
     </div>
   );
 }
+
+CommandPalette.propTypes = {
+  isOpen: PropTypes.bool,
+  onClose: PropTypes.func.isRequired,
+  onNavigate: PropTypes.func,
+};

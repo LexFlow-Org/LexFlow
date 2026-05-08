@@ -13,10 +13,43 @@ export function genId(prefix = '') {
 }
 
 /**
- * Convert a Date to YYYY-MM-DD string.
+ * Convert a Date (or date-string) to YYYY-MM-DD using LOCAL time.
+ *
+ * Bug-fix: `Date#toISOString()` returns UTC, which silently shifts the date
+ * by 1 day for users east of GMT in evening hours and west of GMT in morning
+ * hours. Italian users in CET/CEST were seeing "tomorrow" entries leak into
+ * "today" near midnight. Always derive YMD from local fields.
+ *
+ * @param {Date|string|number} d
+ * @returns {string} YYYY-MM-DD
  */
 export function toDateStr(d) {
-  return d.toISOString().split('T')[0];
+  const date = d instanceof Date ? d : new Date(d);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Parse a YYYY-MM-DD string as a LOCAL midnight Date.
+ *
+ * Bug-fix: `new Date("YYYY-MM-DD")` is parsed as UTC midnight, which becomes
+ * the previous day in local time for negative-offset zones (and shifts hour
+ * fields elsewhere). Use this whenever you compare dates for "today / past /
+ * future" semantics.
+ *
+ * @param {string} ymd "YYYY-MM-DD"
+ * @returns {Date} local-midnight Date, or Invalid Date if malformed
+ */
+export function parseLocalYMD(ymd) {
+  if (typeof ymd !== 'string') return new Date(NaN);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return new Date(NaN);
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  return new Date(y, mo - 1, d);
 }
 
 /**

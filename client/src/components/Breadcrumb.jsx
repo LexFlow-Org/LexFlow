@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types';
 import { useLocation, Link } from 'react-router-dom';
 import { ChevronRight, LayoutDashboard } from 'lucide-react';
 
@@ -9,8 +10,8 @@ const ROUTE_LABELS = {
   '/contatti': 'Contatti',
   '/ore': 'Gestione Ore',
   '/settings': 'Impostazioni',
+  '/sicurezza': 'Sicurezza',
   '/report': 'Report',
-  '/attivita': 'Attività',
   '/strumenti': 'Strumenti PDF',
 };
 
@@ -32,8 +33,8 @@ export default function Breadcrumb({ practiceTitle }) {
     segments.push({ path: mainPath, label: ROUTE_LABELS[mainPath] });
   }
 
-  // Practice detail
-  if (path.startsWith('/practices/') && practiceTitle) {
+  // Lista fascicoli con uno selezionato (selezione gestita lato App.jsx)
+  if (path === '/pratiche' && practiceTitle) {
     segments.push({ label: practiceTitle });
   }
 
@@ -45,16 +46,24 @@ export default function Breadcrumb({ practiceTitle }) {
         const isLast = i === segments.length - 1;
         const Icon = seg.icon;
         return (
-          <span key={i} className="flex items-center gap-1.5">
-            {i > 0 && <ChevronRight size={14} className="text-[var(--text-dim)] opacity-40" />}
+          <span key={seg.path || `seg-${i}`} className="flex items-center gap-1.5">
+            {i > 0 && <ChevronRight size={14} className="text-[var(--text-dim)] opacity-40" aria-hidden="true" />}
             {isLast ? (
-              <span className="flex items-center gap-1.5 text-[var(--text)] font-medium truncate max-w-[200px]">
-                {Icon && <Icon size={14} className="shrink-0" />}
+              <span
+                aria-current="page"
+                title={seg.label}
+                className="flex items-center gap-1.5 text-[var(--text)] font-medium truncate max-w-[200px]"
+              >
+                {Icon && <Icon size={14} className="shrink-0" aria-hidden="true" />}
                 {seg.label}
               </span>
             ) : (
-              <Link to={seg.path} className="flex items-center gap-1.5 hover:text-[var(--primary)] transition-colors truncate max-w-[150px]">
-                {Icon && <Icon size={14} className="shrink-0" />}
+              <Link
+                to={seg.path}
+                title={seg.label}
+                className="flex items-center gap-1.5 hover:text-[var(--primary)] transition-colors truncate max-w-[150px]"
+              >
+                {Icon && <Icon size={14} className="shrink-0" aria-hidden="true" />}
                 {seg.label}
               </Link>
             )}
@@ -64,3 +73,7 @@ export default function Breadcrumb({ practiceTitle }) {
     </nav>
   );
 }
+
+Breadcrumb.propTypes = {
+  practiceTitle: PropTypes.string,
+};

@@ -282,24 +282,6 @@ function handleWeekEventDrag(e, ev, onSave) {
   document.addEventListener('mouseup', onUp);
 }
 
-// --- Componente Empty State ---
-function EmptyState({ message, sub, onAdd, date }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full py-10 opacity-60">
-      <div className="w-24 h-24 rounded-3xl bg-surface flex items-center justify-center mb-6 shadow-inner border border-border">
-        <CalendarDays size={40} className="text-text-dim" />
-      </div>
-      <p className="text-text font-bold text-lg mb-2">{message}</p>
-      <p className="text-text-dim text-sm mb-6 text-center max-w-[280px]">{sub}</p>
-      {onAdd && (
-        <button onClick={() => onAdd(date || toDateStr(new Date()))} className="btn-primary">
-          <Plus size={16} /> Aggiungi Impegno
-        </button>
-      )}
-    </div>
-  );
-}
-
 // --- Componente Modal ---
 function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelectPractice }) {
   const isEdit = !!event?.id;
@@ -344,6 +326,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
   });
   const [practiceId, setPracticeId] = useState(event?.practiceId || '');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Aggiorna "Alle" quando cambia l'ora di inizio (solo se non impostato manualmente)
   const handleTimeStartChange = (newTime) => {
@@ -373,23 +356,36 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
   // Only show linkable practices (active)
   const linkablePractices = (practices || []).filter(p => p.status === 'active');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim()) return;
-    onSave({
-      id: event?.id || genId(),
-      title: title.trim(),
-      date: evDate,
-      timeStart,
-      timeEnd,
-      category,
-      notes,
-      remindMinutes,
-      customRemindTime: remindMinutes === 'custom' ? customRemindTime : null,
-      completed: event?.completed || false,
-      autoSync: event?.autoSync || false,
-      practiceId: practiceId || null,
-    });
+    if (submitting) return;
+    if (!title.trim()) {
+      toast.error('Il titolo è obbligatorio');
+      return;
+    }
+    if (timeStart && timeEnd && timeEnd <= timeStart) {
+      toast.error('Orario fine deve essere dopo orario inizio');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onSave({
+        id: event?.id || genId(),
+        title: title.trim(),
+        date: evDate,
+        timeStart,
+        timeEnd,
+        category,
+        notes,
+        remindMinutes,
+        customRemindTime: remindMinutes === 'custom' ? customRemindTime : null,
+        completed: event?.completed || false,
+        autoSync: event?.autoSync || false,
+        practiceId: practiceId || null,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -413,7 +409,7 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="px-8 py-5 overflow-y-auto custom-scrollbar flex-1 space-y-4">
+        <form id="agenda-event-form" onSubmit={handleSubmit} className="px-8 py-5 overflow-y-auto custom-scrollbar flex-1 space-y-4">
 
           {/* Titolo */}
           <div className="space-y-2">
@@ -426,14 +422,20 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <label htmlFor="em-date" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Data</label>
-              <input id="em-date" type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors" value={evDate} onChange={e => setEvDate(e.target.value)} />
+              <input id="em-date" type="date" min="2000-01-01" max="2100-12-31" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors" value={evDate} onChange={e => setEvDate(e.target.value)} />
             </div>
             <div className="space-y-2">
               <label htmlFor="em-start" className="text-2xs font-black text-text-dim uppercase tracking-label ml-1">Inizio</label>
               <input id="em-start" type="time" className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors" value={timeStart} onChange={e => {
-                handleTimeStartChange(e.target.value);
-                const [h,m] = e.target.value.split(':').map(Number);
-                setTimeEnd(fmtTime(Math.min(h+1,23), m));
+                const newStart = e.target.value;
+                // Only auto-shift end if it currently equals previous start + 1h (user hasn't customized it)
+                const [psh, psm] = timeStart.split(':').map(Number);
+                const prevExpectedEnd = fmtTime(Math.min(psh + 1, 23), psm);
+                handleTimeStartChange(newStart);
+                if (timeEnd === prevExpectedEnd) {
+                  const [h, m] = newStart.split(':').map(Number);
+                  setTimeEnd(fmtTime(Math.min(h + 1, 23), m));
+                }
               }} />
             </div>
             <div className="space-y-2">
@@ -539,10 +541,11 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
               <FolderOpen size={16}/> Fascicolo
             </button>
           )}
-          <button 
+          <button
             type="submit"
-            onClick={handleSubmit} 
-            className="btn-primary px-10 py-3 flex items-center gap-3 active:scale-[0.98] transition-colors"
+            form="agenda-event-form"
+            disabled={submitting}
+            className="btn-primary px-10 py-3 flex items-center gap-3 active:scale-[0.98] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span className="font-black uppercase tracking-widest text-xs">{isEdit ? 'Salva Modifiche' : 'Crea Impegno'}</span>
           </button>
@@ -562,22 +565,32 @@ function EventModal({ event, date, onSave, onDelete, onClose, practices, onSelec
 }
 
 function StatsCard({ events }) {
-  const now = new Date();
-  const todayStr = toDateStr(now);
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  const wsStr = toDateStr(weekStart), weStr = toDateStr(weekEnd);
+  const { todayEvts, todayDone, todayPct, weekEvts, sortedCats } = useMemo(() => {
+    const now = new Date();
+    const todayStr = toDateStr(now);
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    const wsStr = toDateStr(weekStart), weStr = toDateStr(weekEnd);
 
-  const weekEvts = events.filter(e => e.date >= wsStr && e.date <= weStr);
-  const todayEvts = events.filter(e => e.date === todayStr);
-  const todayDone = todayEvts.filter(e => e.completed).length;
-  const todayPct = todayEvts.length > 0 ? Math.round((todayDone / todayEvts.length) * 100) : 0;
+    const weekEvtsLocal = events.filter(e => e.date >= wsStr && e.date <= weStr);
+    const todayEvtsLocal = events.filter(e => e.date === todayStr);
+    const todayDoneLocal = todayEvtsLocal.filter(e => e.completed).length;
+    const todayPctLocal = todayEvtsLocal.length > 0 ? Math.round((todayDoneLocal / todayEvtsLocal.length) * 100) : 0;
 
-  const catCounts = {};
-  weekEvts.forEach(ev => { catCounts[ev.category] = (catCounts[ev.category] || 0) + 1; });
-  const sortedCats = Object.entries(catCounts).sort((a,b) => b[1] - a[1]);
+    const catCounts = {};
+    weekEvtsLocal.forEach(ev => { catCounts[ev.category] = (catCounts[ev.category] || 0) + 1; });
+    const sortedCatsLocal = Object.entries(catCounts).sort((a, b) => b[1] - a[1]);
+
+    return {
+      todayEvts: todayEvtsLocal,
+      todayDone: todayDoneLocal,
+      todayPct: todayPctLocal,
+      weekEvts: weekEvtsLocal,
+      sortedCats: sortedCatsLocal,
+    };
+  }, [events]);
 
   return (
     <div className="space-y-4 animate-slide-up">
@@ -711,22 +724,61 @@ function useFilteredByDate(events, activeFilters) {
   return { filtered, eventsByDate };
 }
 
+/** Safely parse "HH:MM" → minutes since midnight. Returns fallback on invalid input. */
+function parseTimeToMin(str, fallback = 0) {
+  if (!str || typeof str !== 'string') return fallback;
+  const parts = str.split(':');
+  if (parts.length !== 2) return fallback;
+  const h = Number.parseInt(parts[0], 10);
+  const m = Number.parseInt(parts[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return fallback;
+  return h * 60 + m;
+}
+
 function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
   const now = new Date();
   const todayStr = toDateStr(now);
-  const allToday = events.filter(e => e.date === todayStr).sort((a,b) => a.timeStart.localeCompare(b.timeStart));
-  const todayEvts = activeFilters.length > 0 ? allToday.filter(e => activeFilters.includes(e.category)) : allToday;
+  const todayEvts = useMemo(() => {
+    const allToday = events.filter(e => e.date === todayStr).sort((a, b) => a.timeStart.localeCompare(b.timeStart));
+    return activeFilters.length > 0 ? allToday.filter(e => activeFilters.includes(e.category)) : allToday;
+  }, [events, todayStr, activeFilters]);
+
+  // Memoized overlap layout — column assignment for overlapping events
+  const layoutData = useMemo(() => {
+    if (todayEvts.length === 0) return null;
+    const positioned = todayEvts.map(ev => {
+      const startMin = parseTimeToMin(ev.timeStart, 0);
+      const endMin = parseTimeToMin(ev.timeEnd, startMin + 60);
+      return { ...ev, startMin, endMin };
+    }).sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+
+    const columns = [];
+    const layout = positioned.map(ev => {
+      let col = 0;
+      for (let c = 0; c < columns.length; c++) {
+        if (columns[c] <= ev.startMin) { col = c; columns[c] = ev.endMin; break; }
+        col = c + 1;
+      }
+      if (col >= columns.length) columns.push(ev.endMin);
+      else columns[col] = Math.max(columns[col], ev.endMin);
+      return { ...ev, col };
+    });
+    const totalCols = columns.length || 1;
+    return { layout, totalCols };
+  }, [todayEvts]);
+
   const timelineRef = useRef(null);
 
   useEffect(() => {
     if (timelineRef.current) {
       // Check if we have a target scroll time from navigation (e.g. from Scadenze page)
       const targetTime = sessionStorage.getItem('agenda_scroll_time');
-      sessionStorage.removeItem('agenda_scroll_time');
       let scrollTo;
       if (targetTime && /^\d{2}:\d{2}$/.test(targetTime)) {
         const [h, m] = targetTime.split(':').map(Number);
         scrollTo = Math.max(0, ((h * 60 + m) / 60) * 60 - 80);
+        // Only consume the value once it has actually been used by this view
+        sessionStorage.removeItem('agenda_scroll_time');
       } else {
         const n = new Date();
         const nowMin = n.getHours() * 60 + n.getMinutes();
@@ -771,31 +823,8 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                         </div>
                     );
                   })()}
-                  {todayEvts.length > 0 && (() => {
-                    // ── Overlap layout: assign columns to overlapping events ──
-                    const positioned = todayEvts.map(ev => {
-                      const [sh,sm] = ev.timeStart.split(':').map(Number);
-                      const [eh,em] = ev.timeEnd.split(':').map(Number);
-                      return { ...ev, startMin: sh*60+sm, endMin: eh*60+em };
-                    }).sort((a,b) => a.startMin - b.startMin || a.endMin - b.endMin);
-
-                    // Greedy column assignment
-                    const columns = []; // array of { endMin, col }
-                    const layout = positioned.map(ev => {
-                      // Find first column where event doesn't overlap
-                      let col = 0;
-                      for (let c = 0; c < columns.length; c++) {
-                        if (columns[c] <= ev.startMin) { col = c; columns[c] = ev.endMin; break; }
-                        col = c + 1;
-                      }
-                      if (col >= columns.length) columns.push(ev.endMin);
-                      else columns[col] = Math.max(columns[col], ev.endMin);
-                      return { ...ev, col };
-                    });
-
-                    // Calculate total columns for each overlap group
-                    const totalCols = columns.length || 1;
-
+                  {layoutData && (() => {
+                    const { layout, totalCols } = layoutData;
                     return layout.map(ev => {
                       const top = (ev.startMin / 60) * 60;
                       const height = Math.max(((ev.endMin - ev.startMin) / 60) * 60, 32);
@@ -836,6 +865,10 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                                <div className="flex items-start gap-2 min-w-0 flex-1">
                                   {/* Checkbox completamento */}
                                   <button
+                                    type="button"
+                                    role="checkbox"
+                                    aria-checked={!!ev.completed}
+                                    aria-label={ev.completed ? 'Segna come non completato' : 'Segna come completato'}
                                     onClick={e => { e.stopPropagation(); onToggle(ev.id); }}
                                     className={`pointer-events-auto w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
                                       ev.completed
@@ -852,7 +885,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
                                         {ev.practiceId && <FolderOpen size={12} className="text-white/80 flex-shrink-0" />}
                                     </div>
                                     {height >= 45 && (
-                                        <p className="text-2xs font-bold uppercase tracking-wide mt-0.5 truncate text-white/85 ev-text">{ev.notes || ev.category.toUpperCase()}</p>
+                                        <p className="text-2xs font-bold uppercase tracking-wide mt-0.5 truncate text-white/85 ev-text">{ev.notes || (ev.category || '').toUpperCase()}</p>
                                     )}
                                   </div>
                                </div>
@@ -892,20 +925,21 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
   // Sync weekOffset when focusDate changes externally
   useEffect(() => {
     if (focusDate) { setWeekOffset(initialOffset); if (onClearFocusDate) onClearFocusDate(); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusDate, initialOffset]);
+  }, [focusDate, initialOffset, onClearFocusDate]);
   const scrollRef = useRef(null);
 
   // Auto-scroll to target time when navigated from another page
   useEffect(() => {
-    if (!scrollRef.current) return;
+    if (!scrollRef.current) return undefined;
     const targetTime = sessionStorage.getItem('agenda_scroll_time');
-    sessionStorage.removeItem('agenda_scroll_time');
     if (targetTime && /^\d{2}:\d{2}$/.test(targetTime)) {
+      sessionStorage.removeItem('agenda_scroll_time');
       const [h, m] = targetTime.split(':').map(Number);
       const scrollTo = Math.max(0, ((h * 60 + m) / 60) * 60 - 80);
-      setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollTo, behavior: 'smooth' }); }, 100);
+      const tid = setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollTo, behavior: 'smooth' }); }, 100);
+      return () => clearTimeout(tid);
     }
+    return undefined;
   }, [weekOffset]);
   const now = new Date();
   const todayStr = toDateStr(now);
@@ -958,7 +992,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
               const isToday = str === todayStr;
               const dayEvts = eventsByDate.get(str) || [];
               return (
-                <div key={str} data-daystr={str} role="grid" tabIndex={0} aria-label={`Giorno ${str} — clicca per creare evento`}
+                <div key={str} data-daystr={str} role="button" tabIndex={0} aria-label={`Giorno ${str} — clicca per creare evento`}
                     className={`relative border-r border-grid-line ${isToday ? 'bg-surface' : ''}`}
                     onKeyDown={(e) => {
                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(str, '09:00', '10:00'); }
@@ -973,10 +1007,10 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
                     }}>
                   {HOURS.map(h => (<div key={h} className="absolute w-full border-t border-grid-line" style={{top: h*60, height: 60}}/>))}
                   {dayEvts.map(ev => {
-                    const [sh,sm] = ev.timeStart.split(':').map(Number);
-                    const [eh,em] = ev.timeEnd.split(':').map(Number);
-                    const top = ((sh*60+sm)/60)*60;
-                    const height = Math.max(((eh*60+em-sh*60-sm)/60)*60, 20);
+                    const startMin = parseTimeToMin(ev.timeStart, 0);
+                    const endMin = parseTimeToMin(ev.timeEnd, startMin + 60);
+                    const top = (startMin / 60) * 60;
+                    const height = Math.max(((endMin - startMin) / 60) * 60, 20);
                     return (
                       <div key={ev.id} className={`week-ev agenda-event absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 cursor-pointer overflow-hidden text-left border-l-2 ev-text ${evBgClass(ev.category)}`}
                         style={{
@@ -1008,8 +1042,8 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
                           className="resize-handle absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize z-10"
                           onMouseDown={e => {
                             const [rsh,rsm] = ev.timeStart.split(':').map(Number);
-                            const [reh,rem_] = ev.timeEnd.split(':').map(Number);
-                            handleResizeBottom(e, { startMin: rsh*60+rsm, endMin: reh*60+rem_, minHeight: 20, selector: '.week-ev', ev, onSave });
+                            const [reh,reMin] = ev.timeEnd.split(':').map(Number);
+                            handleResizeBottom(e, { startMin: rsh*60+rsm, endMin: reh*60+reMin, minHeight: 20, selector: '.week-ev', ev, onSave });
                           }}
                         />
                       </div>
@@ -1033,14 +1067,17 @@ function MonthView({ events, onEdit, onAdd, activeFilters }) {
   const viewMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
   const year = viewMonth.getFullYear();
   const month = viewMonth.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const startDay = (new Date(year, month, 1).getDay() + 6) % 7; 
-  const cells = [];
-  const prevDays = new Date(year, month, 0).getDate();
-  for (let i = startDay - 1; i >= 0; i--) { cells.push({ date: new Date(year, month - 1, prevDays - i), str: toDateStr(new Date(year, month - 1, prevDays - i)), outside: true }); }
-  for (let d = 1; d <= daysInMonth; d++) { cells.push({ date: new Date(year, month, d), str: toDateStr(new Date(year, month, d)), outside: false }); }
-  const remaining = 42 - cells.length;
-  for (let d = 1; d <= remaining; d++) { cells.push({ date: new Date(year, month + 1, d), str: toDateStr(new Date(year, month + 1, d)), outside: true }); }
+  const cells = useMemo(() => {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const startDay = (new Date(year, month, 1).getDay() + 6) % 7;
+    const out = [];
+    const prevDays = new Date(year, month, 0).getDate();
+    for (let i = startDay - 1; i >= 0; i--) { out.push({ date: new Date(year, month - 1, prevDays - i), str: toDateStr(new Date(year, month - 1, prevDays - i)), outside: true }); }
+    for (let d = 1; d <= daysInMonth; d++) { out.push({ date: new Date(year, month, d), str: toDateStr(new Date(year, month, d)), outside: false }); }
+    const remaining = 42 - out.length;
+    for (let d = 1; d <= remaining; d++) { out.push({ date: new Date(year, month + 1, d), str: toDateStr(new Date(year, month + 1, d)), outside: true }); }
+    return out;
+  }, [year, month]);
   const { eventsByDate } = useFilteredByDate(events, activeFilters);
 
   return (
@@ -1168,6 +1205,10 @@ function NotificationSettingsPopup({ settings, agendaEvents, onSave, onClose }) 
               <p className="text-2xs text-text-dim">Ricevi promemoria prima degli impegni</p>
             </div>
             <button
+              type="button"
+              role="switch"
+              aria-checked={notifyEnabled}
+              aria-label="Attiva notifiche desktop"
               onClick={() => setNotifyEnabled(!notifyEnabled)}
               className={`w-11 h-6 rounded-full transition-colors duration-300 relative ${
                 notifyEnabled ? 'bg-primary' : 'bg-card'
@@ -1241,34 +1282,39 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
   const [activeFilters, setActiveFilters] = useState([]);
   const [showNotifPopup, setShowNotifPopup] = useState(false);
   const [showStats, setShowStats] = useState(false);
-  const [localSettings, setLocalSettings] = useState(settings || {});
   // Jump-to-date: when navigated with ?date=YYYY-MM-DD, focus that day
   const [focusDate, setFocusDate] = useState(null);
-  const events = useMemo(() => agendaEvents || [], [agendaEvents]);
+  const events = agendaEvents || [];
 
   // Handle ?date= and ?time= query parameters — switch to appropriate view & scroll
   useEffect(() => {
     const dateParam = searchParams.get('date');
     const timeParam = searchParams.get('time'); // e.g. "14:30"
-    if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) return;
-    const todayStr = toDateStr(new Date());
-    if (dateParam === todayStr) {
-      setView('today');
-    } else {
-      setView('week');
-      setFocusDate(dateParam);
-    }
-    // Store time for auto-scroll (consumed by TodayView/WeekView)
-    if (timeParam) {
-      sessionStorage.setItem('agenda_scroll_time', timeParam);
-    }
-    // Clear the param so it doesn't persist on manual navigation
-    setSearchParams({}, { replace: true });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+    let consumed = false;
 
-  // Derive localSettings from parent settings prop (no effect needed)
-  const effectiveSettings = settings || localSettings;
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      const todayStr = toDateStr(new Date());
+      if (dateParam === todayStr) {
+        setView('today');
+      } else {
+        setView('week');
+        setFocusDate(dateParam);
+      }
+      consumed = true;
+    }
+    if (timeParam && /^\d{2}:\d{2}$/.test(timeParam)) {
+      // Store time for auto-scroll (consumed by TodayView/WeekView)
+      sessionStorage.setItem('agenda_scroll_time', timeParam);
+      consumed = true;
+    }
+    // Only clear params (and re-trigger this effect once) if we actually consumed something
+    if (consumed) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  // Settings come from parent prop directly
+  const effectiveSettings = settings;
 
   const toggleFilter = useCallback((cat) => setActiveFilters(prev => 
     prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
@@ -1309,9 +1355,11 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
           <h1 className="text-2xl font-black text-text tracking-tight">Agenda</h1>
           
           {/* Vista Switcher */}
-          <div className="tab-switcher">
+          <div className="tab-switcher" role="tablist" aria-label="Vista agenda">
             {views.map(({ key, label, icon: Icon }) => (
-              <button key={key} onClick={() => setView(key)} 
+              <button key={key} onClick={() => setView(key)}
+                role="tab"
+                aria-selected={view === key}
                 className="tab-btn" data-active={view === key}>
                 <Icon size={13}/> <span className="hidden sm:inline">{label}</span>
               </button>
@@ -1401,28 +1449,20 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
 
       {modalEvent && <EventModal event={modalEvent.event} onSave={handleSave} onDelete={handleDelete} onClose={() => setModalEvent(null)} practices={practices} onSelectPractice={onSelectPractice} />}
       {showNotifPopup && (
-        <NotificationSettingsPopup 
+        <NotificationSettingsPopup
           key={`notif-${effectiveSettings?.briefingMattina}-${effectiveSettings?.briefingPomeriggio}-${effectiveSettings?.briefingSera}`}
           settings={effectiveSettings}
           agendaEvents={events}
           onSave={(s) => {
-            setLocalSettings(s);
             // Propagate to parent App.jsx so all pages see updated values
             if (onSettingsChange) onSettingsChange(s);
-          }} 
-          onClose={() => setShowNotifPopup(false)} 
+          }}
+          onClose={() => setShowNotifPopup(false)}
         />
       )}
     </div>
   );
 }
-
-EmptyState.propTypes = {
-  message: PropTypes.string,
-  sub: PropTypes.string,
-  onAdd: PropTypes.func,
-  date: PropTypes.string,
-};
 
 EventModal.propTypes = {
   event: PropTypes.object,

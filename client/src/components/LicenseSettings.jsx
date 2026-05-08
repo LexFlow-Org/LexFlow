@@ -1,20 +1,59 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as api from '../tauri-api';
+
+// Strip leading honorifics ("Avv. Mario Rossi" → "Mario Rossi") so the title
+// shown in the table is whatever the user selected, not what the license token
+// happens to embed.
+function stripTitlePrefix(name) {
+  if (!name) return '';
+  return String(name)
+    .trim()
+    .replace(/^(Avv\.|Avv|Avvocato|Praticante)\.?\s+/i, '')
+    .trim();
+}
 
 export default function LicenseSettings() {
   const [licenseInfo, setLicenseInfo] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  // 'pending' until checkLicense fully resolves with an activation flag.
+  const [verificationStatus, setVerificationStatus] = useState('pending');
 
   useEffect(() => {
+    let mounted = true;
     api.checkLicense()
       .then(res => {
-        if (res.activated) {
+        if (!mounted) return;
+        if (res?.activated) {
           setLicenseInfo(res);
+          setVerificationStatus('verified');
+        } else {
+          setVerificationStatus('not-activated');
         }
       })
       .catch(err => {
+        if (!mounted) return;
         console.warn("Errore nel recupero licenza:", err);
+        setLoadError(typeof err === 'string' ? err : (err?.message || 'Errore sconosciuto'));
+        setVerificationStatus('error');
       });
+    return () => { mounted = false; };
   }, []);
+
+  // Memoize the cleaned-up display name so it isn't recomputed on every render.
+  const displayName = useMemo(() => stripTitlePrefix(licenseInfo?.lawyerName), [licenseInfo?.lawyerName]);
+
+  // Show an explicit error block when the license check rejected outright.
+  if (loadError) {
+    return (
+      <div className="p-6 bg-danger-soft border border-danger-border rounded-xl mt-8" role="alert">
+        <h3 className="text-danger font-semibold mb-2 flex items-center gap-2">Licenza — errore di lettura</h3>
+        <p className="text-xs text-text-muted leading-relaxed">
+          Non è stato possibile leggere lo stato della licenza. Controlla il file di licenza o riavvia l&apos;app.
+        </p>
+        <p className="mt-2 text-2xs text-text-dim font-mono break-all">{loadError}</p>
+      </div>
+    );
+  }
 
   // Se la licenza non è attiva, il componente non occupa spazio nella UI
   if (!licenseInfo) return null;
@@ -40,7 +79,7 @@ export default function LicenseSettings() {
         {licenseInfo.lawyerName && (
         <div className="flex justify-between items-center border-b border-border pb-2">
           <span className="text-text-dim">Avvocato:</span>
-          <span className="text-text font-mono">{licenseInfo.lawyerTitle || 'Avv.'} {(() => { let n = (licenseInfo.lawyerName || '').trim(); n = n.replace(/^(Avv\.|Avv|Avvocato|Praticante)\.?\s+/i, '').trim(); return n; })()}</span>
+          <span className="text-text font-mono">{licenseInfo.lawyerTitle || 'Avv.'} {displayName}</span>
         </div>
         )}
         {licenseInfo.studioName && (
@@ -54,9 +93,11 @@ export default function LicenseSettings() {
           <span className="text-text-muted">v2.4 Burned-Key (Ed25519 + AES-256-GCM)</span>
         </div>
       </div>
-      <div className="mt-4 text-2xs text-text-dim text-right italic">
-        Verifica crittografica locale eseguita con successo
-      </div>
+      {verificationStatus === 'verified' && (
+        <div className="mt-4 text-2xs text-text-dim text-right italic">
+          Verifica crittografica locale eseguita con successo
+        </div>
+      )}
     </div>
   );
 }

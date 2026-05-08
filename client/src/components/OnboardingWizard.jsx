@@ -72,6 +72,8 @@ export default function OnboardingWizard({ currentStep = 0, onComplete, onConfig
   };
 
   const handleSkip = () => {
+    // Sentinel value so other UI branches can distinguish "skipped" from "untried"
+    setBioResult('skipped');
     if (step < visibleSteps.length - 1) {
       setStep(s => s + 1);
     } else {
@@ -82,9 +84,23 @@ export default function OnboardingWizard({ currentStep = 0, onComplete, onConfig
   const currentStepData = visibleSteps[step];
   const Icon = currentStepData.icon;
   const isLastStep = step === visibleSteps.length - 1;
+  const probing = bioSupported === null;
+
+  // Step-aware aria-labels for the primary CTA
+  const primaryAriaLabel = (() => {
+    if (bioLoading) return 'Verifica in corso';
+    if (isLastStep) return 'Completa la configurazione e avvia LexFlow';
+    if (step === 1) return 'Configura sblocco biometrico';
+    return 'Vai al passaggio successivo';
+  })();
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-[var(--bg)] flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 z-[9999] bg-[var(--bg)] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboarding-title"
+    >
       <div className="w-full max-w-md space-y-8">
         {/* Progress */}
         <div className="flex items-center justify-center gap-2">
@@ -106,7 +122,7 @@ export default function OnboardingWizard({ currentStep = 0, onComplete, onConfig
               <Icon size={28} className="text-[var(--primary)]" />
             )}
           </div>
-          <h2 className="text-xl font-bold text-[var(--text)]">
+          <h2 id="onboarding-title" className="text-xl font-bold text-[var(--text)]">
             {bioResult === 'success' ? 'Biometria Configurata!' : currentStepData.title}
           </h2>
           <p className="text-sm text-[var(--text-dim)] max-w-sm mx-auto">
@@ -123,6 +139,7 @@ export default function OnboardingWizard({ currentStep = 0, onComplete, onConfig
           <button
             onClick={handleNext}
             disabled={bioLoading}
+            aria-label={primaryAriaLabel}
             className="btn-primary px-8 py-3 rounded-xl flex items-center gap-2 font-bold text-sm disabled:opacity-50"
           >
             {bioLoading ? (
@@ -140,6 +157,7 @@ export default function OnboardingWizard({ currentStep = 0, onComplete, onConfig
           {currentStepData.skippable && (
             <button
               onClick={handleSkip}
+              aria-label={currentStepData.skipLabel}
               className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] hover:text-[var(--text)] transition-colors"
             >
               <SkipForward size={12} />
@@ -148,9 +166,12 @@ export default function OnboardingWizard({ currentStep = 0, onComplete, onConfig
           )}
         </div>
 
-        {/* Step counter */}
-        <p className="text-center text-xs text-[var(--text-dim)]">
-          Passaggio {step + 1} di {visibleSteps.length}
+        {/* Step counter — show "..." while we probe biometric availability so the
+            total doesn't flicker between "1 di 1" and "1 di 2". */}
+        <p className="text-center text-xs text-[var(--text-dim)]" aria-live="polite">
+          {probing
+            ? `Passaggio ${step + 1} di …`
+            : `Passaggio ${step + 1} di ${visibleSteps.length}`}
         </p>
       </div>
     </div>

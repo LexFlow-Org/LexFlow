@@ -18,7 +18,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import ModalOverlay from '../components/ModalOverlay';
 import PracticeCombobox from '../components/PracticeCombobox';
 import * as api from '../tauri-api';
-import { genId, toDateStr } from '../utils/helpers';
+import { genId } from '../utils/helpers';
 
 /* ======== Helpers ======== */
 
@@ -29,8 +29,21 @@ function fmtDuration(min) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+// FIX-1 Local-date string for week-boundary calculations (avoid UTC shift bug).
+function localDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 const DAYS_IT = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 const MONTHS_IT = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+
+// FIX-16 extract workday minutes constant
+const WORKDAY_MINUTES = 8 * 60;
+// Stale-timer hydration: warn if running > N hours
+const MAX_TIMER_HOURS = 12;
 
 /* ======== Billing helpers ======== */
 
@@ -63,7 +76,21 @@ export default function TimeTrackingPage({ practices }) {
       const saved = sessionStorage.getItem('lexflow_active_timer');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed?.startedAt) return parsed;
+        if (parsed?.startedAt) {
+          // FIX-4 Stale-timer hydration sanity check
+          const elapsedMin = (Date.now() - parsed.startedAt) / 60000;
+          if (elapsedMin > MAX_TIMER_HOURS * 60) {
+            // eslint-disable-next-line no-alert
+            const discard = window.confirm(
+              `Hai un timer attivo da oltre ${MAX_TIMER_HOURS} ore. Scartarlo?`
+            );
+            if (discard) {
+              sessionStorage.removeItem('lexflow_active_timer');
+              return null;
+            }
+          }
+          return parsed;
+        }
       }
     } catch { /* ignore */ }
     return null;
@@ -73,6 +100,9 @@ export default function TimeTrackingPage({ practices }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingLog, setEditingLog] = useState(null);
   const intervalRef = useRef(null);
+  // FIX-3 inflight guard for stopTimer race condition
+  const stopInFlightRef = useRef(false);
+  const [stopBusy, setStopBusy] = useState(false);
   const [invoices, setInvoices] = useState([]);
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
@@ -111,48 +141,81 @@ export default function TimeTrackingPage({ practices }) {
   const displayElapsed = activeTimer ? elapsed : 0;
 
   const startTimer = (practiceId, description) => {
+    // FIX-11 reset elapsed counter on start
+    setElapsed(0);
     setActiveTimer({ practiceId, description, startedAt: Date.now() });
     toast.success('Timer avviato');
   };
 
-  const stopTimer = useCallback(() => {
+  // FIX-3 inflight ref + FIX-10 optimistic save with rollback + FIX-1 localDateStr
+  const stopTimer = useCallback(async () => {
+    if (stopInFlightRef.current) return;
     if (!activeTimer) return;
-    const minutes = Math.round((Date.now() - activeTimer.startedAt) / 60000);
-    if (minutes < 1) { toast('Meno di 1 minuto \u2014 non registrato'); setActiveTimer(null); return; }
-    const newLog = {
-      id: genId(), practiceId: activeTimer.practiceId,
-      description: activeTimer.description || '', date: toDateStr(new Date()),
-      minutes, createdAt: new Date().toISOString(),
-    };
-    const updated = [newLog, ...logs];
-    setLogs(updated);
-    api.saveTimeLogs(updated)
-      .then(() => toast.success(`Registrate ${fmtDuration(minutes)}`))
-      .catch(() => toast.error('Errore salvataggio ore'));
-    setActiveTimer(null);
+    stopInFlightRef.current = true;
+    setStopBusy(true);
+    try {
+      const minutes = Math.round((Date.now() - activeTimer.startedAt) / 60000);
+      if (minutes < 1) {
+        toast('Meno di 1 minuto \u2014 non registrato');
+        setActiveTimer(null);
+        return;
+      }
+      const newLog = {
+        id: genId(),
+        practiceId: activeTimer.practiceId,
+        description: activeTimer.description || '',
+        date: localDateStr(new Date()),
+        minutes,
+        createdAt: new Date().toISOString(),
+      };
+      const prevLogs = logs;
+      const updated = [newLog, ...logs];
+      setLogs(updated);
+      try {
+        await api.saveTimeLogs(updated);
+        toast.success(`Registrate ${fmtDuration(minutes)}`);
+      } catch (e) {
+        // FIX-10 rollback on BE failure
+        setLogs(prevLogs);
+        toast.error('Errore salvataggio ore');
+        console.error(e);
+      }
+      setActiveTimer(null);
+    } finally {
+      stopInFlightRef.current = false;
+      setStopBusy(false);
+    }
   }, [activeTimer, logs]);
 
+  // FIX-10 Optimistic save with rollback
   const saveLog = async (log) => {
     const isNew = !logs.some(l => l.id === log.id);
+    const prev = logs;
     const updated = isNew ? [log, ...logs] : logs.map(l => l.id === log.id ? log : l);
     setLogs(updated);
     try {
       await api.saveTimeLogs(updated);
       toast.success(isNew ? 'Registrazione aggiunta' : 'Registrazione aggiornata');
-    } catch {
+    } catch (e) {
+      setLogs(prev);
       toast.error('Errore salvataggio registrazione');
+      console.error(e);
     }
     setShowAddModal(false); setEditingLog(null);
   };
 
+  // FIX-10 Optimistic delete with rollback
   const deleteLog = async (id) => {
+    const prev = logs;
     const updated = logs.filter(l => l.id !== id);
     setLogs(updated);
     try {
       await api.saveTimeLogs(updated);
       toast.success('Registrazione eliminata');
-    } catch {
+    } catch (e) {
+      setLogs(prev);
       toast.error('Errore eliminazione');
+      console.error(e);
     }
   };
 
@@ -163,27 +226,35 @@ export default function TimeTrackingPage({ practices }) {
     });
   };
 
+  // FIX-10 Optimistic invoice save with rollback
   const saveInvoice = async (inv) => {
     const isNew = !invoices.some(i => i.id === inv.id);
+    const prev = invoices;
     const updated = isNew ? [inv, ...invoices] : invoices.map(i => i.id === inv.id ? inv : i);
     setInvoices(updated);
     try {
       await api.saveInvoices(updated);
       toast.success(isNew ? 'Parcella creata' : 'Parcella aggiornata');
-    } catch {
+    } catch (e) {
+      setInvoices(prev);
       toast.error('Errore salvataggio parcella');
+      console.error(e);
     }
     setShowCreateInvoice(false); setEditingInvoice(null);
   };
 
+  // FIX-10 Optimistic invoice delete with rollback
   const deleteInvoice = async (id) => {
+    const prev = invoices;
     const updated = invoices.filter(i => i.id !== id);
     setInvoices(updated);
     try {
       await api.saveInvoices(updated);
       toast.success('Parcella eliminata');
-    } catch {
+    } catch (e) {
+      setInvoices(prev);
       toast.error('Errore eliminazione parcella');
+      console.error(e);
     }
   };
 
@@ -194,24 +265,57 @@ export default function TimeTrackingPage({ practices }) {
     });
   };
 
+  // Stable "now" reference to avoid re-render churn for daily-bucket comparison
   const now = new Date();
-  const sow = new Date(now);
-  // getDay(): 0=Sun..6=Sat → shift to Monday-based week
-  const dayOfWeek = now.getDay(); // 0=Sun
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // if Sun, go back 6; else go to last Mon
-  sow.setDate(now.getDate() + mondayOffset + weekOffset * 7);
-  const weekDays = Array.from({ length: 7 }, (_, i) => { const d = new Date(sow); d.setDate(sow.getDate() + i); return d; });
-  const weekStart = toDateStr(weekDays[0]);
-  const weekEnd = toDateStr(weekDays[6]);
-  const weekLogs = logs.filter(l => l.date >= weekStart && l.date <= weekEnd);
-  const totalWeekMin = weekLogs.reduce((s, l) => s + (l.minutes || 0), 0);
+
+  // FIX-9 memoize week derivation; FIX-1 use localDateStr for boundaries
+  const { weekDays, weekLogs, totalWeekMin } = useMemo(() => {
+    const _now = new Date();
+    const sow = new Date(_now);
+    const dayOfWeek = _now.getDay(); // 0=Sun..6=Sat
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    sow.setDate(_now.getDate() + mondayOffset + weekOffset * 7);
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(sow);
+      d.setDate(sow.getDate() + i);
+      return d;
+    });
+    const start = localDateStr(days[0]);
+    const end = localDateStr(days[6]);
+    const filtered = (logs || []).filter(l => l.date >= start && l.date <= end);
+    const total = filtered.reduce((s, l) => s + (l.minutes || 0), 0);
+    return { weekDays: days, weekLogs: filtered, totalWeekMin: total };
+  }, [logs, weekOffset]);
+
+  // FIX-2 practices prop guard
   const getPracticeName = useMemo(() => {
-    const map = new Map(practices.map(p => [p.id, p.client || 'Senza fascicolo']));
+    const map = new Map((practices || []).map(p => [p.id, p.client || 'Senza fascicolo']));
     return (id) => map.get(id) || 'Senza fascicolo';
   }, [practices]);
 
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
+
+  // CRIT-A CSV export handlers
+  const handleExportTimeLogsCsv = async () => {
+    try {
+      const path = await api.exportTimeLogsCsv();
+      toast.success(`CSV esportato: ${path}`);
+      if (api.openPath) await api.openPath(path);
+    } catch (e) {
+      toast.error(`Errore export: ${e?.message || e}`);
+    }
+  };
+
+  const handleExportInvoicesCsv = async () => {
+    try {
+      const path = await api.exportInvoicesCsv();
+      toast.success(`CSV esportato: ${path}`);
+      if (api.openPath) await api.openPath(path);
+    } catch (e) {
+      toast.error(`Errore export: ${e?.message || e}`);
+    }
+  };
 
   const generatePDF = async (inv) => {
     const jsPDF = await getJsPDF();
@@ -287,11 +391,30 @@ export default function TimeTrackingPage({ practices }) {
             <p className="text-xs text-text-dim">Registra ore e gestisci parcelle</p>
           </div>
         </div>
-        <div className="tab-switcher">
-          <button onClick={() => setActiveTab('ore')} className="tab-btn" data-active={activeTab === 'ore'}>
+        {/* FIX-14 WAI-ARIA tablist pattern */}
+        <div className="tab-switcher" role="tablist" aria-label="Sezioni gestione ore">
+          <button
+            id="tab-ore"
+            role="tab"
+            aria-selected={activeTab === 'ore'}
+            aria-controls="panel-ore"
+            tabIndex={activeTab === 'ore' ? 0 : -1}
+            onClick={() => setActiveTab('ore')}
+            className="tab-btn"
+            data-active={activeTab === 'ore'}
+          >
             <Clock size={14} /> Ore
           </button>
-          <button onClick={() => setActiveTab('parcelle')} className="tab-btn" data-active={activeTab === 'parcelle'}>
+          <button
+            id="tab-parcelle"
+            role="tab"
+            aria-selected={activeTab === 'parcelle'}
+            aria-controls="panel-parcelle"
+            tabIndex={activeTab === 'parcelle' ? 0 : -1}
+            onClick={() => setActiveTab('parcelle')}
+            className="tab-btn"
+            data-active={activeTab === 'parcelle'}
+          >
             <Receipt size={14} /> Parcelle
           </button>
         </div>
@@ -299,9 +422,20 @@ export default function TimeTrackingPage({ practices }) {
 
       {/* ====== TAB: ORE ====== */}
       {activeTab === 'ore' && (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div
+          id="panel-ore"
+          role="tabpanel"
+          aria-labelledby="tab-ore"
+          className="flex-1 flex flex-col overflow-hidden"
+        >
           {activeTimer ? (
-            <div className="glass-card p-5 mb-4 border border-primary/20 bg-primary/5 space-y-4">
+            // FIX-12 timer panel aria-live + role
+            <div
+              className="glass-card p-5 mb-4 border border-primary/20 bg-primary/5 space-y-4"
+              role="timer"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse" />
                 <span className="text-2xs font-black text-text-dim uppercase tracking-label">Timer in corso</span>
@@ -320,7 +454,12 @@ export default function TimeTrackingPage({ practices }) {
                 <span className="font-mono text-3xl text-primary font-bold tabular-nums">
                   {String(Math.floor(displayElapsed / 3600)).padStart(2, '0')}:{String(Math.floor((displayElapsed % 3600) / 60)).padStart(2, '0')}:{String(displayElapsed % 60).padStart(2, '0')}
                 </span>
-                <button onClick={stopTimer} className="flex items-center gap-2 px-4 py-2.5 bg-danger-soft hover:bg-danger-soft text-danger rounded-xl transition-colors text-xs font-bold">
+                <button
+                  onClick={stopTimer}
+                  disabled={stopBusy}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-danger-soft hover:bg-danger-soft text-danger rounded-xl transition-colors text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Ferma timer"
+                >
                   <Square size={14} fill="currentColor" /> Ferma
                 </button>
               </div>
@@ -335,7 +474,7 @@ export default function TimeTrackingPage({ practices }) {
                 <PracticeCombobox
                   value={timerPracticeId}
                   onChange={setTimerPracticeId}
-                  practices={practices}
+                  practices={practices || []}
                   label="Fascicolo"
                   id="timer-practice"
                 />
@@ -376,6 +515,15 @@ export default function TimeTrackingPage({ practices }) {
                 <span className="text-lg font-bold text-primary tabular-nums">{fmtDuration(totalWeekMin)}</span>
                 <span className="text-2xs text-text-dim block">Totale Settimana</span>
               </div>
+              {/* CRIT-A CSV export */}
+              <button
+                onClick={handleExportTimeLogsCsv}
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-text bg-card border border-border rounded-xl hover:bg-card-hover transition-colors"
+                aria-label="Esporta CSV ore"
+                title="Esporta tutte le registrazioni ore in CSV"
+              >
+                <Download size={14} /> Esporta CSV
+              </button>
               <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest">
                 <Plus size={18} /> Manuale
               </button>
@@ -384,12 +532,16 @@ export default function TimeTrackingPage({ practices }) {
 
           <div className="grid grid-cols-7 gap-2 mb-4">
             {weekDays.map(d => {
-              const ds = toDateStr(d);
+              const ds = localDateStr(d);
               const dayLogs = weekLogs.filter(l => l.date === ds);
               const dayMin = dayLogs.reduce((s, l) => s + (l.minutes || 0), 0);
-              const isToday = ds === toDateStr(now);
+              const isToday = ds === localDateStr(now);
               const isFuture = d > now && !isToday;
               const isSelected = selectedDay === ds;
+              const dayName = DAYS_IT[d.getDay()];
+              const monthName = MONTHS_IT[d.getMonth()];
+              // FIX-15 accessible label
+              const aria = `${dayName} ${d.getDate()} ${monthName}, ${fmtDuration(dayMin)} registrate${isToday ? ', oggi' : ''}${isFuture ? ', futuro non selezionabile' : ''}`;
               return (
                 <button
                   key={ds}
@@ -398,13 +550,16 @@ export default function TimeTrackingPage({ practices }) {
                     if (!isFuture) setSelectedDay(isSelected ? null : ds);
                   }}
                   disabled={isFuture}
+                  aria-label={aria}
+                  aria-pressed={isSelected}
                   className={`glass-card p-3 text-center transition-colors cursor-pointer ${isToday ? 'border-primary/30 bg-primary/5' : ''} ${isSelected ? 'ring-2 ring-primary border-primary/40 bg-primary/10' : ''} ${isFuture ? 'opacity-40 cursor-not-allowed' : 'hover:border-primary/20 hover:bg-primary/[0.03]'}`}
                 >
-                  <div className="text-2xs text-text-dim font-bold">{DAYS_IT[d.getDay()]}</div>
+                  <div className="text-2xs text-text-dim font-bold">{dayName}</div>
                   <div className={`text-sm font-bold ${isToday ? 'text-primary' : 'text-text'}`}>{d.getDate()}</div>
                   <div className="text-2xs text-text-dim mt-1">{fmtDuration(dayMin)}</div>
                   <div className="w-full bg-surface rounded-full h-1 mt-1.5">
-                    <div className="bg-primary h-1 rounded-full transition-colors" style={{ width: `${Math.min((dayMin / 480) * 100, 100)}%` }} />
+                    {/* FIX-16 use WORKDAY_MINUTES constant */}
+                    <div className="bg-primary h-1 rounded-full transition-colors" style={{ width: `${Math.min((dayMin / WORKDAY_MINUTES) * 100, 100)}%` }} />
                   </div>
                 </button>
               );
@@ -418,7 +573,8 @@ export default function TimeTrackingPage({ practices }) {
               let sectionLabel;
               if (selectedDay) {
                 const selDate = new Date(selectedDay + 'T12:00:00');
-                const todayStr = toDateStr(now);
+                // FIX-1 localDateStr
+                const todayStr = localDateStr(now);
                 if (selectedDay === todayStr) {
                   sectionLabel = 'Oggi';
                 } else {
@@ -442,7 +598,8 @@ export default function TimeTrackingPage({ practices }) {
                       <p className="text-sm">{selectedDay ? 'Nessuna registrazione questo giorno' : 'Nessuna registrazione questa settimana'}</p>
                     </div>
                   ) : (
-                    displayLogs.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || '')).map(log => (
+                    /* FIX-8 sort copy, not in place */
+                    [...displayLogs].sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || '')).map(log => (
                       <div key={log.id} className="glass-card p-3 flex items-center gap-4 group hover:border-primary/20 transition-colors">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                           <Clock size={18} className="text-primary" />
@@ -452,9 +609,10 @@ export default function TimeTrackingPage({ practices }) {
                           <p className="text-2xs text-text-dim">{getPracticeName(log.practiceId)} {'·'} {new Date(log.date).toLocaleDateString('it-IT')}</p>
                         </div>
                         <span className="text-sm font-mono font-bold text-primary tabular-nums">{fmtDuration(log.minutes)}</span>
-                        <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => setEditingLog(log)} className="p-1.5 hover:bg-primary/10 rounded-full text-text-dim hover:text-primary transition-colors"><Edit3 size={14} /></button>
-                          <button onClick={() => confirmDeleteLog(log.id)} className="p-1.5 hover:bg-danger-soft rounded-full text-text-dim hover:text-danger"><Trash2 size={14} /></button>
+                        {/* FIX-13 group-focus-within for keyboard reveal */}
+                        <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                          <button onClick={() => setEditingLog(log)} aria-label={`Modifica registrazione ${log.description || ''}`} className="p-1.5 hover:bg-primary/10 rounded-full text-text-dim hover:text-primary transition-colors"><Edit3 size={14} /></button>
+                          <button onClick={() => confirmDeleteLog(log.id)} aria-label={`Elimina registrazione ${log.description || ''}`} className="p-1.5 hover:bg-danger-soft rounded-full text-text-dim hover:text-danger"><Trash2 size={14} /></button>
                         </div>
                       </div>
                     ))
@@ -468,7 +626,12 @@ export default function TimeTrackingPage({ practices }) {
 
       {/* ====== TAB: PARCELLE ====== */}
       {activeTab === 'parcelle' && (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div
+          id="panel-parcelle"
+          role="tabpanel"
+          aria-labelledby="tab-parcelle"
+          className="flex-1 flex flex-col overflow-hidden"
+        >
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="glass-card p-4 text-center">
               <span className="text-2xl font-bold text-text">{invoices.length}</span>
@@ -486,7 +649,16 @@ export default function TimeTrackingPage({ practices }) {
             </div>
           </div>
 
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-3 mb-4">
+            {/* CRIT-A CSV export */}
+            <button
+              onClick={handleExportInvoicesCsv}
+              className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-text bg-card border border-border rounded-xl hover:bg-card-hover transition-colors"
+              aria-label="Esporta CSV parcelle"
+              title="Esporta tutte le parcelle in CSV"
+            >
+              <Download size={14} /> Esporta CSV
+            </button>
             <button onClick={() => setShowCreateInvoice(true)} className="btn-primary flex items-center gap-2 px-7 py-3.5 text-xs font-bold uppercase tracking-widest">
               <Plus size={18} strokeWidth={3} /> Nuova Parcella
             </button>
@@ -516,10 +688,11 @@ export default function TimeTrackingPage({ practices }) {
                       <p className="text-2xs text-text-dim">{inv.practiceName || 'Fascicolo'} {'·'} N.{inv.number || '—'} {'·'} {inv.date || ''}</p>
                     </div>
                     <span className="text-sm font-bold text-primary tabular-nums">{'\u20AC'} {totals.total.toFixed(2)}</span>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => generatePDF(inv)} className="p-1.5 hover:bg-card-hover rounded-lg text-text-dim" title="Scarica PDF"><Download size={14} /></button>
-                      <button onClick={() => setEditingInvoice(inv)} className="p-1.5 hover:bg-card-hover rounded-lg text-text-dim"><Edit3 size={14} /></button>
-                      <button onClick={() => confirmDeleteInvoice(inv.id)} className="p-1.5 hover:bg-danger-soft rounded-lg text-text-dim hover:text-danger"><Trash2 size={14} /></button>
+                    {/* FIX-13 group-focus-within for keyboard reveal */}
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                      <button onClick={() => generatePDF(inv)} aria-label={`Scarica PDF parcella ${inv.number || ''}`} className="p-1.5 hover:bg-card-hover rounded-lg text-text-dim" title="Scarica PDF"><Download size={14} /></button>
+                      <button onClick={() => setEditingInvoice(inv)} aria-label={`Modifica parcella ${inv.number || ''}`} className="p-1.5 hover:bg-card-hover rounded-lg text-text-dim"><Edit3 size={14} /></button>
+                      <button onClick={() => confirmDeleteInvoice(inv.id)} aria-label={`Elimina parcella ${inv.number || ''}`} className="p-1.5 hover:bg-danger-soft rounded-lg text-text-dim hover:text-danger"><Trash2 size={14} /></button>
                     </div>
                   </div>
                 );
@@ -531,11 +704,11 @@ export default function TimeTrackingPage({ practices }) {
 
       {/* ====== MODALS ====== */}
       {(showAddModal || editingLog) && (
-        <ManualLogModal practices={practices} initial={editingLog}
+        <ManualLogModal practices={practices || []} initial={editingLog}
           onSave={saveLog} onClose={() => { setShowAddModal(false); setEditingLog(null); }} />
       )}
       {(showCreateInvoice || editingInvoice) && (
-        <InvoiceModal practices={practices} timeLogs={logs} invoiceCount={invoices.length}
+        <InvoiceModal practices={practices} timeLogs={logs} invoices={invoices}
           editMode={!!editingInvoice} initial={editingInvoice}
           onSave={saveInvoice} onClose={() => { setShowCreateInvoice(false); setEditingInvoice(null); }} />
       )}
@@ -552,20 +725,25 @@ export default function TimeTrackingPage({ practices }) {
   );
 }
 
-TimeTrackingPage.propTypes = { practices: PropTypes.array.isRequired };
+TimeTrackingPage.propTypes = { practices: PropTypes.array };
+TimeTrackingPage.defaultProps = { practices: [] };
 
 /* ======== ManualLogModal ======== */
 function ManualLogModal({ practices, initial, onSave, onClose }) {
   const isEdit = !!initial?.id;
-  const [practiceId, setPracticeId] = useState(initial?.practiceId || practices[0]?.id || '');
+  const safePractices = practices || [];
+  const [practiceId, setPracticeId] = useState(initial?.practiceId || safePractices[0]?.id || '');
   const [description, setDescription] = useState(initial?.description || '');
-  const [date, setDate] = useState(initial?.date || toDateStr(new Date()));
+  const [date, setDate] = useState(initial?.date || localDateStr(new Date()));
   const [hours, setHours] = useState(initial ? String(Math.floor((initial.minutes || 0) / 60)) : '');
   const [mins, setMins] = useState(initial ? String((initial.minutes || 0) % 60) : '');
 
   const handleSave = (e) => {
     e.preventDefault();
-    const totalMin = (Number.parseInt(hours, 10) || 0) * 60 + (Number.parseInt(mins, 10) || 0);
+    // FIX-5 clamp hours non-negative, minutes 0..59
+    const rawH = Math.max(0, Number.parseInt(hours, 10) || 0);
+    const rawM = Math.min(59, Math.max(0, Number.parseInt(mins, 10) || 0));
+    const totalMin = rawH * 60 + rawM;
     if (totalMin < 1) { toast.error('Inserisci almeno 1 minuto'); return; }
     onSave({
       id: initial?.id || genId(), practiceId, description, date, minutes: totalMin,
@@ -594,7 +772,7 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
         </div>
         <form onSubmit={handleSave} className="px-8 py-6 space-y-5">
           <div className="grid grid-cols-2 gap-4">
-            <PracticeCombobox id="manual-log-practice" label="Fascicolo" value={practiceId} onChange={setPracticeId} practices={practices} />
+            <PracticeCombobox id="manual-log-practice" label="Fascicolo" value={practiceId} onChange={setPracticeId} practices={safePractices} />
             <div>
               <label htmlFor="manual-log-date" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Data</label>
               <input id="manual-log-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="input-field w-full py-3" />
@@ -632,20 +810,25 @@ ManualLogModal.propTypes = {
 };
 
 /* ======== InvoiceModal ======== */
-function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, onSave, onClose }) {
-  const [number, setNumber] = useState(initial?.number || String(invoiceCount + 1).padStart(3, '0'));
-  const [invDate, setInvDate] = useState(initial?.date || toDateStr(new Date()));
+function InvoiceModal({ practices, timeLogs, invoices, editMode, initial, onSave, onClose }) {
+  // FIX-7 invoice number from max(existing) + 1 (avoids collisions when last is deleted)
+  const nextNumberSeed = String(
+    Math.max(0, ...(invoices || []).map(i => Number.parseInt(i.number, 10) || 0)) + 1
+  ).padStart(3, '0');
+  const [number, setNumber] = useState(initial?.number || nextNumberSeed);
+  const [invDate, setInvDate] = useState(initial?.date || localDateStr(new Date()));
   const [practiceId, setPracticeIdRaw] = useState(initial?.practiceId || '');
   const [clientName, setClientName] = useState(initial?.clientName || '');
   const [practiceName, setPracticeName] = useState(initial?.practiceName || '');
   const [status, setStatus] = useState(initial?.status || 'draft');
   const [items, setItems] = useState(() => (initial?.items || [{ description: '', qty: 1, unit: 'h', unitPrice: 0, total: 0 }]).map((it, i) => ({ ...it, _key: it._key || `inv-${Date.now()}-${i}` })));
 
+  const safePractices = practices || [];
   // Update client/practice names when practiceId changes
   const setPracticeId = (newId) => {
     setPracticeIdRaw(newId);
     if (newId) {
-      const p = practices.find(pr => pr.id === newId);
+      const p = safePractices.find(pr => pr.id === newId);
       if (p) { setClientName(p.client || ''); setPracticeName(`${p.client} \u2014 ${p.object}`); }
     }
   };
@@ -725,7 +908,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <PracticeCombobox id="inv-practice" label="Fascicolo" value={practiceId} onChange={setPracticeId} practices={practices} placeholder="Cerca fascicolo..." />
+            <PracticeCombobox id="inv-practice" label="Fascicolo" value={practiceId} onChange={setPracticeId} practices={safePractices} placeholder="Cerca fascicolo..." />
             <div>
               <label htmlFor="inv-client" className="text-2xs font-black text-text-dim uppercase tracking-label block mb-2">Cliente</label>
               <input id="inv-client" value={clientName} onChange={e => setClientName(e.target.value)} className="input-field w-full py-3" placeholder="Nome cliente..." />
@@ -749,7 +932,16 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
               <div className="grid grid-cols-4 gap-3">
                 <div>
                   <label htmlFor={`inv-item-qty-${idx}`} className="text-3xs text-text-dim block mb-1">Qt&agrave;</label>
-                  <input id={`inv-item-qty-${idx}`} type="number" step="0.1" min="0" value={it.qty} onChange={e => updateItem(idx, 'qty', Number.parseFloat(e.target.value) || 0)} className="input-field w-full py-2 text-sm" />
+                  {/* FIX-6 clamp non-negative */}
+                  <input
+                    id={`inv-item-qty-${idx}`}
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={it.qty}
+                    onChange={e => updateItem(idx, 'qty', Math.max(0, Number.parseFloat(e.target.value) || 0))}
+                    className="input-field w-full py-2 text-sm"
+                  />
                 </div>
                 <div>
                   <label htmlFor={`inv-item-unit-${idx}`} className="text-3xs text-text-dim block mb-1">Unit&agrave;</label>
@@ -761,7 +953,16 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
                 </div>
                 <div>
                   <label htmlFor={`inv-item-price-${idx}`} className="text-3xs text-text-dim block mb-1">Prezzo &euro;</label>
-                  <input id={`inv-item-price-${idx}`} type="number" step="0.01" min="0" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number.parseFloat(e.target.value) || 0)} className="input-field w-full py-2 text-sm" />
+                  {/* FIX-6 clamp non-negative */}
+                  <input
+                    id={`inv-item-price-${idx}`}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={it.unitPrice}
+                    onChange={e => updateItem(idx, 'unitPrice', Math.max(0, Number.parseFloat(e.target.value) || 0))}
+                    className="input-field w-full py-2 text-sm"
+                  />
                 </div>
                 <div>
                   <span className="text-3xs text-text-dim block mb-1">Totale</span>
@@ -792,7 +993,7 @@ function InvoiceModal({ practices, timeLogs, invoiceCount, editMode, initial, on
 
 InvoiceModal.propTypes = {
   practices: PropTypes.array.isRequired, timeLogs: PropTypes.array.isRequired,
-  invoiceCount: PropTypes.number.isRequired, editMode: PropTypes.bool,
+  invoices: PropTypes.array, editMode: PropTypes.bool,
   initial: PropTypes.object, onSave: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
 };

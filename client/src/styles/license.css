@@ -3,6 +3,16 @@
    Palette: --primary (#d4a940), dark theme, glass card
    ═══════════════════════════════════════════════════════════ */
 
+/* A11y — prefers-reduced-motion (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Splash (verifica iniziale) ─────────────────────────── */
 .lic-splash {
   height: 100vh; width: 100vw;

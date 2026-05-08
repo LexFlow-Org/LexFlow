@@ -159,7 +159,20 @@ jobs:
           cargo clippy --release -- -D warnings 2>&1
           cargo fmt --check 2>&1
 
-      - name: Quality Gate -- cargo test (353 security tests)
+      - name: Quality Gate -- PUBLIC_KEY_BYTES coherence (build.rs vs license.rs)
+        working-directory: src-tauri
+        run: |
+          BUILD_KEY=$(grep -A4 'PUBLIC_KEY_BYTES.*must match' build.rs | grep -o '[0-9]\+u8' | tr '\n' ',')
+          LICENSE_KEY=$(grep -A4 'pub(crate) const PUBLIC_KEY_BYTES' src/license.rs | grep -o '[0-9]\+u8' | tr '\n' ',')
+          if [ "$BUILD_KEY" != "$LICENSE_KEY" ]; then
+            echo "::error::PUBLIC_KEY_BYTES mismatch between build.rs and license.rs!"
+            echo "build.rs:   $BUILD_KEY"
+            echo "license.rs: $LICENSE_KEY"
+            exit 1
+          fi
+          echo "✓ PUBLIC_KEY_BYTES match in build.rs and license.rs"
+
+      - name: Quality Gate -- cargo test (security tests + key coherence)
         working-directory: src-tauri
         run: cargo test --lib --release 2>&1
 

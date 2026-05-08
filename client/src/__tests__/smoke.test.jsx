@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 // Smoke tests — verify components can be imported without crashing.
 // These catch broken imports, missing dependencies, and syntax errors.
 
-describe('Component imports (smoke test)', () => {
+describe('Page imports (smoke test)', () => {
   it('Dashboard imports without error', async () => {
     const mod = await import('../pages/Dashboard');
     expect(mod.default).toBeDefined();
@@ -39,16 +39,18 @@ describe('Component imports (smoke test)', () => {
     expect(mod.default).toBeDefined();
   });
 
-  it('ActivityPage imports without error', async () => {
-    const mod = await import('../pages/ActivityPage');
+  it('DocumentToolsPage imports without error', async () => {
+    const mod = await import('../pages/DocumentToolsPage');
     expect(mod.default).toBeDefined();
   });
 
-  it('AuditLogPage imports without error', async () => {
-    const mod = await import('../pages/AuditLogPage');
+  it('DeadlinesPage imports without error', async () => {
+    const mod = await import('../pages/DeadlinesPage');
     expect(mod.default).toBeDefined();
   });
+});
 
+describe('Component imports (smoke test)', () => {
   it('CommandPalette imports without error', async () => {
     const mod = await import('../components/CommandPalette');
     expect(mod.default).toBeDefined();
@@ -71,6 +73,51 @@ describe('Component imports (smoke test)', () => {
 
   it('OnboardingWizard imports without error', async () => {
     const mod = await import('../components/OnboardingWizard');
+    expect(mod.default).toBeDefined();
+  });
+
+  it('LoginScreen imports without error', async () => {
+    const mod = await import('../components/LoginScreen');
+    expect(mod.default).toBeDefined();
+  });
+
+  it('LicenseActivation imports without error', async () => {
+    const mod = await import('../components/LicenseActivation');
+    expect(mod.default).toBeDefined();
+  });
+
+  it('Sidebar imports without error', async () => {
+    const mod = await import('../components/Sidebar');
+    expect(mod.default).toBeDefined();
+  });
+
+  it('WindowControls imports without error', async () => {
+    const mod = await import('../components/WindowControls');
+    expect(mod.default).toBeDefined();
+  });
+
+  it('PracticeDetail imports without error', async () => {
+    const mod = await import('../components/PracticeDetail');
+    expect(mod.default).toBeDefined();
+  });
+
+  it('CreatePracticeModal imports without error', async () => {
+    const mod = await import('../components/CreatePracticeModal');
+    expect(mod.default).toBeDefined();
+  });
+
+  it('ErrorBoundary imports without error', async () => {
+    const mod = await import('../ErrorBoundary');
+    expect(mod.default).toBeDefined();
+  });
+
+  it('TccLocationBanner imports without error', async () => {
+    const mod = await import('../components/TccLocationBanner');
+    expect(mod.default).toBeDefined();
+  });
+
+  it('PdfRedactViewer imports without error', async () => {
+    const mod = await import('../components/PdfRedactViewer');
     expect(mod.default).toBeDefined();
   });
 });

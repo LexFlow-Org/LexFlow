@@ -43,6 +43,17 @@ pub(crate) struct SearchIndex {
     /// metadata for BM25
     total_docs: u32,
     avg_doc_len: f64,
+    /// FIX-B1: per-document token count, populated by `add_document`,
+    /// removed by `remove_document`. Lets `bm25_score` look up `doc_len` in
+    /// O(1) instead of O(N) (full scan over all term postings).
+    /// `#[serde(default)]` keeps the field backward-compatible with indexes
+    /// serialized before this field existed.
+    #[serde(default)]
+    doc_lens: HashMap<String, u32>,
+    /// FIX-B2: running sum of doc_len so we can recompute `avg_doc_len`
+    /// correctly on remove without a full scan. Backward-compatible default.
+    #[serde(default)]
+    total_terms: u64,
 }
 
 // ─── Tokenization ───────────────────────────────────────────
@@ -136,13 +147,26 @@ impl SearchIndex {
     }
 
     pub(crate) fn add_document(&mut self, record_id: &str, text: &str, gen: u64) {
+        // FIX-B3: make `add_document` idempotent — re-adding the same record
+        // would otherwise inflate `total_docs` and duplicate postings.
+        if self.indexed_gens.contains_key(record_id) {
+            self.remove_document(record_id);
+        }
+
         let tokens = tokenize(text);
         let doc_len = tokens.len() as u32;
 
-        // Update average doc length
+        // Update doc count and total terms first, then derive avg_doc_len.
         self.total_docs += 1;
-        self.avg_doc_len = ((self.avg_doc_len * (self.total_docs - 1) as f64) + doc_len as f64)
-            / self.total_docs as f64;
+        self.total_terms = self.total_terms.saturating_add(doc_len as u64);
+        self.avg_doc_len = if self.total_docs > 0 {
+            self.total_terms as f64 / self.total_docs as f64
+        } else {
+            0.0
+        };
+
+        // FIX-B1: store per-doc length for O(1) BM25 lookup.
+        self.doc_lens.insert(record_id.to_string(), doc_len);
 
         // Count term frequencies
         let mut tf_map: HashMap<String, u32> = HashMap::new();
@@ -174,6 +198,12 @@ impl SearchIndex {
     }
 
     fn remove_document(&mut self, record_id: &str) {
+        // FIX-B2: drop this doc's contribution to total_terms BEFORE we tear
+        // down its postings, so avg_doc_len stays correct.
+        if let Some(doc_len) = self.doc_lens.remove(record_id) {
+            self.total_terms = self.total_terms.saturating_sub(doc_len as u64);
+        }
+
         // Remove from term index
         for entries in self.terms.values_mut() {
             entries.retain(|(id, _)| id != record_id);
@@ -193,6 +223,13 @@ impl SearchIndex {
         if self.total_docs > 0 {
             self.total_docs -= 1;
         }
+
+        // Recompute avg_doc_len after the removal.
+        self.avg_doc_len = if self.total_docs > 0 {
+            self.total_terms as f64 / self.total_docs as f64
+        } else {
+            0.0
+        };
     }
 
     /// BM25 score for a query term against a document
@@ -219,14 +256,16 @@ impl SearchIndex {
         let n = self.total_docs.max(1) as f64;
         let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
 
-        // Estimate doc_len from total terms for this doc
+        // FIX-B1: O(1) doc_len lookup via the cached `doc_lens` map. Falls
+        // back to 0.0 (which makes b*doc_len/avg_dl = 0) if the entry is
+        // missing — this can only happen for indexes serialized BEFORE the
+        // field was added; they will be rebuilt on next add/remove.
         let doc_len = self
-            .terms
-            .values()
-            .flat_map(|e| e.iter())
-            .filter(|(id, _)| id == record_id)
-            .map(|(_, f)| *f as f64)
-            .sum::<f64>();
+            .doc_lens
+            .get(record_id)
+            .copied()
+            .map(|n| n as f64)
+            .unwrap_or(0.0);
 
         let avg_dl = self.avg_doc_len.max(1.0);
         let tf_norm = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * doc_len / avg_dl));
@@ -250,14 +289,15 @@ impl SearchIndex {
 
         for token in &query_tokens {
             let query_tris = trigrams(token);
-            // Find docs matching all trigrams of this token
+            // FIX-P1: hold &HashSet<String> references and only clone at the
+            // end (when materializing candidates for scoring). The previous
+            // implementation cloned every posting string twice per trigram.
             let mut candidates: Option<HashSet<String>> = None;
             for tri in &query_tris {
                 if let Some(docs) = self.trigrams.get(tri) {
-                    let doc_strings: HashSet<String> = docs.iter().cloned().collect();
                     candidates = Some(match candidates {
-                        Some(c) => c.intersection(&doc_strings).cloned().collect(),
-                        None => doc_strings,
+                        Some(c) => c.intersection(docs).cloned().collect(),
+                        None => docs.iter().cloned().collect(),
                     });
                 }
             }
@@ -283,13 +323,13 @@ impl SearchIndex {
         _query: &str,
         limit: usize,
     ) -> Vec<(String, f64)> {
+        // FIX-P1: same pattern as `search` — keep references where possible.
         let mut candidates: Option<HashSet<String>> = None;
         for tri in query_tris {
             if let Some(docs) = self.trigrams.get(tri) {
-                let doc_strings: HashSet<String> = docs.iter().cloned().collect();
                 candidates = Some(match candidates {
-                    Some(c) => c.intersection(&doc_strings).cloned().collect(),
-                    None => doc_strings,
+                    Some(c) => c.intersection(docs).cloned().collect(),
+                    None => docs.iter().cloned().collect(),
                 });
             }
         }
@@ -319,6 +359,13 @@ fn load_search_index(data_dir: &std::path::Path, dek: &[u8]) -> SearchIndex {
         Err(_) => return SearchIndex::new(),
     };
     // Decrypt using vault_engine record encryption (includes zstd decompression)
+    // FIX-S3: serde_json::from_slice has no built-in nesting cap; we accept
+    // this risk because the input was just produced by `safe_bounded_read`
+    // (100 MiB hard cap) and is then verified by the AEAD tag inside
+    // `decrypt_record` before any further deserialization. A maliciously
+    // deeply-nested document can only be planted by an attacker who already
+    // holds the DEK, in which case the integrity property is moot. If
+    // upstream serde_json gains a stable depth limit, gate it here.
     let block: vault_engine::EncryptedBlock = match serde_json::from_slice(&raw) {
         Ok(b) => b,
         Err(_) => return SearchIndex::new(), // corrupted → rebuild
@@ -385,6 +432,10 @@ fn ensure_index_consistent(
 
     // Re-index stale records
     if !stale_ids.is_empty() {
+        // FIX-S1: only log the count (never IDs/text/records) and only in
+        // debug builds — release builds stay quiet to avoid leaking any
+        // metadata about how many records changed.
+        #[cfg(debug_assertions)]
         eprintln!(
             "[LexFlow] Search index: re-indexing {} stale records",
             stale_ids.len()
@@ -432,6 +483,11 @@ pub(crate) fn search_vault(
     query: String,
     limit: Option<usize>,
 ) -> Result<Value, String> {
+    // FIX-S2: cap query length at 1024 bytes. Anything larger is almost
+    // certainly noise / abuse and can only slow the index down.
+    if query.len() > 1024 {
+        return Err("query troppo lunga".into());
+    }
     let version = get_vault_version(&state);
     if version < 4 {
         return Err("Search requires vault v4+ format".into());
@@ -456,7 +512,9 @@ pub(crate) fn search_vault(
     // Ensure consistency and get search index
     let search_idx = ensure_index_consistent(&dir, &dek, &vault_index, &vault);
 
-    let max_results = limit.unwrap_or(50);
+    // FIX-V2: clamp the requested limit to a hard ceiling so a malicious
+    // caller cannot ask for an unbounded number of results.
+    let max_results = limit.unwrap_or(50).min(500);
     let results = search_idx.search(&query, max_results);
 
     // Enrich results with metadata from vault index
@@ -777,8 +835,14 @@ mod tests {
 
 /// Rebuild the entire search index from scratch.
 /// Called manually or after detecting corruption.
+///
+/// FIX-P3: this function performs heavy CPU work (JSON deserialization,
+/// AEAD decryption per record, tokenization). On the Tauri main async
+/// runtime that would block other commands. We extract Send-able state
+/// from `State<AppState>` first, then move the work to
+/// `tokio::task::spawn_blocking` so the runtime stays responsive.
 #[tauri::command]
-pub(crate) fn rebuild_search_index(state: State<AppState>) -> Result<Value, String> {
+pub(crate) async fn rebuild_search_index(state: State<'_, AppState>) -> Result<Value, String> {
     let version = get_vault_version(&state);
     if version < 4 {
         return Err("Search requires vault v4+ format".into());
@@ -791,31 +855,38 @@ pub(crate) fn rebuild_search_index(state: State<AppState>) -> Result<Value, Stri
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    let vault_path = dir.join(crate::constants::VAULT_FILE);
-    let raw =
-        crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024).map_err(|e| e.to_string())?;
-    let vault = vault_engine::deserialize_vault(&raw)?;
-    let vault_index = vault_engine::decrypt_index(&dek, &vault.index)?;
+    // FIX-S3 (mirror of search_vault): same depth-limit caveat applies to
+    // the deserialize_vault / decrypt_index path — input is bounded by
+    // safe_bounded_read and authenticated by the AEAD tag.
+    tokio::task::spawn_blocking(move || -> Result<Value, String> {
+        let vault_path = dir.join(crate::constants::VAULT_FILE);
+        let raw = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024)
+            .map_err(|e| e.to_string())?;
+        let vault = vault_engine::deserialize_vault(&raw)?;
+        let vault_index = vault_engine::decrypt_index(&dek, &vault.index)?;
 
-    let mut search_idx = SearchIndex::new();
+        let mut search_idx = SearchIndex::new();
 
-    for entry in &vault_index {
-        if let Some(record_entry) = vault.records.get(&entry.id) {
-            if let Ok(plaintext) = vault_engine::read_current_version(record_entry, &dek) {
-                if let Ok(record) = serde_json::from_slice::<Value>(&plaintext) {
-                    let text = extract_searchable_text(&record, &entry.field);
-                    let gen = record_entry.current as u64;
-                    search_idx.add_document(&entry.id, &text, gen);
+        for entry in &vault_index {
+            if let Some(record_entry) = vault.records.get(&entry.id) {
+                if let Ok(plaintext) = vault_engine::read_current_version(record_entry, &dek) {
+                    if let Ok(record) = serde_json::from_slice::<Value>(&plaintext) {
+                        let text = extract_searchable_text(&record, &entry.field);
+                        let gen = record_entry.current as u64;
+                        search_idx.add_document(&entry.id, &text, gen);
+                    }
                 }
             }
         }
-    }
 
-    save_search_index(&dir, &dek, &search_idx)?;
+        save_search_index(&dir, &dek, &search_idx)?;
 
-    Ok(json!({
-        "totalDocs": search_idx.total_docs,
-        "totalTerms": search_idx.terms.len(),
-        "totalTrigrams": search_idx.trigrams.len(),
-    }))
+        Ok(json!({
+            "totalDocs": search_idx.total_docs,
+            "totalTerms": search_idx.terms.len(),
+            "totalTrigrams": search_idx.trigrams.len(),
+        }))
+    })
+    .await
+    .map_err(|e| format!("rebuild_search_index join error: {}", e))?
 }

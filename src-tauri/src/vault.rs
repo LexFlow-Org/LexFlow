@@ -27,6 +27,13 @@ use zeroize::Zeroizing;
 /// Read full vault data as a JSON value.
 /// PERF: returns cached data if available, avoiding re-decryption.
 pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, String> {
+    // TODO(audit:M-4): readers can observe a half-written V6 split vault
+    // (header.enc updated but records still being flushed) because reads do
+    // not take state.write_mutex. Serializing reads with writes via
+    // `let _g = state.write_mutex.lock()...` would close this window at the
+    // cost of read concurrency. Defer until the perf trade-off is evaluated;
+    // V6 writers SHOULD use atomic_write_with_sync for each file, which
+    // limits the window to inter-file ordering.
     // PERF: check cache first
     if let Some(cached) = state
         .vault_cache
@@ -71,13 +78,18 @@ fn read_vault_engine(state: &State<AppState>) -> Result<Value, String> {
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let path = dir.join(VAULT_FILE);
-    if !path.exists() {
-        return Ok(json!({"practices":[], "agenda":[]}));
-    }
-    // FIX: bounded read (500MB cap)
-    let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let vault = vault_engine::deserialize_vault(&raw)?;
+
+    // V6+: prefer split vault format (vault-data/) over monolithic vault.lex
+    let vault = if vault_engine::is_split_vault(&dir) {
+        vault_engine::read_split_vault(&dir, &dek)?
+    } else {
+        let path = dir.join(VAULT_FILE);
+        if !path.exists() {
+            return Ok(json!({"practices":[], "agenda":[]}));
+        }
+        let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
+        vault_engine::deserialize_vault(&raw)?
+    };
 
     let index = vault_engine::decrypt_index(&dek, &vault.index)?;
 
@@ -87,7 +99,6 @@ fn read_vault_engine(state: &State<AppState>) -> Result<Value, String> {
         if let Some(record_entry) = vault.records.get(&idx_entry.id) {
             match vault_engine::read_current_version(record_entry, &dek) {
                 Ok(plaintext) => {
-                    // V7: try msgpack first, fallback to JSON (legacy)
                     let val: Option<Value> = rmp_serde::from_slice(&plaintext)
                         .ok()
                         .or_else(|| serde_json::from_slice(&plaintext).ok());
@@ -101,17 +112,35 @@ fn read_vault_engine(state: &State<AppState>) -> Result<Value, String> {
                             }
                         }
                         None => {
+                            // FIX-9 (audit:L-2): log to forensic audit trail so
+                            // the user has a paper trail; the next write will
+                            // DROP this record from the index unless restored.
                             eprintln!(
-                                "[LexFlow] WARNING: record {} unreadable (neither msgpack nor JSON). Skipping.",
+                                "[vault] WARN: record {} corrupted (neither msgpack nor JSON), skipping (will be DROPPED on next save unless restored)",
                                 idx_entry.id
+                            );
+                            let _ = append_audit_log(
+                                state,
+                                &format!(
+                                    "Record corrotto saltato (parse fallito): {} — verrà rimosso al prossimo salvataggio se non ripristinato",
+                                    idx_entry.id
+                                ),
                             );
                         }
                     }
                 }
                 Err(e) => {
+                    // FIX-9 (audit:L-2): persist a forensic record of the loss.
                     eprintln!(
-                        "[LexFlow] WARNING: Failed to decrypt record {}: {}. Skipping (isolated corruption).",
+                        "[vault] WARN: record {} corrupted ({}), skipping (will be DROPPED on next save unless restored)",
                         idx_entry.id, e
+                    );
+                    let _ = append_audit_log(
+                        state,
+                        &format!(
+                            "Record corrotto saltato (decrypt fallito): {} — {}",
+                            idx_entry.id, e
+                        ),
                     );
                 }
             }
@@ -190,14 +219,18 @@ fn write_vault_engine(state: &State<AppState>, data: &Value) -> Result<(), Strin
                     continue;
                 }
                 let record_key = format!("{}_{}", field, id);
-                // V7: serialize with MessagePack (30-40% smaller than JSON)
-                let item_bytes = rmp_serde::to_vec(item).map_err(|e| e.to_string())?;
+                // V7: serialize with MessagePack (30-40% smaller than JSON).
+                // Wrap in Zeroizing so the plaintext bytes are scrubbed on drop
+                // (BE-5-L-5 / audit:BE-5-L-5).
+                let item_bytes = Zeroizing::new(rmp_serde::to_vec(item).map_err(|e| e.to_string())?);
 
                 // Check if record exists and data changed
                 let mut entry = if let Some(existing) = vault.records.remove(&record_key) {
-                    // Check if content changed by comparing plaintext
+                    // Check if content changed by comparing plaintext.
+                    // `read_current_version` now returns Zeroizing<Vec<u8>> — compare
+                    // via the deref'd slice (Zeroizing has no direct PartialEq with Vec).
                     if let Ok(old_plain) = vault_engine::read_current_version(&existing, &dek) {
-                        if old_plain == item_bytes {
+                        if old_plain.as_slice() == item_bytes.as_slice() {
                             // Unchanged — keep existing entry
                             new_records.insert(record_key.clone(), existing);
                             let title = vault_engine::extract_record_title_pub(item, field);
@@ -267,6 +300,40 @@ fn write_vault_engine(state: &State<AppState>, data: &Value) -> Result<(), Strin
 fn validate_password_strength(password: &str) -> Result<(), Value> {
     // Accept SHA-256 hex hashes (64 lowercase hex chars) from frontend pre-hash
     if password.len() == 64 && password.chars().all(|c| c.is_ascii_hexdigit()) {
+        // FIX-4 (audit:M-2): Defense-in-depth: blacklist obviously-weak SHA-256
+        // prehashes; FE strength meter is advisory, BE enforces a minimal floor.
+        // The list contains common-password SHA-256 hashes (lowercase hex of the
+        // raw UTF-8 bytes of the password); reject if matches.
+        let normalized = password.to_ascii_lowercase();
+        // Reject all-zero hash (degenerate/test input).
+        if normalized == "0".repeat(64) {
+            return Err(json!({"success": false, "error": "Password troppo debole. Scegline una più sicura."}));
+        }
+        const WEAK_HASHES: &[&str] = &[
+            // sha256("password")
+            "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+            // sha256("123456")
+            "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+            // sha256("admin")
+            "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            // sha256("test")
+            "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            // sha256("12345678")
+            "ef797c8118f02dfb649607dd5d3f8c7623048c9c063d532cc95c5ed7a898a64f",
+            // sha256("qwerty")
+            "65e84be33532fb784c48129675f9eff3a682b27168c0ea744b2cf58ee02337c5",
+            // sha256("password123")
+            "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
+            // sha256("letmein")
+            "1c8bfe8f801d79745c4631d09fff36c82aa37fc4cce4fc946683d7b336b63032",
+            // sha256("abc123")
+            "6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118090",
+            // sha256("111111")
+            "bcb15f821479b4d5772bd0ca866c00ad5f926e3580720659cc80d39c9d09802a",
+        ];
+        if WEAK_HASHES.iter().any(|h| *h == normalized) {
+            return Err(json!({"success": false, "error": "Password tra le più comuni e insicure. Scegline una diversa."}));
+        }
         return Ok(()); // Frontend validated strength before hashing
     }
     // Fallback: validate raw password (CLI, tests, direct calls)
@@ -301,17 +368,25 @@ fn init_new_vault_engine(
         |_e| json!({"success": false, "error": format!("Errore interno durante il salvataggio. Riprova.")}),
     )?;
 
-    atomic_write_with_sync(&dir.join(VAULT_FILE), &serialized).map_err(
-        |_e| json!({"success": false, "error": format!("Impossibile salvare il database. Verifica lo spazio su disco.")}),
-    )?;
-
-    // Store DEK in state
+    // FIX-11 (audit:L-8): store DEK in state BEFORE the disk write, so an
+    // intermediate write failure doesn't leave a process holding a DEK
+    // bound to no on-disk vault. If the write fails, roll back state.
     *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
         Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
     *state
         .vault_version
         .write()
         .unwrap_or_else(|e| e.into_inner()) = vault_engine::CURRENT_VAULT_VERSION;
+
+    if let Err(_e) = atomic_write_with_sync(&dir.join(VAULT_FILE), &serialized) {
+        // Roll back state to avoid a "DEK in memory, no disk vault" mismatch.
+        *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *state
+            .vault_version
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = 0;
+        return Err(json!({"success": false, "error": format!("Impossibile salvare il database. Verifica lo spazio su disco.")}));
+    }
 
     Ok(())
 }
@@ -464,19 +539,45 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
             // Open v4 vault directly
             match vault_engine::open_vault(&password, &raw) {
                 Ok((vault, dek)) => {
-                    // Anti-rollback: sync external counter with vault's internal counter.
-                    // If password + HMAC are valid, the vault is authentic — always allow access.
-                    // Log a warning if the counter was out of sync (migration, reinstall, etc.)
+                    // FIX-2 (audit:HIGH-2): anti-rollback counter is now ENFORCING.
+                    // The on-disk sidecar counter records the highest writes value
+                    // ever observed. If a freshly opened vault reports a LOWER
+                    // counter, an attacker may have substituted an older snapshot;
+                    // refuse to unlock.
+                    //
+                    // Acceptable cases (counter equal or higher than disk):
+                    //   - First open after install: stored = 0
+                    //   - Normal monotonic progression
+                    //   - Counter reset by user (handled via reset_vault, which
+                    //     wipes the entire dir)
                     let counter_path = sec_dir.join(".vault-writes-counter");
                     let stored_counter = fs::read_to_string(&counter_path)
                         .ok()
                         .and_then(|s| s.trim().parse::<u64>().ok())
                         .unwrap_or(0);
-                    if vault.rotation.writes != stored_counter {
+
+                    if vault.rotation.writes < stored_counter {
+                        // ROLLBACK DETECTED — refuse to operate.
                         eprintln!(
-                            "[SECURITY] Write counter sync: vault={} stored={} — updating",
+                            "[SECURITY] ROLLBACK DETECTED: vault.writes={} < stored={} — refusing to unlock",
                             vault.rotation.writes, stored_counter
                         );
+                        let _ = append_audit_log(
+                            state,
+                            &format!(
+                                "ROLLBACK rilevato: vault.writes={} < disco={}",
+                                vault.rotation.writes, stored_counter
+                            ),
+                        );
+                        zeroize_password(password);
+                        return json!({
+                            "success": false,
+                            "error": "Possibile rollback del database rilevato (contatore scritture regredito). Per sicurezza lo sblocco è stato rifiutato. Contatta il supporto."
+                        });
+                    }
+
+                    if vault.rotation.writes > stored_counter {
+                        // Normal forward progression: update the high-water mark.
                         let _ = atomic_write_with_sync(
                             &counter_path,
                             vault.rotation.writes.to_string().as_bytes(),
@@ -590,15 +691,60 @@ pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let vault_path = dir.join(VAULT_FILE);
-    if vault_path.exists() {
-        // Verify password before reset
-        if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
-            if vault_engine::open_vault(&password, &data).is_err() {
+    let backup_path = dir.join("vault.lex.v4-backup");
+    let split = vault_engine::is_split_vault(&dir);
+    let monolithic = vault_path.exists();
+
+    // FIX-1 (audit:CRIT-5): require password verification before destructive reset
+    // when ANY recognizable vault layout exists. On V6 split-vault we verify via
+    // the .v4-backup monolithic file (kept by migrate_to_split for this purpose);
+    // if no verifiable artifact remains, REFUSE to wipe rather than silently
+    // accepting any password.
+    if monolithic {
+        // Verify password against monolithic vault.lex
+        match crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
+            Ok(data) => {
+                if vault_engine::open_vault(&password, &data).is_err() {
+                    zeroize_password(password);
+                    return json!({"success": false, "error": "Password non corretta. Riprova."});
+                }
+            }
+            Err(_) => {
                 zeroize_password(password);
-                return json!({"success": false, "error": "Password non corretta. Riprova."});
+                return json!({"success": false, "error": "Impossibile leggere il database per la verifica della password."});
             }
         }
+    } else if split {
+        // V6 split layout: header.enc is encrypted with the DEK (chicken-and-egg
+        // for direct password verification). Use the .v4-backup monolithic file
+        // kept by migrate_to_split; if absent, refuse to operate.
+        if backup_path.exists() {
+            match crate::io::safe_bounded_read(&backup_path, 500 * 1024 * 1024) {
+                Ok(data) => {
+                    if vault_engine::open_vault(&password, &data).is_err() {
+                        zeroize_password(password);
+                        return json!({"success": false, "error": "Password non corretta. Riprova."});
+                    }
+                }
+                Err(_) => {
+                    zeroize_password(password);
+                    return json!({"success": false, "error": "Impossibile leggere il backup del database per la verifica della password."});
+                }
+            }
+        } else {
+            // TODO(audit:CRIT-5): no monolithic backup available to verify password
+            // against. Implementing a direct KEK-only verification on the split
+            // header would require either (a) an unencrypted KDF params file, or
+            // (b) a header-MAC computable from KEK alone. Refuse-to-operate is
+            // the safer default until such a primitive is added.
+            zeroize_password(password);
+            return json!({
+                "success": false,
+                "error": "Verifica password non disponibile per questo formato vault. Eseguire prima un backup tramite la funzione di esportazione, poi contattare il supporto."
+            });
+        }
     }
+    // else: no recognizable vault on disk → empty state, allow reset without auth.
     {
         for sensitive_file in &[
             VAULT_FILE,
@@ -656,8 +802,15 @@ pub(crate) fn change_password(
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    // v4-only: re-wrap DEK with new KEK — O(1), no re-encryption needed!
-    let result = change_password_v4(&state, &dir, &current_password, &new_password);
+    // FIX-3 (audit:HIGH-1): branch on vault layout. The legacy
+    // change_password_v4 hard-codes vault.lex; on V6 split-vault that file
+    // is gone after migration, so we need a split-aware path.
+    let result = if vault_engine::is_split_vault(&dir) {
+        change_password_v6(&state, &dir, &current_password, &new_password)
+    } else {
+        // v4 monolithic: re-wrap DEK with new KEK — O(1), no re-encryption needed!
+        change_password_v4(&state, &dir, &current_password, &new_password)
+    };
 
     // Record failed attempt if password was wrong
     if let Ok(ref val) = result {
@@ -677,7 +830,76 @@ pub(crate) fn change_password(
     result
 }
 
+/// FIX-3 (audit:HIGH-1): V6 split-vault password change.
+/// Reads `vault-data/header.enc` (DEK-encrypted), verifies current password by
+/// deriving KEK and unwrapping DEK from the header, re-wraps DEK with the
+/// new KEK, recomputes header MAC, and writes the header back. Records are
+/// untouched (they are DEK-encrypted, not KEK-encrypted).
+fn change_password_v6(
+    state: &State<AppState>,
+    dir: &std::path::Path,
+    current_password: &str,
+    new_password: &str,
+) -> Result<Value, String> {
+    // We need the DEK in state to decrypt the split header.
+    let dek = get_vault_dek(state)?;
+
+    // Read full split vault structure (decrypts header + index + records using DEK).
+    let mut vault = vault_engine::read_split_vault(dir, &dek)?;
+
+    // Verify current password: derive old KEK and check header_mac.
+    let old_kek = vault_engine::derive_kek(current_password, &vault.kdf)
+        .map_err(|_| "Password attuale errata".to_string())?;
+    let mac_ok = vault_engine::verify_header_mac(&old_kek, &vault)
+        .map_err(|_| "Password attuale errata".to_string())?;
+    // verify_header_mac returns Ok(needs_migration_bool) when the MAC matches
+    // (a legacy version triggers needs_migration = true). It returns Err on
+    // mismatch. Either Ok(_) value is acceptable here.
+    let _ = mac_ok;
+
+    // Also verify by unwrapping DEK with old KEK and checking equality with state DEK.
+    // Defense-in-depth against an attacker who could supply a header with a wrong KDF.
+    let old_dek = vault_engine::unwrap_dek(&old_kek, &vault.wrapped_dek, &vault.dek_iv)
+        .map_err(|_| "Password attuale errata".to_string())?;
+    if old_dek.as_slice() != dek.as_slice() {
+        return Err("Password attuale errata".to_string());
+    }
+
+    // Generate new KDF params + salt, derive new KEK.
+    let mut new_kdf = vault_engine::benchmark_argon2_params();
+    let mut salt = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
+    new_kdf.salt = B64.encode(salt);
+    let new_kek = vault_engine::derive_kek(new_password, &new_kdf)?;
+
+    // Re-wrap DEK with new KEK.
+    let (wrapped, iv) = vault_engine::wrap_dek(&new_kek, &dek)?;
+
+    // Update vault header fields and recompute MAC.
+    vault.kdf = new_kdf;
+    vault.wrapped_dek = wrapped;
+    vault.dek_iv = iv;
+    vault.mac_version = Some(vault_engine::CURRENT_MAC_VERSION);
+    vault.header_mac = vault_engine::compute_header_mac(&new_kek, &vault);
+
+    // Persist via split-vault writer (re-encrypts header.enc with DEK; records
+    // and index are unchanged on disk because their decrypt paths reuse DEK).
+    vault_engine::write_split_vault(dir, &vault, &dek)?;
+
+    update_bio_password_if_needed(state, new_password);
+
+    let _ = append_audit_log(state, "Password cambiata (V6 split, O(1))");
+    Ok(json!({"success": true}))
+}
+
 /// v4 change password: only re-wrap DEK with new KEK — O(1)!
+///
+/// NOTE (audit:L-7): DEK is NOT rotated on password change; old DEK ciphertext
+/// is still decryptable with old KEK if leaked. For full forward secrecy after
+/// a suspected password compromise, also call `vault_engine::rotate_dek(...)`
+/// after the new KEK is in place (re-encrypts every record). The `O(1)` path
+/// below is correct for routine password changes; rotation should be opt-in
+/// via a separate "rotate keys" UX action.
 fn change_password_v4(
     state: &State<AppState>,
     dir: &std::path::Path,
@@ -749,8 +971,39 @@ fn update_bio_password_if_needed(state: &State<AppState>, new_password: &str) {
     }
 }
 
+/// FIX-8 (audit:M-7): independent rate-limit window for verify_vault_password.
+/// Caps to 5 calls / 60s per process. Distinct from the unlock_vault lockout
+/// (which is shared with the legitimate unlock path) so an attacker cannot
+/// trigger global lockout via this post-unlock command.
+fn check_verify_rate_limit() -> Result<(), Value> {
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
+
+    static VERIFY_WINDOW: OnceLock<Mutex<(Vec<Instant>, ())>> = OnceLock::new();
+    let m = VERIFY_WINDOW.get_or_init(|| Mutex::new((Vec::new(), ())));
+    let mut guard = m.lock().unwrap_or_else(|e| e.into_inner());
+    let now = Instant::now();
+    let window = Duration::from_secs(60);
+    // Drop entries older than the window.
+    guard.0.retain(|t| now.duration_since(*t) < window);
+    if guard.0.len() >= 5 {
+        return Err(json!({
+            "valid": false,
+            "error": "Troppe verifiche password ravvicinate. Attendi qualche istante e riprova."
+        }));
+    }
+    guard.0.push(now);
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) fn verify_vault_password(state: State<AppState>, pwd: String) -> Result<Value, String> {
+    // FIX-8 (audit:M-7): rate-limit independently of unlock_vault lockout.
+    if let Err(rl_json) = check_verify_rate_limit() {
+        zeroize_password(pwd);
+        return Ok(rl_json);
+    }
+
     let dir = state
         .data_dir
         .read()
@@ -765,11 +1018,27 @@ pub(crate) fn verify_vault_password(state: State<AppState>, pwd: String) -> Resu
         return Ok(locked_json);
     }
 
-    let vault_path = dir.join(VAULT_FILE);
-    let valid = if let Ok(raw) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
-        vault_engine::open_vault(&pwd, &raw).is_ok()
+    // FIX-7-related: support V6 split layout for password verification.
+    let valid = if vault_engine::is_split_vault(&dir) {
+        // On split-vault, header.enc is DEK-encrypted (cannot verify without DEK),
+        // so use the .v4-backup monolithic file (kept by migrate_to_split).
+        let backup_path = dir.join("vault.lex.v4-backup");
+        if let Ok(raw) = crate::io::safe_bounded_read(&backup_path, 500 * 1024 * 1024) {
+            vault_engine::open_vault(&pwd, &raw).is_ok()
+        } else {
+            // TODO(audit:CRIT-5/M-7): no monolithic backup available — cannot
+            // verify password against split-vault header without already
+            // possessing the DEK. Returning false here is conservative but
+            // could degrade UX; proper fix is a KEK-only verification path.
+            false
+        }
     } else {
-        false
+        let vault_path = dir.join(VAULT_FILE);
+        if let Ok(raw) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
+            vault_engine::open_vault(&pwd, &raw).is_ok()
+        } else {
+            false
+        }
     };
 
     if !valid {
@@ -908,12 +1177,24 @@ pub(crate) fn get_vault_index(state: State<AppState>) -> Result<Value, String> {
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let path = dir.join(VAULT_FILE);
-    if !path.exists() {
+
+    // FIX-7 (audit:M-5): support V6 split layout — read via read_split_vault
+    // when the monolithic file is gone after migration.
+    let vault = if vault_engine::is_split_vault(&dir) {
+        vault_engine::read_split_vault(&dir, &dek)?
+    } else {
+        let path = dir.join(VAULT_FILE);
+        if !path.exists() {
+            return Ok(json!([]));
+        }
+        let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
+        vault_engine::deserialize_vault(&raw)?
+    };
+    // On V6 split, an empty index block (newly migrated, no index file) means
+    // nothing to list yet.
+    if vault.index.iv.is_empty() {
         return Ok(json!([]));
     }
-    let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let vault = vault_engine::deserialize_vault(&raw)?;
     let index = vault_engine::decrypt_index(&dek, &vault.index)?;
 
     // Convert to JSON array with summary for lazy list rendering
@@ -970,12 +1251,22 @@ pub(crate) fn load_record_detail(
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let path = dir.join(VAULT_FILE);
-    let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let vault = vault_engine::deserialize_vault(&raw)?;
+    // FIX-7 (audit:M-5): support V6 split layout
+    let vault = if vault_engine::is_split_vault(&dir) {
+        vault_engine::read_split_vault(&dir, &dek)?
+    } else {
+        let path = dir.join(VAULT_FILE);
+        let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
+        vault_engine::deserialize_vault(&raw)?
+    };
 
     let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
     let plaintext = vault_engine::read_current_version(entry, &dek)?;
+    // V7: records are serialized with MessagePack; fall back to JSON for older
+    // ones that may still exist.
+    if let Ok(v) = rmp_serde::from_slice::<Value>(&plaintext) {
+        return Ok(v);
+    }
     serde_json::from_slice(&plaintext).map_err(|e| e.to_string())
 }
 
@@ -990,8 +1281,13 @@ pub(crate) fn load_record_history(
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let raw = crate::io::safe_bounded_read(&dir.join(VAULT_FILE), 500 * 1024 * 1024)?;
-    let vault = vault_engine::deserialize_vault(&raw)?;
+    // FIX-7 (audit:M-5): support V6 split layout
+    let vault = if vault_engine::is_split_vault(&dir) {
+        vault_engine::read_split_vault(&dir, &dek)?
+    } else {
+        let raw = crate::io::safe_bounded_read(&dir.join(VAULT_FILE), 500 * 1024 * 1024)?;
+        vault_engine::deserialize_vault(&raw)?
+    };
 
     let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
 

@@ -8,6 +8,14 @@ import ModalOverlay from '../components/ModalOverlay';
 import ConflictCheckPanel from '../components/ConflictCheckPanel';
 import { ROLE_LABELS } from '../utils/conflictConstants';
 import { genId } from '../utils/helpers';
+import { useDebounce } from '../hooks/useDebounce';
+import { useVirtualList } from '../hooks/useVirtualList';
+
+/**
+ * Lowercase + strip diacritics so "Niccolò" matches "niccolo".
+ * FIX-3: search must be accent-insensitive on Italian names.
+ */
+const normalize = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 const CONTACT_TYPES = [
   { id: 'client', label: 'Cliente', icon: User, color: 'text-materia-civile bg-materia-civile/10 border-materia-civile/20' },
@@ -38,6 +46,15 @@ export default function ContactsPage({ practices, onSelectPractice }) {
   const [expandedId, setExpandedId] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const prevContactsRef = useRef([]);
+  // FIX-5: serialize concurrent saves to keep the optimistic backup chain
+  // honest. Without this, two rapid edits race: the second save's "backup"
+  // is the first save's optimistic state, so a rollback restores wrong data.
+  const saveInFlightRef = useRef(false);
+  const saveQueueRef = useRef(null);
+
+  // FIX-2: debounce the search query so each keystroke doesn't re-run
+  // filter+normalize on the entire list.
+  const debouncedQuery = useDebounce(searchQuery, 200);
 
   useEffect(() => {
     (async () => {
@@ -50,17 +67,39 @@ export default function ContactsPage({ practices, onSelectPractice }) {
   }, []);
 
   const saveContacts = useCallback(async (newContacts) => {
-    const backup = prevContactsRef.current;
-    prevContactsRef.current = newContacts;
-    setContacts(newContacts);
+    // FIX-5: if a save is already running, queue the latest desired state and
+    // bail. The currently-running save will pick it up on completion.
+    if (saveInFlightRef.current) {
+      saveQueueRef.current = newContacts;
+      return;
+    }
+    saveInFlightRef.current = true;
+
+    const runSave = async (next) => {
+      const backup = prevContactsRef.current;
+      prevContactsRef.current = next;
+      setContacts(next);
+      try {
+        await api.saveContacts(next);
+      } catch (e) {
+        console.error(e);
+        toast.error('Errore salvataggio');
+        setContacts(backup);
+        prevContactsRef.current = backup;
+        throw e;
+      }
+    };
+
     try {
-      await api.saveContacts(newContacts);
-    } catch (e) {
-      console.error(e);
-      toast.error('Errore salvataggio');
-      setContacts(backup);
-      prevContactsRef.current = backup;
-      throw e; // Re-throw so callers know it failed
+      await runSave(newContacts);
+      // Drain the queue if a newer save was requested while we were saving
+      while (saveQueueRef.current) {
+        const queued = saveQueueRef.current;
+        saveQueueRef.current = null;
+        await runSave(queued);
+      }
+    } finally {
+      saveInFlightRef.current = false;
     }
   }, []);
 
@@ -74,23 +113,31 @@ export default function ContactsPage({ practices, onSelectPractice }) {
     setPendingDeleteId(null);
   };
 
-  // Filter + search
+  // FIX-4: sort the master list ONCE per contacts change. Filter and sort
+  // had been entangled in a single useMemo, re-sorting on every keystroke.
+  const sortedContacts = useMemo(
+    () => [...contacts].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+    [contacts],
+  );
+
+  // FIX-2 + FIX-3: filter on the debounced, accent-insensitive query.
   const filtered = useMemo(() => {
-    let list = contacts;
+    let list = sortedContacts;
     if (filterType !== 'all') list = list.filter(c => c.type === filterType);
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+    const raw = debouncedQuery.trim();
+    if (raw) {
+      const q = normalize(raw);
       list = list.filter(c =>
-        (c.name || '').toLowerCase().includes(q) ||
-        (c.email || '').toLowerCase().includes(q) ||
-        (c.pec || '').toLowerCase().includes(q) ||
-        (c.phone || '').toLowerCase().includes(q) ||
-        (c.fiscalCode || '').toLowerCase().includes(q) ||
-        (c.vatNumber || '').toLowerCase().includes(q)
+        normalize(c.name).includes(q) ||
+        normalize(c.email).includes(q) ||
+        normalize(c.pec).includes(q) ||
+        normalize(c.phone).includes(q) ||
+        normalize(c.fiscalCode).includes(q) ||
+        normalize(c.vatNumber).includes(q)
       );
     }
-    return list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  }, [contacts, filterType, searchQuery]);
+    return list;
+  }, [sortedContacts, filterType, debouncedQuery]);
 
   // PERF: pre-compute contact→practices map once per practices change (avoids O(n*m) per contact)
   const contactPracticesMap = useMemo(() => {
@@ -114,24 +161,32 @@ export default function ContactsPage({ practices, onSelectPractice }) {
     return contactPracticesMap.get(contactId) || [];
   }, [contactPracticesMap]);
 
+  // FIX-7: O(1) contact lookup. Previously every related-role lookup did a
+  // contacts.find(...) — quadratic in practices*roles*contacts.
+  const contactsById = useMemo(() => {
+    const m = new Map();
+    for (const ct of contacts) if (ct?.id) m.set(ct.id, ct);
+    return m;
+  }, [contacts]);
+
   // Find related contacts via shared practices (e.g. counterparty ↔ opposing_counsel)
   const collectFromPractice = useCallback((practice, contactId, seen, related) => {
     for (const { field, label } of ROLE_PAIRS) {
       const cid = practice[field];
       if (cid && cid !== contactId && !seen.has(cid)) {
         seen.add(cid);
-        const found = contacts.find(ct => ct.id === cid);
+        const found = contactsById.get(cid);
         if (found) related.push({ role: label, contact: found });
       }
     }
     for (const r of (practice.roles || [])) {
       if (r.contactId && r.contactId !== contactId && !seen.has(r.contactId)) {
         seen.add(r.contactId);
-        const found = contacts.find(ct => ct.id === r.contactId);
+        const found = contactsById.get(r.contactId);
         if (found) related.push({ role: ROLE_LABELS[r.role] || r.role, contact: found });
       }
     }
-  }, [contacts]);
+  }, [contactsById]);
 
   const getRelatedContacts = useCallback((contact) => {
     const linked = getLinkedPractices(contact.id);
@@ -146,6 +201,22 @@ export default function ContactsPage({ practices, onSelectPractice }) {
     CONTACT_TYPES.forEach(t => { counts[t.id] = contacts.filter(c => c.type === t.id).length; });
     return counts;
   }, [contacts]);
+
+  // FIX-1: virtualization for the (collapsed) contact list. We virtualize only
+  // when no row is expanded — expanded rows have variable height and the
+  // detail card is meant to anchor visually next to its row. Above 50 contacts
+  // and with no expansion, rendering all rows at once is wasted work; the
+  // virtualizer handles it. With a row expanded, fall back to the standard
+  // flow so layout stays correct.
+  const VIRTUAL_THRESHOLD = 50;
+  const ITEM_HEIGHT = 80;
+  const useVirtual = !expandedId && filtered.length > VIRTUAL_THRESHOLD;
+  const {
+    containerRef: vlContainerRef,
+    listRef: vlListRef,
+    totalHeight: vlTotalHeight,
+    items: vlVisibleItems,
+  } = useVirtualList({ items: filtered, itemHeight: ITEM_HEIGHT, overscan: 5 });
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
 
@@ -216,116 +287,23 @@ export default function ContactsPage({ practices, onSelectPractice }) {
       </div>
 
       {/* Contact List — Inline Expand */}
-      <div className="space-y-1.5">
-        {filtered.length === 0 ? (
-          <div className="text-center py-12 opacity-40">
-            <Users size={40} className="mx-auto mb-3 text-text-dim" />
-            <p className="text-text-dim text-sm">
-              {searchQuery ? 'Nessun risultato' : 'Nessun contatto registrato'}
-            </p>
-          </div>
-        ) : (
-          filtered.map(c => {
-            const typeInfo = TYPE_MAP[c.type] || TYPE_MAP.other;
-            const TypeIcon = typeInfo.icon;
-            const isExpanded = expandedId === c.id;
-            const linkedPractices = getLinkedPractices(c.id);
-            const linkedCount = linkedPractices.length;
-
-            return (
-              <div key={c.id}>
-                {/* Row wrapper: on desktop, row + card side by side when expanded */}
-                <div className={`flex flex-col ${isExpanded ? 'lg:flex-row lg:gap-3' : ''}`}>
-                  {/* Contact Row */}
-                  <div
-                    className={`relative flex items-center gap-3 px-4 py-3 rounded-xl border group transition-colors duration-200 ${
-                      isExpanded
-                        ? 'bg-card border-border lg:w-[38%] lg:flex-shrink-0'
-                        : 'bg-surface border-border w-full'
-                    }`}
-                  >
-                    {/* Invisible full-row expand/collapse button */}
-                    <button
-                      type="button"
-                      aria-expanded={isExpanded}
-                      aria-label={`${isExpanded ? 'Chiudi' : 'Apri'} dettaglio ${c.name}`}
-                      onClick={() => setExpandedId(isExpanded ? null : c.id)}
-                      className="absolute inset-0 z-0 cursor-pointer rounded-xl hover:bg-card"
-                    />
-                    <div className={`relative z-[1] w-10 h-10 rounded-xl flex items-center justify-center border flex-shrink-0 ${typeInfo.color}`}>
-                      <TypeIcon size={18} />
-                    </div>
-                    <div className="relative z-[1] flex-1 min-w-0">
-                      <p className="text-text font-bold text-base truncate">{c.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs font-bold uppercase tracking-wider text-text-dim">{typeInfo.label}</span>
-                        {linkedCount > 0 && (
-                          <span className="text-3xs text-text-muted">&bull; {linkedCount} fascicoli</span>
-                        )}
-                      </div>
-                    </div>
-                    {/* Actions — visible only on hover (or always when expanded) */}
-                    <div className={`relative z-10 flex items-center gap-0.5 flex-shrink-0 transition-opacity ${isExpanded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                      {!isExpanded && (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setEditingContact({ ...c }); }}
-                          className="p-2 hover:bg-card-hover rounded-full transition-colors cursor-pointer"
-                          title="Modifica"
-                        >
-                          <Edit3 size={14} className="text-text-dim hover:text-primary transition-colors" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : c.id); }}
-                        className="p-2 hover:bg-card-hover rounded-lg transition-colors cursor-pointer"
-                        title={isExpanded ? 'Chiudi dettaglio' : 'Apri dettaglio'}
-                      >
-                        {isExpanded ? (
-                          <ChevronRight size={14} className="text-primary" />
-                        ) : (
-                          <Info size={14} className="text-text-dim hover:text-primary transition-colors" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Detail Card — desktop: side by side */}
-                  {isExpanded && (
-                    <div className="hidden lg:block lg:flex-1 bg-surface border border-border rounded-2xl p-5 space-y-4 animate-fade-in">
-                      <ContactDetailCard
-                        contact={c}
-                        typeInfo={typeInfo}
-                        linkedPractices={linkedPractices}
-                        relatedContacts={getRelatedContacts(c)}
-                        onEdit={() => setEditingContact({ ...c })}
-                        onDelete={() => setPendingDeleteId(c.id)}
-                        onSelectPractice={onSelectPractice}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Detail Card — mobile: below the row */}
-                {isExpanded && (
-                  <div className="lg:hidden bg-surface border border-border rounded-2xl p-5 mt-1.5 space-y-4 animate-fade-in">
-                    <ContactDetailCard
-                      contact={c}
-                      typeInfo={typeInfo}
-                      linkedPractices={linkedPractices}
-                      relatedContacts={getRelatedContacts(c)}
-                      onEdit={() => setEditingContact({ ...c })}
-                      onDelete={() => setPendingDeleteId(c.id)}
-                      onSelectPractice={onSelectPractice}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
+      <ContactList
+        filtered={filtered}
+        searchQuery={searchQuery}
+        expandedId={expandedId}
+        setExpandedId={setExpandedId}
+        setEditingContact={setEditingContact}
+        setPendingDeleteId={setPendingDeleteId}
+        getLinkedPractices={getLinkedPractices}
+        getRelatedContacts={getRelatedContacts}
+        onSelectPractice={onSelectPractice}
+        useVirtual={useVirtual}
+        vlContainerRef={vlContainerRef}
+        vlListRef={vlListRef}
+        vlTotalHeight={vlTotalHeight}
+        vlVisibleItems={vlVisibleItems}
+        itemHeight={ITEM_HEIGHT}
+      />
 
       {/* Create/Edit Modal */}
       {(showCreate || editingContact) && (
@@ -363,6 +341,165 @@ export default function ContactsPage({ practices, onSelectPractice }) {
     </div>
   );
 }
+
+/* ──── Contact List (virtualized when collapsed, standard when expanded) ──── */
+function ContactList({
+  filtered, searchQuery, expandedId, setExpandedId, setEditingContact, setPendingDeleteId,
+  getLinkedPractices, getRelatedContacts, onSelectPractice,
+  useVirtual, vlContainerRef, vlListRef, vlTotalHeight, vlVisibleItems, itemHeight,
+}) {
+  if (filtered.length === 0) {
+    return (
+      <div className="space-y-1.5">
+        <div className="text-center py-12 opacity-40">
+          <Users size={40} className="mx-auto mb-3 text-text-dim" />
+          <p className="text-text-dim text-sm">
+            {searchQuery ? 'Nessun risultato' : 'Nessun contatto registrato'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const renderRow = (c, expandable = true) => {
+    const typeInfo = TYPE_MAP[c.type] || TYPE_MAP.other;
+    const TypeIcon = typeInfo.icon;
+    const isExpanded = expandable && expandedId === c.id;
+    const linkedPractices = getLinkedPractices(c.id);
+    const linkedCount = linkedPractices.length;
+
+    return (
+      <div>
+        {/* Row wrapper: on desktop, row + card side by side when expanded */}
+        <div className={`flex flex-col ${isExpanded ? 'lg:flex-row lg:gap-3' : ''}`}>
+          {/* Contact Row — single full-row expand button (FIX-6) */}
+          <button
+            type="button"
+            aria-expanded={isExpanded}
+            aria-label={`${isExpanded ? 'Chiudi' : 'Apri'} dettaglio ${c.name}`}
+            onClick={() => setExpandedId(isExpanded ? null : c.id)}
+            className={`relative flex items-center gap-3 px-4 py-3 rounded-xl border group transition-colors duration-200 text-left w-full cursor-pointer ${
+              isExpanded
+                ? 'bg-card border-border lg:w-[38%] lg:flex-shrink-0'
+                : 'bg-surface border-border hover:bg-card'
+            }`}
+          >
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center border flex-shrink-0 ${typeInfo.color}`}>
+              <TypeIcon size={18} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-text font-bold text-base truncate">{c.name}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-text-dim">{typeInfo.label}</span>
+                {linkedCount > 0 && (
+                  <span className="text-3xs text-text-muted">&bull; {linkedCount} fascicoli</span>
+                )}
+              </div>
+            </div>
+            {/* Actions — visible on hover. Edit is a separate concern and uses
+                a span with role=button to avoid nesting <button> in <button>. */}
+            <span className={`flex items-center gap-0.5 flex-shrink-0 transition-opacity ${isExpanded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+              {!isExpanded && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Modifica ${c.name}`}
+                  onClick={(e) => { e.stopPropagation(); setEditingContact({ ...c }); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setEditingContact({ ...c }); } }}
+                  className="p-2 hover:bg-card-hover rounded-full transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  title="Modifica"
+                >
+                  <Edit3 size={14} className="text-text-dim hover:text-primary transition-colors" />
+                </span>
+              )}
+              <span className="p-2" aria-hidden="true">
+                {isExpanded ? (
+                  <ChevronRight size={14} className="text-primary" />
+                ) : (
+                  <Info size={14} className="text-text-dim group-hover:text-primary transition-colors" />
+                )}
+              </span>
+            </span>
+          </button>
+
+          {/* Detail Card — desktop: side by side */}
+          {isExpanded && (
+            <div className="hidden lg:block lg:flex-1 bg-surface border border-border rounded-2xl p-5 space-y-4 animate-fade-in">
+              <ContactDetailCard
+                contact={c}
+                typeInfo={typeInfo}
+                linkedPractices={linkedPractices}
+                relatedContacts={getRelatedContacts(c)}
+                onEdit={() => setEditingContact({ ...c })}
+                onDelete={() => setPendingDeleteId(c.id)}
+                onSelectPractice={onSelectPractice}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Detail Card — mobile: below the row */}
+        {isExpanded && (
+          <div className="lg:hidden bg-surface border border-border rounded-2xl p-5 mt-1.5 space-y-4 animate-fade-in">
+            <ContactDetailCard
+              contact={c}
+              typeInfo={typeInfo}
+              linkedPractices={linkedPractices}
+              relatedContacts={getRelatedContacts(c)}
+              onEdit={() => setEditingContact({ ...c })}
+              onDelete={() => setPendingDeleteId(c.id)}
+              onSelectPractice={onSelectPractice}
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Virtualized branch — only when no row is expanded (rows have stable height)
+  if (useVirtual) {
+    return (
+      <div ref={vlContainerRef} className="overflow-auto custom-scrollbar" style={{ maxHeight: '70vh' }}>
+        <div ref={vlListRef} style={{ height: vlTotalHeight, position: 'relative' }}>
+          {vlVisibleItems.map(({ index, top, item }) => (
+            <div
+              key={item.id || index}
+              style={{ position: 'absolute', top, left: 0, right: 0, height: itemHeight, paddingBottom: 6 }}
+            >
+              {renderRow(item, false)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {filtered.map(c => (
+        <div key={c.id}>{renderRow(c, true)}</div>
+      ))}
+    </div>
+  );
+}
+
+ContactList.propTypes = {
+  filtered: PropTypes.array.isRequired,
+  searchQuery: PropTypes.string,
+  expandedId: PropTypes.string,
+  setExpandedId: PropTypes.func.isRequired,
+  setEditingContact: PropTypes.func.isRequired,
+  setPendingDeleteId: PropTypes.func.isRequired,
+  getLinkedPractices: PropTypes.func.isRequired,
+  getRelatedContacts: PropTypes.func.isRequired,
+  onSelectPractice: PropTypes.func,
+  useVirtual: PropTypes.bool,
+  vlContainerRef: PropTypes.object,
+  vlListRef: PropTypes.object,
+  vlTotalHeight: PropTypes.number,
+  vlVisibleItems: PropTypes.array,
+  itemHeight: PropTypes.number,
+};
 
 /* ──── Contact Create/Edit Modal ──── */
 function ContactModal({ initial, onSave, onClose }) {

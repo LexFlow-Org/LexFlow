@@ -1,6 +1,12 @@
 // ═══════════════════════════════════════════════════════════
 //  CSV EXPORT — time logs and invoices
 // ═══════════════════════════════════════════════════════════
+//
+// TODO(audit:SEC-CSV-2): consider streaming or BE-side encrypted write to
+// avoid plaintext IPC and JS heap residue. Today the entire CSV string crosses
+// the Tauri IPC boundary as plaintext and is reachable from the FE JS heap
+// until GC; for very large datasets this is both a residue concern and a
+// perf concern.
 
 use crate::state::AppState;
 use crate::vault::read_vault_internal;
@@ -158,10 +164,22 @@ fn value_to_str(v: &Value, field: &str) -> String {
 }
 
 fn value_to_num(v: &Value, field: &str) -> String {
-    v.get(field)
-        .and_then(|f| f.as_f64())
-        .map(|n| format!("{:.2}", n))
-        .unwrap_or_default()
+    match v.get(field) {
+        // Field is missing — empty cell is fine.
+        None => String::new(),
+        Some(raw) => match raw.as_f64() {
+            Some(n) => format!("{:.2}", n),
+            None => {
+                // VALIDATION-CSV-1: log malformed numerics so the user can
+                // investigate. Returning empty keeps the CSV well-formed.
+                eprintln!(
+                    "[csv_export] WARN: malformed numeric for field '{}': {:?}",
+                    field, raw
+                );
+                String::new()
+            }
+        },
+    }
 }
 
 #[tauri::command]

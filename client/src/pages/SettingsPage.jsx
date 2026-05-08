@@ -1,11 +1,10 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
-import { 
-  Shield, 
-  Lock, 
-  HardDrive, 
+import {
+  Shield,
+  Lock,
+  HardDrive,
   LogOut,
-  RefreshCw,
   Bell,
   BellOff,
   Camera,
@@ -30,6 +29,8 @@ import ModalOverlay from '../components/ModalOverlay';
 import * as api from '../tauri-api';
 import Toggle from '../components/Toggle';
 
+const RECOVERY_STORE_KEY = 'lexflow_pending_recovery';
+
 const PREAVVISO_OPTIONS = [
   { value: 0, label: 'Al momento' },
   { value: 15, label: '15 min' },
@@ -50,28 +51,73 @@ const AUTOLOCK_OPTIONS = [
 ];
 
 /* ── Factory Reset Modal ── */
-function FactoryResetModal({ onClose }) {
+const FACTORY_RESET_PHRASE = 'ELIMINA VAULT';
+function FactoryResetModal({ onClose, bioStatus }) {
   const [pwd, setPwd] = useState('');
-  const [error, setError] = useState('');
   const [showPwd, setShowPwd] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const doReset = async () => {
+  const errorId = 'factory-reset-error';
+  const phraseValid = confirmText === FACTORY_RESET_PHRASE;
+  const canSubmit = !loading && pwd && phraseValid;
+
+  const doReset = useCallback(async () => {
+    setError('');
     if (!pwd) { setError('Password richiesta.'); return; }
-    // Extra security: trigger system biometric before factory reset
+    if (!phraseValid) { setError(`Digita esattamente "${FACTORY_RESET_PHRASE}" per confermare.`); return; }
+    setLoading(true);
     try {
-      const bioAvail = await api.checkBio();
-      if (bioAvail) {
-        const bioResult = await api.bioLogin();
-        if (!bioResult) {
+      // Strict bio gate: when bio is active, biometric verification is REQUIRED.
+      if (bioStatus === 'active') {
+        const bioOk = await api.bioLogin().catch(() => false);
+        if (!bioOk) {
           setError('Verifica biometrica fallita. Factory reset negato.');
+          setLoading(false);
           return;
         }
+      } else {
+        // Bio not configured / unavailable: try opportunistic check but never fall through silently on error.
+        try {
+          const bioAvail = await api.checkBio();
+          if (bioAvail) {
+            const bioOk = await api.bioLogin();
+            if (!bioOk) {
+              setError('Verifica biometrica fallita. Factory reset negato.');
+              setLoading(false);
+              return;
+            }
+          }
+        } catch {
+          // checkBio threw → treat as unavailable, proceed with password-only path
+        }
       }
-    } catch { /* bio unavailable — proceed with password only */ }
-    const res = await api.resetVault(pwd);
-    if (res?.success) { onClose(); globalThis.location.reload(); }
-    else { setError(res?.error || 'Password errata.'); }
-  };
+
+      // Auto-backup before wipe (best-effort; user can cancel the dialog).
+      try {
+        const bk = await api.triggerBackup?.();
+        if (bk?.success === false) {
+          // backend reported failure but didn't throw — surface it as a warning toast, do not block
+          toast.error('Backup automatico fallito. Procedo solo se confermi nuovamente premendo Conferma.');
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // triggerBackup unavailable on platform: continue (already warned via UI copy)
+      }
+
+      const res = await api.resetVault(pwd);
+      if (res?.success) {
+        onClose();
+        globalThis.location.reload();
+      } else {
+        setError(res?.error || 'Password errata.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [pwd, phraseValid, bioStatus, onClose]);
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="factory-reset-title" zIndex={200}>
@@ -87,7 +133,7 @@ function FactoryResetModal({ onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Tutti i dati verranno eliminati</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
+            <button onClick={onClose} aria-label="Chiudi" className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -95,7 +141,8 @@ function FactoryResetModal({ onClose }) {
         <div className="px-8 py-6 space-y-4">
           <p className="text-text-muted text-xs leading-relaxed">
             Stai per cancellare <span className="text-text font-bold">tutti i dati del Vault</span>.
-            Inserisci la password per confermare. <span className="font-semibold">Azione irreversibile.</span>
+            Verrà generato un backup automatico prima della cancellazione, ma{' '}
+            <span className="font-semibold">l&apos;azione resta irreversibile.</span>
           </p>
           <div className="relative">
             <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
@@ -106,25 +153,58 @@ function FactoryResetModal({ onClose }) {
               value={pwd}
               onChange={e => { setPwd(e.target.value); setError(''); }}
               autoFocus
-              onKeyDown={async (e) => { if (e.key === 'Enter' && pwd) doReset(); }}
+              aria-invalid={!!error}
+              aria-describedby={error ? errorId : undefined}
             />
-            <button type="button" onClick={() => setShowPwd(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors">
+            <button
+              type="button"
+              onClick={() => setShowPwd(v => !v)}
+              aria-label={showPwd ? 'Nascondi password' : 'Mostra password'}
+              aria-pressed={showPwd}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors"
+            >
               {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-          {error && <p className="text-danger text-xs-p font-semibold">{error}</p>}
+          <div className="space-y-2">
+            <label htmlFor="factory-reset-phrase" className="text-2xs font-bold text-text-dim uppercase tracking-wider block">
+              Per confermare digita: <span className="font-mono text-danger">{FACTORY_RESET_PHRASE}</span>
+            </label>
+            <input
+              id="factory-reset-phrase"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={confirmText}
+              onChange={e => { setConfirmText(e.target.value); setError(''); }}
+              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim/40 outline-none focus:border-danger/50 transition-colors font-mono"
+              placeholder={FACTORY_RESET_PHRASE}
+              aria-invalid={!!error}
+            />
+          </div>
+          {error && (
+            <p id={errorId} role="alert" className="text-danger text-xs-p font-semibold">{error}</p>
+          )}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
-          <button onClick={doReset} className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest">Conferma Reset</button>
+          <button
+            onClick={doReset}
+            disabled={!canSubmit}
+            className={`px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest ${!canSubmit ? 'opacity-40 cursor-not-allowed' : ''}`}
+          >
+            {loading ? 'Reset in corso…' : 'Conferma Reset'}
+          </button>
         </div>
       </div>
     </ModalOverlay>
   );
 }
 
-FactoryResetModal.propTypes = { onClose: PropTypes.func.isRequired };
+FactoryResetModal.propTypes = {
+  onClose: PropTypes.func.isRequired,
+  bioStatus: PropTypes.string,
+};
 
 /* ── Export Backup Modal ── */
 function ExportBackupModal({ onClose }) {
@@ -172,7 +252,7 @@ function ExportBackupModal({ onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Crea un file .lex cifrato</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
+            <button onClick={onClose} aria-label="Chiudi" className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -184,28 +264,41 @@ function ExportBackupModal({ onClose }) {
           <div className="space-y-3">
             <div className="relative">
               <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
-              <input type={showPwd ? 'text' : 'password'}
+              <input
+                type={showPwd ? 'text' : 'password'}
                 className="w-full py-3 pl-10 pr-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
                 placeholder="Password backup…"
                 value={pwd}
                 onChange={e => { setPwd(e.target.value); setError(''); }}
-                autoFocus />
-              <button type="button" onClick={() => setShowPwd(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors">
+                autoFocus
+                aria-invalid={!!error}
+                aria-describedby={error ? 'export-backup-error' : undefined}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd(v => !v)}
+                aria-label={showPwd ? 'Nascondi password' : 'Mostra password'}
+                aria-pressed={showPwd}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors"
+              >
                 {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
             <div className="relative">
               <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
-              <input type={showPwd ? 'text' : 'password'}
+              <input
+                type={showPwd ? 'text' : 'password'}
                 className="w-full py-3 pl-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
                 placeholder="Conferma password…"
                 value={pwdConfirm}
                 onChange={e => { setPwdConfirm(e.target.value); setError(''); }}
-                onKeyDown={e => { if (e.key === 'Enter') doExport(); }} />
+                aria-invalid={!!error}
+                aria-describedby={error ? 'export-backup-error' : undefined}
+                onKeyDown={e => { if (e.key === 'Enter') doExport(); }}
+              />
             </div>
           </div>
-          {error && <p className="text-danger text-xs-p font-semibold">{error}</p>}
+          {error && <p id="export-backup-error" role="alert" className="text-danger text-xs-p font-semibold">{error}</p>}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
@@ -222,15 +315,51 @@ function ExportBackupModal({ onClose }) {
 ExportBackupModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── Import Backup Modal ── */
+const IMPORT_CONFIRM_PHRASE = 'OVERWRITE';
 function ImportBackupModal({ onClose }) {
   const [pwd, setPwd] = useState('');
   const [showPwd, setShowPwd] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [preBackupDone, setPreBackupDone] = useState(false);
+  const reloadTimerRef = useRef(null);
+  const errorId = 'import-backup-error';
+
+  // Trigger an automatic safety backup of the current vault before allowing the destructive import.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const r = await api.triggerBackup?.();
+        if (!mounted) return;
+        if (r === undefined || r?.success) {
+          setPreBackupDone(true);
+          toast.success('Backup di sicurezza creato prima dell\'import.');
+        } else {
+          // Don't block the user, but warn loudly.
+          setPreBackupDone(true);
+          toast.error('Backup di sicurezza non creato. Procedi con cautela.');
+        }
+      } catch {
+        if (!mounted) return;
+        setPreBackupDone(true);
+        toast.error('Backup di sicurezza non creato. Procedi con cautela.');
+      }
+    })();
+    return () => {
+      mounted = false;
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    };
+  }, []);
+
+  const phraseValid = confirmText === IMPORT_CONFIRM_PHRASE;
+  const canSubmit = !loading && pwd && phraseValid && preBackupDone;
 
   const doImport = async () => {
     setError('');
     if (!pwd) { setError('Inserisci la password del backup.'); return; }
+    if (!phraseValid) { setError(`Digita esattamente "${IMPORT_CONFIRM_PHRASE}" per confermare.`); return; }
     if (!api.importVault) { toast.error('Servizio importazione non disponibile'); return; }
     setLoading(true);
     const toastId = toast.loading('Importazione in corso…');
@@ -240,7 +369,7 @@ function ImportBackupModal({ onClose }) {
       if (result?.success) {
         toast.success('Vault importato! Ricarico…', { id: toastId });
         onClose();
-        setTimeout(() => globalThis.location.reload(), 1500);
+        reloadTimerRef.current = setTimeout(() => globalThis.location.reload(), 1500);
         return;
       }
       toast.error('Errore: ' + (result?.error || 'Password errata o file non valido'), { id: toastId });
@@ -265,7 +394,7 @@ function ImportBackupModal({ onClose }) {
                 <p className="text-xs text-text-dim mt-0.5">Sovrascrive i dati attuali</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
+            <button onClick={onClose} aria-label="Chiudi" className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
               <X size={20} className="group-hover:rotate-90 transition-transform" />
             </button>
           </div>
@@ -275,6 +404,12 @@ function ImportBackupModal({ onClose }) {
             Inserisci la password con cui è stato cifrato il file di backup.
             {' '}<span className="text-text font-semibold">I dati attuali verranno sovrascritti.</span>
           </p>
+          <div
+            className={`text-2xs px-3 py-2 rounded-lg border ${preBackupDone ? 'bg-success-soft border-success-border text-success' : 'bg-warning-soft border-warning-border text-warning'}`}
+            role="status"
+          >
+            {preBackupDone ? '✓ Backup di sicurezza creato prima dell\'import.' : 'Creazione backup di sicurezza in corso…'}
+          </div>
           <div className="relative">
             <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
             <input type={showPwd ? 'text' : 'password'}
@@ -283,18 +418,43 @@ function ImportBackupModal({ onClose }) {
               value={pwd}
               onChange={e => { setPwd(e.target.value); setError(''); }}
               autoFocus
-              onKeyDown={e => { if (e.key === 'Enter') doImport(); }} />
-            <button type="button" onClick={() => setShowPwd(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors">
+              aria-invalid={!!error}
+              aria-describedby={error ? errorId : undefined}
+              onKeyDown={e => { if (e.key === 'Enter' && canSubmit) doImport(); }} />
+            <button
+              type="button"
+              onClick={() => setShowPwd(v => !v)}
+              aria-label={showPwd ? 'Nascondi password' : 'Mostra password'}
+              aria-pressed={showPwd}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors"
+            >
               {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-          {error && <p className="text-danger text-xs-p font-semibold">{error}</p>}
+          <div className="space-y-2">
+            <label htmlFor="import-confirm-phrase" className="text-2xs font-bold text-text-dim uppercase tracking-wider block">
+              Per confermare digita: <span className="font-mono text-danger">{IMPORT_CONFIRM_PHRASE}</span>
+            </label>
+            <input
+              id="import-confirm-phrase"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={confirmText}
+              onChange={e => { setConfirmText(e.target.value); setError(''); }}
+              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim/40 outline-none focus:border-danger/50 transition-colors font-mono"
+              placeholder={IMPORT_CONFIRM_PHRASE}
+              aria-invalid={!!error}
+            />
+          </div>
+          {error && (
+            <p id={errorId} role="alert" className="text-danger text-xs-p font-semibold">{error}</p>
+          )}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn-cancel">Annulla</button>
-          <button onClick={doImport} disabled={loading}
-            className={`btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest ${loading ? 'opacity-50' : ''}`}>
+          <button onClick={doImport} disabled={!canSubmit}
+            className={`btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest ${!canSubmit ? 'opacity-40 cursor-not-allowed' : ''}`}>
             {loading ? 'Importo…' : 'Importa'}
           </button>
         </div>
@@ -306,7 +466,7 @@ function ImportBackupModal({ onClose }) {
 ImportBackupModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── Biometric Configuration / Deactivation Modal ── */
-function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
+function BioResetConfirmModal({ onClose, bioStatus }) {
   // If bio is active → flow: confirm-deactivate → done-deactivated
   // If bio is available (not configured) → flow: enroll (ask password → saveBio → done)
   const isActive = bioStatus === 'active';
@@ -344,7 +504,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
       // Enroll biometrics with the password (this triggers the native biometric popup)
       await api.saveBio(pwd);
       toast.success("Biometria configurata con successo!");
-      refreshBioStatus();
+      // refreshBioStatus is invoked once by the parent's onClose handler — avoid double-fetch.
       onClose();
     } catch {
       setError('Errore nella configurazione biometrica.');
@@ -352,30 +512,32 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
     setLoading(false);
   };
 
-  // Close after deactivation — refresh status
+  // Close after deactivation — parent's onClose handler refreshes bio status.
   const handleCloseAfterDeactivate = () => {
     toast.success("Biometria disattivata");
-    refreshBioStatus();
     onClose();
   };
 
   const stepGradientClass = {
     enroll: 'modal-header-gradient-primary',
     'done-deactivated': 'modal-header-gradient-info',
+    'confirm-deactivate': 'modal-header-gradient-danger',
   };
   const defaultGradientClass = 'modal-header-gradient-danger';
 
   const stepIconStyles = {
     enroll: 'bg-primary/10 border-primary/20',
     'done-deactivated': 'bg-info-soft border-info-border',
+    'confirm-deactivate': 'bg-danger-soft border-danger-border',
   };
   const defaultIconStyle = 'bg-danger-soft border-danger-border';
 
   const stepIcons = {
     enroll: <Fingerprint size={22} className="text-primary" />,
     'done-deactivated': <ShieldCheck size={22} className="text-info" />,
+    'confirm-deactivate': <Fingerprint size={22} className="text-danger" />,
   };
-  const defaultIcon = <RefreshCw size={22} className="text-danger" />;
+  const defaultIcon = <Fingerprint size={22} className="text-danger" />;
 
   return (
     <ModalOverlay onClose={onClose} labelledBy="bio-modal-title" zIndex={200}>
@@ -401,7 +563,7 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
+          <button onClick={onClose} aria-label="Chiudi" className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
             <X size={20} className="group-hover:rotate-90 transition-transform" />
           </button>
         </div>
@@ -451,19 +613,28 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
             </p>
             <div className="relative">
               <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
-              <input type={showPwd ? 'text' : 'password'}
+              <input
+                type={showPwd ? 'text' : 'password'}
                 className="w-full py-3 pl-10 pr-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
                 placeholder="Master Password…"
                 value={pwd}
                 onChange={e => { setPwd(e.target.value); setError(''); }}
                 autoFocus
-                onKeyDown={e => { if (e.key === 'Enter') doEnroll(); }} />
-              <button type="button" onClick={() => setShowPwd(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors">
+                aria-invalid={!!error}
+                aria-describedby={error ? 'bio-enroll-error' : undefined}
+                onKeyDown={e => { if (e.key === 'Enter') doEnroll(); }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd(v => !v)}
+                aria-label={showPwd ? 'Nascondi password' : 'Mostra password'}
+                aria-pressed={showPwd}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors"
+              >
                 {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            {error && <p className="text-danger text-xs-p font-semibold">{error}</p>}
+            {error && <p id="bio-enroll-error" role="alert" className="text-danger text-xs-p font-semibold">{error}</p>}
           </div>
           <div className="modal-footer">
             <button onClick={onClose} className="btn-cancel">Annulla</button>
@@ -479,10 +650,11 @@ function BioResetConfirmModal({ onClose, bioStatus, refreshBioStatus }) {
   );
 }
 
-BioResetConfirmModal.propTypes = { onClose: PropTypes.func.isRequired, bioStatus: PropTypes.string, refreshBioStatus: PropTypes.func };
+BioResetConfirmModal.propTypes = { onClose: PropTypes.func.isRequired, bioStatus: PropTypes.string };
 
 export default function SettingsPage({ onLock }) {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsLoadError, setSettingsLoadError] = useState(false);
   const [privacyEnabled, setPrivacyEnabled] = useState(true);
   const [appVersion, setAppVersion] = useState('');
   const [platform, setPlatform] = useState('');
@@ -499,44 +671,82 @@ export default function SettingsPage({ onLock }) {
   // Stato per Sicurezza Avanzata
   const [screenshotProtection, setScreenshotProtection] = useState(true);
   const [autolockMinutes, setAutolockMinutes] = useState(5);
-  
+
   // Modal visibility flags
   const [showFactoryReset, setShowFactoryReset] = useState(false);
   const [changePwdCurrent, setChangePwdCurrent] = useState('');
   const [changePwdNew, setChangePwdNew] = useState('');
+  const [changePwdConfirm, setChangePwdConfirm] = useState('');
+  const [changePwdLoading, setChangePwdLoading] = useState(false);
   const [changePwdError, setChangePwdError] = useState('');
   const [changePwdSuccess, setChangePwdSuccess] = useState('');
-  const [recoveryKey, setRecoveryKey] = useState('');
+  // Recovery key persists across remounts via sessionStorage until the user
+  // explicitly confirms they have saved it. Losing this key without saving it
+  // would lock the user out of vault recovery.
+  const [recoveryKey, setRecoveryKey] = useState(() => {
+    try { return sessionStorage.getItem(RECOVERY_STORE_KEY) || ''; } catch { return ''; }
+  });
+  const [confirmedSaved, setConfirmedSaved] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [vaultHealth, setVaultHealth] = useState(null);
 
-  // Auto-load vault health on mount + refresh every 30s
-  useEffect(() => {
-    const loadHealth = async () => {
-      try {
-        const h = await api.getVaultHealth();
-        if (h) setVaultHealth(h);
-      } catch { /* vault health non-critical */ }
-    };
-    loadHealth();
-    const interval = setInterval(loadHealth, 30000);
-    return () => clearInterval(interval);
-  }, []);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showBioResetConfirm, setShowBioResetConfirm] = useState(false);
 
   // Biometrics status: 'checking' | 'active' | 'available' | 'unavailable'
   const [bioStatus, setBioStatus] = useState('checking');
-  const refreshBioStatus = async () => {
+  const refreshBioStatus = useCallback(async () => {
     try {
       const available = await api.checkBio();
       if (!available) { setBioStatus('unavailable'); return; }
       const saved = await api.hasBioSaved();
       setBioStatus(saved ? 'active' : 'available');
     } catch { setBioStatus('unavailable'); }
-  };
+  }, []);
 
-  const applySettings = (settings) => {
+  // Persist the recovery key in sessionStorage so a stray re-render or
+  // accidental nav back to Settings doesn't lose the irreplaceable secret.
+  useEffect(() => {
+    try {
+      if (recoveryKey) sessionStorage.setItem(RECOVERY_STORE_KEY, recoveryKey);
+    } catch { /* sessionStorage unavailable */ }
+  }, [recoveryKey]);
+
+  const onConfirmSaved = useCallback(() => {
+    if (!confirmedSaved) return;
+    try { sessionStorage.removeItem(RECOVERY_STORE_KEY); } catch { /* ignore */ }
+    setRecoveryKey('');
+    setConfirmedSaved(false);
+  }, [confirmedSaved]);
+
+  // Vault-health polling: only when document is visible to avoid burning
+  // resources / triggering audit-log writes while the app is in the background.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      try {
+        const h = await api.getVaultHealth();
+        if (!cancelled && h) setVaultHealth(h);
+      } catch { /* vault health non-critical */ }
+    };
+    tick();
+    const interval = setInterval(tick, 30000);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', tick);
+    }
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', tick);
+      }
+    };
+  }, []);
+
+  const applySettings = useCallback((settings) => {
     if (!settings) return;
     const boolFields = [
       ['privacyBlurEnabled', setPrivacyEnabled],
@@ -547,46 +757,90 @@ export default function SettingsPage({ onLock }) {
       // Default to true (secure posture) when the key is missing from the backend
       setter(typeof settings[key] === 'boolean' ? settings[key] : true);
     }
+    // If screenshotProtection is missing from backend payload, sync the OS-level
+    // setting to the secure default so UI and OS state stay aligned.
+    if (typeof settings.screenshotProtection !== 'boolean') {
+      api.setContentProtection?.(true).catch(() => { /* OS may not support */ });
+    }
     // Unify: prefer `preavviso` (Agenda key), fallback to `notificationTime` (legacy Settings key)
     const time = settings.preavviso ?? settings.notificationTime;
     if (time !== undefined) setNotificationTime(time);
-    setAutolockMinutes(settings.autolockMinutes ?? 5);
+    // Validate autolock against the canonical option set; fall back to 5 min.
+    const validAutolock = AUTOLOCK_OPTIONS.find(o => o.value === settings.autolockMinutes)?.value ?? 5;
+    setAutolockMinutes(validAutolock);
     // Override lawyer title from saved settings (user may have changed it)
     if (settings.lawyerTitle) setLawyerTitle(settings.lawyerTitle);
-  };
+  }, []);
+
+  const loadSettings = useCallback(async () => {
+    setSettingsLoadError(false);
+    try {
+      const s = await api.getSettings();
+      applySettings(s);
+      setSettingsLoaded(true);
+    } catch {
+      // Don't apply defaults blindly — surface a Retry to the user.
+      setSettingsLoadError(true);
+    }
+  }, [applySettings]);
 
   useEffect(() => {
-    api.getAppVersion().then(setAppVersion);
+    let mounted = true;
+
+    api.getAppVersion()
+      .then(v => { if (mounted) setAppVersion(v); })
+      .catch(() => { /* version is decorative */ });
+
     // Detect platform asynchronously
-    api.getPlatform().then(p => {
-      const labels = { macos: 'macOS', windows: 'Windows', android: 'Android', ios: 'iOS', linux: 'Linux' };
-      setPlatform(labels[p] || p || 'Desktop');
-    }).catch(() => {
-      api.isMac().then(m => setPlatform(m ? 'macOS' : 'Windows'));
-    });
-    api.getSettings().then((s) => { applySettings(s); setSettingsLoaded(true); });
+    api.getPlatform()
+      .then(p => {
+        if (!mounted) return;
+        const labels = { macos: 'macOS', windows: 'Windows', android: 'Android', ios: 'iOS', linux: 'Linux' };
+        setPlatform(labels[p] || p || 'Desktop');
+      })
+      .catch(() => {
+        api.isMac().then(m => { if (mounted) setPlatform(m ? 'macOS' : 'Windows'); }).catch(() => {});
+      });
+
+    loadSettings();
+
     // Load lawyer/studio from license token (read-only, not from settings)
-    api.checkLicense().then(res => {
-      if (res?.activated) {
-        if (res.lawyerName) setLawyerName(res.lawyerName.replace(/^(Avv\.|Avv|Avvocato|Praticante)\.?\s+/i, '').trim());
-        if (res.lawyerTitle) setLawyerTitle(res.lawyerTitle);
-        if (res.studioName) setStudioName(res.studioName);
-      }
-    }).catch(() => { /* silent */ });
+    api.checkLicense()
+      .then(res => {
+        if (!mounted) return;
+        if (res?.activated) {
+          if (res.lawyerName) setLawyerName(res.lawyerName.replace(/^(Avv\.|Avv|Avvocato|Praticante)\.?\s+/i, '').trim());
+          if (res.lawyerTitle) setLawyerTitle(res.lawyerTitle);
+          if (res.studioName) setStudioName(res.studioName);
+        }
+      })
+      .catch(() => { /* silent */ });
+
     // Check biometrics status asynchronously
-    api.checkBio().then(available => {
-      if (!available) { setBioStatus('unavailable'); return; }
-      return api.hasBioSaved().then(saved => setBioStatus(saved ? 'active' : 'available'));
-    }).catch(() => setBioStatus('unavailable'));
-    // Listen for corrupted settings file event from backend
+    api.checkBio()
+      .then(available => {
+        if (!mounted) return undefined;
+        if (!available) { setBioStatus('unavailable'); return undefined; }
+        return api.hasBioSaved().then(saved => { if (mounted) setBioStatus(saved ? 'active' : 'available'); });
+      })
+      .catch(() => { if (mounted) setBioStatus('unavailable'); });
+
+    // Listen for corrupted settings file event from backend.
+    // After the toast, also re-fetch settings so the UI reflects the
+    // backend-restored defaults rather than stale state.
     const unsubscribe = api.onSettingsCorrupted?.((payload) => {
       toast.error(
-        `⚠️ Il file impostazioni era corrotto ed è stato ripristinato ai valori predefiniti. Backup salvato in: ${payload?.backup_path || '(sconosciuto)'}`,
+        `Il file impostazioni era corrotto ed è stato ripristinato ai valori predefiniti. Backup salvato in: ${payload?.backup_path || '(sconosciuto)'}`,
         { duration: 8000 }
       );
+      api.getSettings().then(s => { if (mounted) applySettings(s); }).catch(() => {});
     });
-    return () => { unsubscribe?.(); };
-  }, []);
+
+    return () => {
+      mounted = false;
+      unsubscribe?.();
+    };
+  }, [applySettings, loadSettings]);
 
   const buildFullSettings = useCallback(() => ({
     privacyBlurEnabled: privacyEnabled ?? true,
@@ -597,32 +851,46 @@ export default function SettingsPage({ onLock }) {
     autolockMinutes: autolockMinutes ?? 5,
   }), [privacyEnabled, notifyEnabled, notificationTime, screenshotProtection, autolockMinutes]);
 
-  const handlePrivacyToggle = async () => {
-    const newValue = !privacyEnabled;
-    setPrivacyEnabled(newValue);
+  // Toggle now passes the new value explicitly; respect the emitted boolean
+  // rather than re-deriving from stale state.
+  const handlePrivacyToggle = useCallback(async (val) => {
+    const prev = privacyEnabled;
+    setPrivacyEnabled(val);
     try {
-      await api.saveSettings({ ...buildFullSettings(), privacyBlurEnabled: newValue });
-      toast.success(newValue ? 'Privacy Blur Attivato' : 'Privacy Blur Disattivato');
+      await api.saveSettings({ ...buildFullSettings(), privacyBlurEnabled: val });
+      toast.success(val ? 'Privacy Blur Attivato' : 'Privacy Blur Disattivato');
     } catch {
       toast.error('Errore salvataggio');
-      setPrivacyEnabled(!newValue); 
+      setPrivacyEnabled(prev);
     }
-  };
+  }, [privacyEnabled, buildFullSettings]);
 
-  const handleScreenshotToggle = async () => {
-    const val = !screenshotProtection;
+  const handleScreenshotToggle = useCallback(async (val) => {
+    const prev = screenshotProtection;
     setScreenshotProtection(val);
+    // Persist the setting first, then sync OS state. If the OS call fails we
+    // roll back BOTH the persisted setting and the in-memory state so they
+    // can never drift out of agreement.
+    try {
+      await api.saveSettings({ ...buildFullSettings(), screenshotProtection: val });
+    } catch {
+      toast.error('Errore salvataggio');
+      setScreenshotProtection(prev);
+      return;
+    }
     try {
       await api.setContentProtection(val);
-      await api.saveSettings({ ...buildFullSettings(), screenshotProtection: val });
       toast.success(val ? 'Screenshot bloccati' : 'Screenshot sbloccati');
     } catch {
-      toast.error('Errore');
-      setScreenshotProtection(!val);
+      toast.error('Errore protezione schermo: ripristino valore precedente');
+      setScreenshotProtection(prev);
+      // Best-effort rollback of persisted setting; ignore rollback failures.
+      try { await api.saveSettings({ ...buildFullSettings(), screenshotProtection: prev }); } catch { /* ignore */ }
     }
-  };
+  }, [screenshotProtection, buildFullSettings]);
 
-  const handleAutolockChange = async (opt) => {
+  const handleAutolockChange = useCallback(async (opt) => {
+    const prev = autolockMinutes;
     setAutolockMinutes(opt.value);
     try {
       await api.setAutolockMinutes(opt.value);
@@ -630,18 +898,92 @@ export default function SettingsPage({ onLock }) {
       toast.success(opt.value === 0 ? 'Blocco automatico disabilitato' : `Blocco dopo ${opt.label} di inattività`);
     } catch {
       toast.error('Errore');
+      setAutolockMinutes(prev);
     }
-  };
+  }, [autolockMinutes, buildFullSettings]);
 
   // Funzione per salvare le impostazioni delle notifiche
-  const saveNotifySettings = async (updates) => {
+  const saveNotifySettings = useCallback(async (updates) => {
     try {
       await api.saveSettings({ ...buildFullSettings(), ...updates });
       toast.success("Preferenze notifiche aggiornate");
     } catch {
       toast.error("Errore nel salvataggio");
     }
-  };
+  }, [buildFullSettings]);
+
+  const handleNotifyToggle = useCallback((val) => {
+    setNotifyEnabled(val);
+    saveNotifySettings({ notifyEnabled: val });
+  }, [saveNotifySettings]);
+
+  const handleNotificationTimeChange = useCallback((value) => {
+    setNotificationTime(value);
+    saveNotifySettings({ notificationTime: value, preavviso: value });
+  }, [saveNotifySettings]);
+
+  const handleLawyerTitleChange = useCallback(async (newTitle) => {
+    const prev = lawyerTitle;
+    setLawyerTitle(newTitle);
+    try {
+      await api.saveSettings({ ...buildFullSettings(), lawyerTitle: newTitle });
+      toast.success(`Titolo aggiornato: ${newTitle}`);
+    } catch {
+      toast.error('Errore salvataggio');
+      setLawyerTitle(prev);
+    }
+  }, [lawyerTitle, buildFullSettings]);
+
+  // Change Password — full validation including the new "confirm" field.
+  const handleChangePassword = useCallback(async () => {
+    setChangePwdError(''); setChangePwdSuccess('');
+    if (!changePwdCurrent || !changePwdNew) {
+      setChangePwdError('Compila tutti i campi'); return;
+    }
+    if (changePwdNew.length < 12) {
+      setChangePwdError('La nuova password deve avere almeno 12 caratteri'); return;
+    }
+    if (changePwdNew !== changePwdConfirm) {
+      setChangePwdError('Le nuove password non corrispondono'); return;
+    }
+    if (changePwdNew === changePwdCurrent) {
+      setChangePwdError('La nuova password deve differire dall\'attuale'); return;
+    }
+    setChangePwdLoading(true);
+    try {
+      const res = await api.changePassword(changePwdCurrent, changePwdNew);
+      if (res?.success) {
+        setChangePwdSuccess('Password cambiata con successo');
+        setChangePwdCurrent(''); setChangePwdNew(''); setChangePwdConfirm('');
+      } else {
+        setChangePwdError(res?.error || 'Errore cambio password');
+      }
+    } catch (e) {
+      setChangePwdError(String(e));
+    } finally {
+      setChangePwdLoading(false);
+    }
+  }, [changePwdCurrent, changePwdNew, changePwdConfirm]);
+
+  const openBioResetConfirm = useCallback(() => setShowBioResetConfirm(true), []);
+  const openExportModal = useCallback(() => setShowExportModal(true), []);
+  const openImportModal = useCallback(() => setShowImportModal(true), []);
+  const openFactoryReset = useCallback(() => setShowFactoryReset(true), []);
+
+  const generateRecovery = useCallback(async () => {
+    try {
+      const res = await api.generateRecoveryKey();
+      // Standardize on camelCase. The backend now returns `recoveryKey`.
+      if (res?.recoveryKey) {
+        setRecoveryKey(res.recoveryKey);
+        setConfirmedSaved(false);
+      } else {
+        toast?.error(res?.error || 'Errore generazione chiave');
+      }
+    } catch (e) {
+      toast?.error(String(e));
+    }
+  }, []);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-10">
@@ -656,57 +998,77 @@ export default function SettingsPage({ onLock }) {
         </div>
       </div>
 
+      {settingsLoadError && (
+        <div className="glass-card p-6 flex items-center justify-between gap-4 border border-danger-border bg-danger-soft" role="alert">
+          <div className="space-y-1">
+            <p className="text-sm font-bold text-danger">Impossibile caricare le impostazioni</p>
+            <p className="text-xs text-text-muted">Le preferenze non sono state lette. Non sono stati applicati valori di default per evitare di sovrascrivere la tua configurazione.</p>
+          </div>
+          <button
+            type="button"
+            onClick={loadSettings}
+            className="px-4 py-2 rounded-xl bg-surface border border-border text-text text-xs font-bold uppercase tracking-widest hover:bg-card transition-colors"
+          >
+            Riprova
+          </button>
+        </div>
+      )}
+
       <div className={`grid gap-6 ${settingsLoaded ? 'opacity-100' : 'opacity-0'}`}>
 
 
         
         {/* SEZIONE PROFILO STUDIO */}
-        {(lawyerName || studioName) && (
         <section className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
             <Briefcase className="text-text-muted" size={20} />
             <h2 className="text-lg font-bold text-text">Profilo Studio</h2>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2">
-            {lawyerName && (
-            <div className="space-y-2">
-              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Titolo e Nome</label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={lawyerTitle}
-                  onChange={async (e) => {
-                    const newTitle = e.target.value;
-                    setLawyerTitle(newTitle);
-                    try {
-                      await api.saveSettings({ ...buildFullSettings(), lawyerTitle: newTitle });
-                      toast.success(`Titolo aggiornato: ${newTitle}`);
-                    } catch {
-                      toast.error('Errore salvataggio');
-                    }
-                  }}
-                  className="bg-surface border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors appearance-none cursor-pointer"
-                >
-                  <option value="Avv.">Avv.</option>
-                  <option value="Praticante">Praticante</option>
-                </select>
-                <div className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
-                  {lawyerName}
-                </div>
+          {(lawyerName || studioName) ? (
+            <>
+              <div className="grid gap-5 sm:grid-cols-2">
+                {lawyerName && (
+                  <div className="space-y-2">
+                    <label htmlFor="lawyer-title-select" className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Titolo e Nome</label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        id="lawyer-title-select"
+                        value={lawyerTitle}
+                        onChange={(e) => handleLawyerTitleChange(e.target.value)}
+                        className="bg-surface border border-border rounded-xl px-3 py-3 text-sm text-text focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-colors appearance-none cursor-pointer"
+                      >
+                        <option value="Avv.">Avv.</option>
+                        <option value="Praticante">Praticante</option>
+                      </select>
+                      <div className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
+                        {lawyerName}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {studioName && (
+                  <div className="space-y-2">
+                    <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
+                    <div className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
+                      {studioName}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <p className="text-2xs text-text-dim">Il titolo e lo studio vengono utilizzati nell&apos;intestazione dei report PDF e in tutta l&apos;app.</p>
+            </>
+          ) : (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-surface border border-border">
+              <KeyRound size={16} className="text-text-dim mt-0.5 shrink-0" />
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-text">Profilo non disponibile</p>
+                <p className="text-xs text-text-muted leading-relaxed">
+                  Attiva la licenza per vedere il profilo dello studio. Le informazioni dell&apos;avvocato e dello studio vengono lette dal token di licenza e usate nei report PDF.
+                </p>
               </div>
             </div>
-            )}
-            {studioName && (
-            <div className="space-y-2">
-              <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Nome Studio</label>
-              <div className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text">
-                {studioName}
-              </div>
-            </div>
-            )}
-          </div>
-          <p className="text-2xs text-text-dim">Il titolo e lo studio vengono utilizzati nell&apos;intestazione dei report PDF e in tutta l&apos;app.</p>
+          )}
         </section>
-        )}
 
 
       <section className="glass-card p-6 space-y-6">
@@ -717,34 +1079,48 @@ export default function SettingsPage({ onLock }) {
 
         {/* Cambio Password */}
         <div className="space-y-3">
-          <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Cambia Password Master</label>
+          <label htmlFor="cp-current" className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Cambia Password Master</label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <input type="password" placeholder="Password attuale"
-              value={changePwdCurrent} onChange={e => setChangePwdCurrent(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary" />
-            <input type="password" placeholder="Nuova password (min 12 car.)"
-              value={changePwdNew} onChange={e => setChangePwdNew(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary" />
+            <input
+              id="cp-current"
+              type="password"
+              placeholder="Password attuale"
+              value={changePwdCurrent}
+              onChange={e => { setChangePwdCurrent(e.target.value); setChangePwdError(''); }}
+              aria-invalid={!!changePwdError}
+              aria-describedby={changePwdError ? 'cp-error' : undefined}
+              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary"
+            />
+            <input
+              id="cp-new"
+              type="password"
+              placeholder="Nuova password (min 12 car.)"
+              value={changePwdNew}
+              onChange={e => { setChangePwdNew(e.target.value); setChangePwdError(''); }}
+              aria-invalid={!!changePwdError}
+              aria-describedby={changePwdError ? 'cp-error' : undefined}
+              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary"
+            />
+            <input
+              id="cp-confirm"
+              type="password"
+              placeholder="Conferma nuova password"
+              value={changePwdConfirm}
+              onChange={e => { setChangePwdConfirm(e.target.value); setChangePwdError(''); }}
+              aria-invalid={!!changePwdError}
+              aria-describedby={changePwdError ? 'cp-error' : undefined}
+              className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-text text-sm placeholder:text-text-dim outline-none focus:border-primary sm:col-span-2"
+            />
           </div>
-          {changePwdError && <p className="text-xs text-danger">{changePwdError}</p>}
-          {changePwdSuccess && <p className="text-xs text-emerald-400">{changePwdSuccess}</p>}
+          {changePwdError && <p id="cp-error" role="alert" className="text-xs text-danger">{changePwdError}</p>}
+          {changePwdSuccess && <p className="text-xs text-emerald-400" role="status">{changePwdSuccess}</p>}
           <button
-            onClick={async () => {
-              setChangePwdError(''); setChangePwdSuccess('');
-              if (!changePwdCurrent || !changePwdNew) { setChangePwdError('Compila entrambi i campi'); return; }
-              if (changePwdNew.length < 12) { setChangePwdError('La nuova password deve avere almeno 12 caratteri'); return; }
-              try {
-                const res = await api.changePassword(changePwdCurrent, changePwdNew);
-                if (res?.success) {
-                  setChangePwdSuccess('Password cambiata con successo');
-                  setChangePwdCurrent(''); setChangePwdNew('');
-                } else {
-                  setChangePwdError(res?.error || 'Errore cambio password');
-                }
-              } catch (e) { setChangePwdError(String(e)); }
-            }}
-            className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
-            Cambia Password
+            onClick={handleChangePassword}
+            disabled={changePwdLoading}
+            aria-busy={changePwdLoading}
+            className={`btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest ${changePwdLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {changePwdLoading ? 'Cambio in corso…' : 'Cambia Password'}
           </button>
         </div>
 
@@ -755,25 +1131,45 @@ export default function SettingsPage({ onLock }) {
           <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Chiave di Emergenza</label>
           <p className="text-xs text-text-dim">Genera una chiave di recupero per sbloccare il vault se dimentichi la password. Conservala in un luogo sicuro.</p>
           {recoveryKey ? (
-            <div className="bg-surface border border-primary-soft rounded-xl p-4 space-y-2">
+            <div className="bg-surface border border-primary-soft rounded-xl p-4 space-y-3">
               <p className="text-center font-mono text-lg tracking-[4px] text-primary font-bold select-all">{recoveryKey}</p>
               <p className="text-xs text-text-dim text-center">Copia e conserva questa chiave. Non verrà mostrata di nuovo.</p>
-              <button onClick={() => { api.secureCopy?.(recoveryKey); toast?.success('Chiave copiata (auto-cancellazione in 30s)'); }}
-                className="w-full px-4 py-2 rounded-xl bg-primary-soft text-primary text-xs font-bold uppercase tracking-widest">
+              <button
+                onClick={() => { api.secureCopy?.(recoveryKey); toast?.success('Chiave copiata (auto-cancellazione in 30s)'); }}
+                className="w-full px-4 py-2 rounded-xl bg-primary-soft text-primary text-xs font-bold uppercase tracking-widest"
+              >
                 Copia negli Appunti
               </button>
+              <label className="flex items-start gap-2 text-xs text-text-muted cursor-pointer pt-2 border-t border-border/40">
+                <input
+                  type="checkbox"
+                  checked={confirmedSaved}
+                  onChange={(e) => setConfirmedSaved(e.target.checked)}
+                  className="mt-0.5 accent-primary"
+                />
+                <span>Ho copiato e conservato la chiave di recovery in un posto sicuro.</span>
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={onConfirmSaved}
+                  disabled={!confirmedSaved}
+                  className={`flex-1 px-4 py-2 rounded-xl bg-success-soft border border-success-border text-success text-xs font-bold uppercase tracking-widest transition-colors ${confirmedSaved ? '' : 'opacity-40 cursor-not-allowed'}`}
+                >
+                  Ho salvato la chiave — chiudi
+                </button>
+                <button
+                  onClick={() => setShowRegenerateConfirm(true)}
+                  className="flex-1 px-4 py-2 rounded-xl bg-warning-soft border border-warning-border text-warning text-xs font-bold uppercase tracking-widest transition-colors"
+                >
+                  Rigenera chiave
+                </button>
+              </div>
             </div>
           ) : (
             <button
-              onClick={async () => {
-                try {
-                  const res = await api.generateRecoveryKey();
-                  if (res?.recoveryKey) setRecoveryKey(res.recoveryKey);
-                  else if (res?.recovery_key) setRecoveryKey(res.recovery_key);
-                  else toast?.error(res?.error || 'Errore generazione chiave');
-                } catch (e) { toast?.error(String(e)); }
-              }}
-              className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest">
+              onClick={generateRecovery}
+              className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-widest"
+            >
               Genera Chiave di Emergenza
             </button>
           )}
@@ -879,39 +1275,47 @@ export default function SettingsPage({ onLock }) {
           <div className="pt-4 border-t border-border">
             <div className="flex items-center gap-2 mb-1">
               <Timer size={16} className="text-text-muted" />
-              <span className="font-medium text-text">Blocco Automatico</span>
+              <span id="autolock-label" className="font-medium text-text">Blocco Automatico</span>
             </div>
             <p className="text-xs text-text-muted max-w-md mb-4">
               Blocca automaticamente il Vault dopo un periodo di inattività.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {AUTOLOCK_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => handleAutolockChange(opt)}
-                  className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors border ${
-                    autolockMinutes === opt.value
-                      ? 'bg-primary text-black border-primary'
-                      : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+            <div role="radiogroup" aria-labelledby="autolock-label" className="flex flex-wrap gap-2">
+              {AUTOLOCK_OPTIONS.map(opt => {
+                const selected = autolockMinutes === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    tabIndex={selected ? 0 : -1}
+                    onClick={() => handleAutolockChange(opt)}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors border ${
+                      selected
+                        ? 'bg-primary text-black border-primary'
+                        : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            <button 
+            <button
               onClick={onLock}
+              title="Chiude immediatamente il Vault. Dovrai inserire la Master Password per riaprirlo."
+              aria-label="Blocca Vault Ora — chiude immediatamente la sessione del Vault"
               className="flex items-center justify-center gap-3 p-4 rounded-xl bg-surface hover:bg-card border border-border text-text transition-colors group"
             >
               <Lock size={18} className="text-primary transition-transform group-hover:-rotate-12" />
               <span className="text-sm font-bold uppercase tracking-wider">Blocca Vault Ora</span>
             </button>
-            <button 
-              onClick={() => setShowBioResetConfirm(true)}
+            <button
+              onClick={openBioResetConfirm}
               className={`flex items-center gap-4 p-4 rounded-xl border transition-colors group relative ${
                 {
                   active: 'bg-success-soft hover:bg-success-soft border-success-border',
@@ -939,9 +1343,9 @@ export default function SettingsPage({ onLock }) {
                     checking: 'text-text-dim animate-pulse',
                   }[bioStatus] || 'text-text-dim'
                 }`}>
-                  {bioStatus === 'active' && '✓ Attiva — Face ID / Touch ID'}
-                  {bioStatus === 'available' && '○ Non configurata'}
-                  {bioStatus === 'unavailable' && '✕ Non disponibile'}
+                  {bioStatus === 'active' && 'Attiva — Face ID / Touch ID'}
+                  {bioStatus === 'available' && 'Non configurata'}
+                  {bioStatus === 'unavailable' && 'Non disponibile'}
                   {bioStatus === 'checking' && 'Verifica…'}
                 </span>
               </div>
@@ -966,53 +1370,40 @@ export default function SettingsPage({ onLock }) {
                   Ricevi notifiche desktop per udienze, scadenze e impegni in agenda.
                 </p>
               </div>
-              <Toggle checked={notifyEnabled} onChange={(val) => { setNotifyEnabled(val); saveNotifySettings({ notifyEnabled: val }); }} />
+              <Toggle checked={notifyEnabled} onChange={handleNotifyToggle} />
             </div>
 
-            {notifyEnabled && (
-              <div className="pt-4 border-t border-border">
-                <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
-                <div className="flex flex-wrap gap-2">
-                  {PREAVVISO_OPTIONS.map(opt => (
+            <div className="pt-4 border-t border-border">
+              <span id="preavviso-label" className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
+              <div
+                role="radiogroup"
+                aria-labelledby="preavviso-label"
+                aria-disabled={!notifyEnabled}
+                className={`flex flex-wrap gap-2 ${notifyEnabled ? '' : 'opacity-40 pointer-events-none'}`}
+              >
+                {PREAVVISO_OPTIONS.map(opt => {
+                  const selected = notificationTime === opt.value;
+                  return (
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => {
-                        setNotificationTime(opt.value);
-                        saveNotifySettings({ notificationTime: opt.value, preavviso: opt.value });
-                      }}
+                      role="radio"
+                      aria-checked={selected}
+                      tabIndex={selected && notifyEnabled ? 0 : -1}
+                      disabled={!notifyEnabled}
+                      onClick={() => handleNotificationTimeChange(opt.value)}
                       className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors border ${
-                        notificationTime === opt.value
-                          ? 'bg-primary text-black border-primary'
+                        selected
+                          ? (notifyEnabled ? 'bg-primary text-black border-primary' : 'bg-card text-text-dim border-border')
                           : 'bg-surface text-text-muted border-border hover:bg-card hover:text-text'
-                      }`}
+                      } ${!notifyEnabled ? 'cursor-not-allowed' : ''}`}
                     >
                       {opt.label}
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            )}
-
-            {!notifyEnabled && (
-              <div className="pt-4 border-t border-border">
-                <span className="text-2xs font-bold text-text-dim uppercase tracking-wider mb-3 block">Preavviso Standard</span>
-                <div className="flex flex-wrap gap-2 opacity-40 pointer-events-none">
-                  {PREAVVISO_OPTIONS.map(opt => (
-                    <div
-                      key={opt.value}
-                      className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-not-allowed ${
-                        notificationTime === opt.value
-                          ? 'bg-card text-text-dim border-border'
-                          : 'bg-surface text-text-muted border-border'
-                      }`}
-                    >
-                      {opt.label}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </section>
 
@@ -1050,8 +1441,8 @@ export default function SettingsPage({ onLock }) {
                 Usalo per trasferire i dati su un altro dispositivo o per un backup sicuro.
               </p>
             </div>
-            <button 
-              onClick={() => setShowExportModal(true)}
+            <button
+              onClick={openExportModal}
               className="btn-primary px-6 py-2.5 text-sm flex items-center gap-2 shrink-0"
             >
               <Download size={16} />
@@ -1073,8 +1464,8 @@ export default function SettingsPage({ onLock }) {
                 {' '}<span className="text-text-muted font-medium">Attenzione: sovrascrive i dati attuali.</span>
               </p>
             </div>
-            <button 
-              onClick={() => setShowImportModal(true)}
+            <button
+              onClick={openImportModal}
               className="btn-primary px-6 py-2.5 text-sm flex items-center gap-2 shrink-0"
             >
               <Upload size={16} />
@@ -1091,7 +1482,7 @@ export default function SettingsPage({ onLock }) {
 
       <div className="pt-12 text-center">
         <button
-          onClick={() => setShowFactoryReset(true)}
+          onClick={openFactoryReset}
           className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 px-4 py-3 rounded-2xl text-danger bg-danger-soft border border-danger-border hover:bg-danger-soft transition-colors duration-300 group"
         >
           <Lock size={18} className="transition-transform group-hover:-rotate-12" />
@@ -1100,7 +1491,7 @@ export default function SettingsPage({ onLock }) {
       </div>
 
       {/* Factory Reset Modal */}
-      {showFactoryReset && <FactoryResetModal onClose={() => setShowFactoryReset(false)} />}
+      {showFactoryReset && <FactoryResetModal onClose={() => setShowFactoryReset(false)} bioStatus={bioStatus} />}
 
       {/* Export Modal */}
       {showExportModal && <ExportBackupModal onClose={() => setShowExportModal(false)} />}
@@ -1109,7 +1500,48 @@ export default function SettingsPage({ onLock }) {
       {showImportModal && <ImportBackupModal onClose={() => setShowImportModal(false)} />}
 
       {/* Biometrics Reset Confirm Modal */}
-      {showBioResetConfirm && <BioResetConfirmModal onClose={() => { setShowBioResetConfirm(false); refreshBioStatus(); }} bioStatus={bioStatus} refreshBioStatus={refreshBioStatus} />}
+      {showBioResetConfirm && <BioResetConfirmModal onClose={() => { setShowBioResetConfirm(false); refreshBioStatus(); }} bioStatus={bioStatus} />}
+
+      {/* Regenerate recovery key confirmation */}
+      {showRegenerateConfirm && (
+        <ModalOverlay onClose={() => setShowRegenerateConfirm(false)} labelledBy="regen-recovery-title" zIndex={210}>
+          <div className="modal-card modal-card-sm">
+            <div className="modal-header-gradient modal-header-gradient-danger">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-danger-soft rounded-2xl flex items-center justify-center border border-danger-border">
+                    <KeyRound size={22} className="text-danger" />
+                  </div>
+                  <div>
+                    <h3 id="regen-recovery-title" className="text-xl font-bold text-text">Rigenera Chiave di Recovery</h3>
+                    <p className="text-xs text-text-dim mt-0.5">La chiave attuale verrà invalidata</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowRegenerateConfirm(false)} aria-label="Chiudi" className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
+                  <X size={20} className="group-hover:rotate-90 transition-transform" />
+                </button>
+              </div>
+            </div>
+            <div className="px-8 py-6">
+              <p className="text-text-muted text-xs leading-relaxed">
+                Stai per generare una nuova chiave di recovery. <span className="text-text font-semibold">La chiave attuale verrà invalidata</span> e non potrà più essere usata per sbloccare il vault. Procedere?
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setShowRegenerateConfirm(false)} className="btn-cancel">Annulla</button>
+              <button
+                onClick={async () => {
+                  setShowRegenerateConfirm(false);
+                  await generateRecovery();
+                }}
+                className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest"
+              >
+                Rigenera
+              </button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
     </div>
   );
 }

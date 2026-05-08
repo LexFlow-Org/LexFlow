@@ -1,17 +1,32 @@
+// TODO(audit:LOW-STYLE): split LoginScreen into ResetVaultModal, RecoveryKeyModal, useBiometricAutoTrigger, useLockoutCountdown to comply with FE <250 LOC guideline
 import { useState, useRef, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { 
-  Eye, 
-  EyeOff, 
-  ShieldCheck, 
-  Fingerprint, 
-  KeyRound, 
-  ShieldAlert, 
+import {
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  Fingerprint,
+  KeyRound,
+  ShieldAlert,
   Timer,
   X
 } from 'lucide-react';
 import logoSrc from '../assets/logo.svg';
 import * as api from '../tauri-api';
+
+// Common dictionary of weak / common passwords to reject outright in setup
+const COMMON_PASSWORDS = new Set([
+  'password', 'password1', 'password123', '12345678', '123456789', '1234567890',
+  'qwerty', 'qwerty123', 'qwertyuiop', 'abc12345', 'admin', 'admin123',
+  'letmein', 'welcome', 'welcome1', 'iloveyou', 'monkey', 'dragon',
+  'master', 'login', 'starwars', 'football', 'baseball', 'sunshine',
+  'princess', 'changeme', 'passw0rd', 'p@ssw0rd', 'p@ssword',
+]);
+
+const isDev = !import.meta.env.PROD;
+const devLog = (...args) => { if (isDev) console.debug(...args); };
+const devWarn = (...args) => { if (isDev) console.warn(...args); };
+const devError = (...args) => { if (isDev) console.error(...args); };
 
 export default function LoginScreen({ onUnlock, autoLocked = false }) {
   const [password, setPassword] = useState('');
@@ -35,35 +50,77 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   // Modal per Reset Vault (sostituisce window.prompt -- non mostra password in chiaro)
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [resetCooldown, setResetCooldown] = useState(5);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryInput, setRecoveryInput] = useState('');
   const [recoveryError, setRecoveryError] = useState('');
+  const [showRecoveryKey, setShowRecoveryKey] = useState(false);
   const [resetError, setResetError] = useState('');
+  const [showResetPwd, setShowResetPwd] = useState(false);
+
+  const closeResetModal = useCallback(() => {
+    setShowResetModal(false);
+    setResetPassword('');
+    setResetConfirmText('');
+    setResetError('');
+    setShowResetPwd(false);
+  }, []);
+
+  const closeRecoveryModal = useCallback(() => {
+    setShowRecovery(false);
+    setRecoveryInput('');
+    setRecoveryError('');
+    setShowRecoveryKey(false);
+  }, []);
+
+  // Reset modal cooldown — gates the destructive action behind a 5s delay
+  useEffect(() => {
+    if (!showResetModal) return;
+    setResetCooldown(5);
+    const id = setInterval(() => {
+      setResetCooldown(c => Math.max(0, c - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [showResetModal]);
+
+  const canConfirmReset = resetConfirmText === 'RESET' && resetCooldown === 0 && !!resetPassword;
 
   const executeReset = useCallback(async () => {
-    if (!resetPassword) { setResetError('Password richiesta.'); return; }
-    const result = await api.resetVault(resetPassword);
-    if (result?.success) {
-      setShowResetModal(false);
-      setIsNew(true); setPassword(''); setConfirm(''); setError(''); setBioSaved(false);
-    } else {
-      setResetError(result?.error || 'Password non corretta.');
+    if (!canConfirmReset) return;
+    try {
+      const result = await api.resetVault(resetPassword);
+      if (result?.success) {
+        setIsNew(true);
+        setPassword('');
+        setConfirm('');
+        setError('');
+        setBioSaved(false);
+        closeResetModal();
+      } else {
+        setResetError(result?.error || 'Password non corretta.');
+      }
+    } catch (err) {
+      devWarn('Reset vault error:', err);
+      setResetError('Errore di sistema durante il reset.');
     }
-  }, [resetPassword]);
+  }, [canConfirmReset, resetPassword, closeResetModal]);
 
   const bioTriggered = useRef(false);
   const bioAutoTriggeredOnReturn = useRef(false);
+  // Track if a bio login attempt is currently in-flight to prevent double-triggers.
+  // Ownership: only handleBioLogin's `finally` block resets this to false to avoid
+  // a TOCTOU window where the autoLocked-effect could clear the flag mid-call.
+  const bioInFlight = useRef(false);
+  const MAX_BIO_ATTEMPTS = 3;
 
   // Reset bio refs when LoginScreen appears (autoLocked changes or component mounts)
-  // This ensures biometrics re-triggers after every lock cycle
+  // This ensures biometrics re-triggers after every lock cycle.
+  // We DO NOT touch bioInFlight here — handleBioLogin's finally owns it.
   useEffect(() => {
     bioTriggered.current = false;
     bioAutoTriggeredOnReturn.current = false;
-    bioInFlight.current = false;
   }, [autoLocked]);
-  // Track if a bio login attempt is currently in-flight to prevent double-triggers
-  const bioInFlight = useRef(false);
-  const MAX_BIO_ATTEMPTS = 3;
 
   // ─── Biometric login handler (defined as ref to avoid stale closures in effects) ──
   const handleBioLoginRef = useRef(null);
@@ -81,18 +138,25 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     const errMsg = err?.message || String(err);
     const isAndroidHandoff = errMsg.includes('android-bio-use-frontend');
 
-    console.debug("Login bio fallito:", isAndroidHandoff ? "(Android handoff)" : err);
-
-    const nextFailed = bioFailed + (isAndroidHandoff ? 0 : 1);
-    if (!isAndroidHandoff) setBioFailed(prev => prev + 1);
+    devLog("Login bio fallito:", isAndroidHandoff ? "(Android handoff)" : err);
 
     setShowPasswordField(true);
 
-    if (nextFailed >= MAX_BIO_ATTEMPTS) {
-      setError('Troppi tentativi biometrici falliti. Inserisci la password manualmente.');
-    } else if (!isAutomatic && !isAndroidHandoff) {
-      setError('Riconoscimento biometrico non riuscito. Riprova o usa la password.');
+    if (isAndroidHandoff) {
+      // Don't bump the counter — UI message handled below
+      return;
     }
+
+    // Single functional updater: derive state from prior value to avoid races
+    setBioFailed(prev => {
+      const next = prev + 1;
+      if (next >= MAX_BIO_ATTEMPTS) {
+        setError('Troppi tentativi biometrici falliti. Inserisci la password manualmente.');
+      } else if (!isAutomatic) {
+        setError('Riconoscimento biometrico non riuscito. Riprova o usa la password.');
+      }
+      return next;
+    });
   };
 
   const handleBioLogin = async (isAutomatic = false) => {
@@ -152,23 +216,25 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         // Only auto-trigger biometric if the window actually has focus
         // to avoid Touch ID appearing over other apps
         const triggerBioNow = () => {
+          if (!document.hasFocus()) return;
           if (handleBioLoginRef.current) handleBioLoginRef.current(true);
         };
-        const onWindowFocus = () => {
-          window.removeEventListener('focus', onWindowFocus);
-          setTimeout(triggerBioNow, 300);
-        };
-        const triggerWhenFocused = () => {
+        // Poll for focus: Tauri windows may not have OS focus immediately at startup.
+        // The 'focus' event won't fire if the window already has focus when the listener
+        // is added, so we poll as a robust fallback.
+        let pollCount = 0;
+        const MAX_POLLS = 10;
+        const pollForFocus = () => {
           if (document.hasFocus()) {
             triggerBioNow();
-          } else {
-            window.addEventListener('focus', onWindowFocus);
+          } else if (++pollCount < MAX_POLLS) {
+            setTimeout(pollForFocus, 500);
           }
         };
-        setTimeout(triggerWhenFocused, 400);
+        setTimeout(pollForFocus, 400);
       }
     } catch (err) {
-      console.warn("Errore inizializzazione bio:", err);
+      devWarn("Errore inizializzazione bio:", err);
       setShowPasswordField(true);
     }
   };
@@ -181,7 +247,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         if (!exists) { setShowPasswordField(true); return; }
         await initBiometrics();
       } catch (err) {
-        console.error("Errore inizializzazione vault:", err);
+        devError("Errore inizializzazione vault:", err);
         setError("Si è verificato un errore di sistema. Riavvia l'applicazione.");
       }
     };
@@ -259,8 +325,21 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     return () => { if (lockoutTimer.current) clearInterval(lockoutTimer.current); };
   }, [isLockedOut]); // re-trigger only on transition 0→positive
 
+  const isCommonPassword = (pwd) => {
+    if (!pwd) return false;
+    const lower = pwd.toLowerCase();
+    if (COMMON_PASSWORDS.has(lower)) return true;
+    // Reject simple sequential patterns and repeated chars
+    if (/^(.)\1+$/.test(pwd)) return true; // aaaaaaaa
+    if (/^(0123456789|123456789|abcdefgh|qwertyui|asdfghjk)/i.test(pwd)) return true;
+    return false;
+  };
+
   const getStrength = (pwd) => {
     if (!pwd) return { label: '', color: 'bg-surface', text: 'text-text-dim', pct: 0, segments: 0 };
+    if (isCommonPassword(pwd)) {
+      return { label: 'Comune (vietata)', color: 'bg-danger', text: 'text-danger', pct: 8, segments: 1 };
+    }
     let score = 0;
     if (pwd.length >= 8) score++;
     if (pwd.length >= 12) score++;
@@ -278,6 +357,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   };
 
   const isPasswordStrong = (pwd) => {
+    if (isCommonPassword(pwd)) return false;
     return pwd.length >= 12 && /[A-Z]/.test(pwd) && /[a-z]/.test(pwd) && /\d/.test(pwd) && /[!@#$%^&*()\-_=+[\]{};':"\\|,.<>/?]/.test(pwd);
   };
 
@@ -286,6 +366,9 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     if (result.locked && result.remaining) {
       const secs = Math.ceil(Number(result.remaining));
       setLockoutSeconds(secs);
+      // Defensive: if lockout fires we should not retain the just-typed password
+      setPassword('');
+      setConfirm('');
       const mm = String(Math.floor(secs / 60)).padStart(2, '0');
       const ss = String(secs % 60).padStart(2, '0');
       const attemptsInfo = result.attempts && result.maxAttempts
@@ -322,6 +405,10 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
     setError('');
 
     if (isNew) {
+      if (isCommonPassword(password)) {
+        setError('Questa password è troppo comune. Scegline una unica e non riconducibile a te.');
+        return;
+      }
       if (!isPasswordStrong(password)) {
         setError('Usa almeno 12 caratteri, una maiuscola, un numero e un simbolo.');
         return;
@@ -350,21 +437,30 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
           await api.saveBio(providedPwd);
           setBioAvailable(true);
           setBioSaved(true);
-          console.debug('[LoginScreen] Biometrics auto-enrolled on manual unlock ✓');
+          devLog('[LoginScreen] Biometrics auto-enrolled on manual unlock ✓');
         }
       } catch (e) {
-        console.warn('[LoginScreen] Biometrics auto-enroll failed (non-critical):', e);
+        devWarn('[LoginScreen] Biometrics auto-enroll failed (non-critical):', e);
       }
 
-      setPassword('');
-      setConfirm('');
       onUnlock(isNew);
     } catch (err) {
-      console.error(err);
+      devError(err);
       setError('Errore di sistema durante lo sblocco');
+    } finally {
+      setPassword('');
+      setConfirm('');
       setLoading(false);
     }
   };
+
+  // Defensive: clear any password material from memory when this screen unmounts
+  useEffect(() => () => {
+    setPassword('');
+    setConfirm('');
+    setResetPassword('');
+    setRecoveryInput('');
+  }, []);
 
   // Loading Iniziale
   if (isNew === null) return (
@@ -436,14 +532,22 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               <label htmlFor="login-master-pwd" className="text-2xs font-bold text-text-dim uppercase tracking-label ml-1 mb-2 block">Master Password</label>
               <div className="relative">
                 <KeyRound size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-primary transition-colors" />
-                <input 
+                <input
                   id="login-master-pwd"
-                  type={showPwd ? 'text' : 'password'} 
-                  className="input-field pl-12 pr-12 py-4 rounded-2xl bg-input border-border hover:border-primary/30 transition-colors text-text placeholder:text-text-dim/40" 
-                  placeholder="Inserisci la password..." 
-                  value={password} 
-                  onChange={e => setPassword(e.target.value)} 
-                  autoFocus 
+                  type={showPwd ? 'text' : 'password'}
+                  className="input-field pl-12 pr-12 py-4 rounded-2xl bg-input border-border hover:border-primary/30 transition-colors text-text placeholder:text-text-dim/40"
+                  placeholder="Inserisci la password..."
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  autoFocus
+                  autoComplete="off"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  data-bwignore="true"
+                  data-form-type="other"
+                  spellCheck="false"
+                  autoCorrect="off"
+                  autoCapitalize="off"
                 />
                 <button type="button" className="absolute right-4 top-1/2 -translate-y-1/2 text-text-dim hover:text-white transition-colors" onClick={() => setShowPwd(!showPwd)}>
                   {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -475,13 +579,21 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                 <label htmlFor="login-confirm-pwd" className="text-2xs font-bold text-text-dim uppercase tracking-label ml-1 mb-2 block">Conferma Password</label>
                 <div className="relative">
                   <ShieldCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-dim" />
-                  <input 
+                  <input
                     id="login-confirm-pwd"
-                    type={showPwd ? 'text' : 'password'} 
-                    className="input-field pl-12 py-4 rounded-2xl bg-input border-border text-text placeholder:text-text-dim/40" 
-                    placeholder="Ripeti la password..." 
-                    value={confirm} 
-                    onChange={e => setConfirm(e.target.value)} 
+                    type={showPwd ? 'text' : 'password'}
+                    className="input-field pl-12 py-4 rounded-2xl bg-input border-border text-text placeholder:text-text-dim/40"
+                    placeholder="Ripeti la password..."
+                    value={confirm}
+                    onChange={e => setConfirm(e.target.value)}
+                    autoComplete="off"
+                    data-1p-ignore="true"
+                    data-lpignore="true"
+                    data-bwignore="true"
+                    data-form-type="other"
+                    spellCheck="false"
+                    autoCorrect="off"
+                    autoCapitalize="off"
                   />
                 </div>
               </div>
@@ -532,14 +644,25 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
             <div className="flex flex-col items-center gap-2">
               <button
                 type="button"
-                onClick={() => { setShowRecovery(true); setRecoveryInput(''); setRecoveryError(''); }}
+                onClick={() => {
+                  setRecoveryInput('');
+                  setRecoveryError('');
+                  setShowRecoveryKey(false);
+                  setShowRecovery(true);
+                }}
                 className="text-text-dim hover:text-primary text-2xs font-bold uppercase tracking-widest transition-colors"
               >
                 Usa Chiave di Recupero
               </button>
               <button
                 type="button"
-                onClick={() => { setShowResetModal(true); setResetPassword(''); setResetError(''); }}
+                onClick={() => {
+                  setResetPassword('');
+                  setResetConfirmText('');
+                  setResetError('');
+                  setShowResetPwd(false);
+                  setShowResetModal(true);
+                }}
                 className="text-text-dim hover:text-danger text-2xs font-bold uppercase tracking-widest transition-colors"
               >
                 Factory Reset Vault
@@ -561,8 +684,14 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
 
       {/* Reset Vault Modal -- sostituisce window.prompt (no password in chiaro nel UI) */}
       {showResetModal && (
-        <div className="fixed inset-0 z-[200] bg-black/80 blur-overlay flex items-center justify-center p-4 animate-fade-in">
-          <button type="button" className="absolute inset-0 cursor-default" aria-label="Chiudi" onClick={() => setShowResetModal(false)} tabIndex={-1} />
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 blur-overlay flex items-center justify-center p-4 animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-modal-title"
+          onKeyDown={(e) => { if (e.key === 'Escape') closeResetModal(); }}
+        >
+          <button type="button" className="absolute inset-0 cursor-default" aria-label="Chiudi" onClick={closeResetModal} tabIndex={-1} />
           <div className="relative z-10 modal-card modal-card-sm no-drag">
             <div className="modal-header-gradient modal-header-gradient-danger">
               <div className="flex items-center justify-between">
@@ -571,35 +700,61 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                     <ShieldAlert size={22} className="text-danger" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-text">Factory Reset</h3>
+                    <h3 id="reset-modal-title" className="text-xl font-bold text-text">Factory Reset</h3>
                     <p className="text-xs text-text-dim mt-0.5">Tutti i dati verranno eliminati</p>
                   </div>
                 </div>
-                <button onClick={() => setShowResetModal(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
+                <button type="button" onClick={closeResetModal} aria-label="Chiudi" className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
                   <X size={20} className="group-hover:rotate-90 transition-transform" />
                 </button>
               </div>
             </div>
             <div className="px-8 py-6 space-y-4">
               <p className="text-text-muted text-xs leading-relaxed">
-                Inserisci la password attuale per confermare il reset completo del Vault.{' '}
+                Inserisci la password attuale e digita <code className="px-1.5 py-0.5 rounded bg-card-hover text-danger font-mono text-2xs">RESET</code> per confermare l'eliminazione completa del Vault.{' '}
                 <span className="text-danger font-semibold">Questa azione è irreversibile.</span>
               </p>
               <div className="relative">
-                <input 
-                  type="password"
-                  className="input-field w-full py-3 px-4 rounded-xl bg-input border-border text-text placeholder:text-text-dim/40 text-sm"
+                <input
+                  type={showResetPwd ? 'text' : 'password'}
+                  className="input-field w-full py-3 pl-4 pr-12 rounded-xl bg-input border-border text-text placeholder:text-text-dim/40 text-sm"
                   placeholder="Password attuale..."
                   value={resetPassword}
                   onChange={e => setResetPassword(e.target.value)}
                   autoFocus
-                  onKeyDown={async (e) => {
-                    if (e.key === 'Enter' && resetPassword) {
-                      await executeReset();
-                    }
-                  }}
+                  autoComplete="off"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  data-bwignore="true"
+                  data-form-type="other"
+                  spellCheck="false"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                 />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors"
+                  onClick={() => setShowResetPwd(v => !v)}
+                  tabIndex={-1}
+                  aria-label={showResetPwd ? 'Nascondi password' : 'Mostra password'}
+                >
+                  {showResetPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
+              <input
+                type="text"
+                className="input-field w-full py-3 px-4 rounded-xl bg-input border-border text-text placeholder:text-text-dim/40 text-sm font-mono tracking-widest"
+                placeholder="Scrivi RESET per confermare"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                autoComplete="off"
+                spellCheck="false"
+                autoCorrect="off"
+                autoCapitalize="characters"
+                aria-label="Conferma testuale: scrivi RESET"
+                onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+              />
               {resetError && (
                 <div className="bg-danger-soft border border-danger-border p-2 rounded-lg">
                   <p className="text-danger text-xs-p font-semibold">{resetError}</p>
@@ -607,12 +762,15 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
               )}
             </div>
             <div className="modal-footer">
-              <button onClick={() => setShowResetModal(false)} className="btn-cancel">Annulla</button>
+              <button type="button" onClick={closeResetModal} className="btn-cancel">Annulla</button>
               <button
+                type="button"
                 onClick={executeReset}
-                className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest"
+                disabled={!canConfirmReset}
+                aria-disabled={!canConfirmReset}
+                className="px-6 py-3 rounded-2xl bg-danger-soft border border-danger-border text-danger hover:bg-danger-soft transition-colors text-xs font-bold uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Conferma Reset
+                {resetCooldown > 0 ? `Attendi ${resetCooldown}s...` : 'Elimina vault'}
               </button>
             </div>
           </div>
@@ -621,38 +779,66 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
 
       {/* Recovery Key Modal */}
       {showRecovery && (
-        <div className="fixed inset-0 z-[200] bg-black/80 blur-overlay flex items-center justify-center p-4 animate-fade-in">
-          <div className="glass-card max-w-md w-full p-0 overflow-hidden animate-fade-in-up">
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 blur-overlay flex items-center justify-center p-4 animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="recovery-modal-title"
+          onKeyDown={(e) => { if (e.key === 'Escape') closeRecoveryModal(); }}
+        >
+          <button type="button" className="absolute inset-0 cursor-default" aria-label="Chiudi" onClick={closeRecoveryModal} tabIndex={-1} />
+          <div className="relative z-10 glass-card max-w-md w-full p-0 overflow-hidden animate-fade-in-up">
             <div className="modal-header">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-primary-soft rounded-2xl flex items-center justify-center border border-primary/20">
                   <KeyRound size={22} className="text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-text">Chiave di Recupero</h3>
+                  <h3 id="recovery-modal-title" className="text-xl font-bold text-text">Chiave di Recupero</h3>
                   <p className="text-xs text-text-dim mt-0.5">Inserisci la chiave per sbloccare il vault</p>
                 </div>
               </div>
-              <button onClick={() => setShowRecovery(false)} className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors">
+              <button type="button" onClick={closeRecoveryModal} aria-label="Chiudi" className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors">
                 <X size={20} />
               </button>
             </div>
             <div className="px-8 py-6 space-y-4">
-              <input
-                type="text"
-                value={recoveryInput}
-                onChange={e => setRecoveryInput(e.target.value.toUpperCase())}
-                placeholder="XXXX-XXXX-XXXX-XXXX"
-                className="w-full px-4 py-3 rounded-xl bg-input border border-border text-text text-center font-mono text-lg tracking-[4px] placeholder:text-text-dim/40 outline-none focus:border-primary"
-                autoFocus
-              />
+              <div className="relative">
+                <input
+                  type={showRecoveryKey ? 'text' : 'password'}
+                  value={recoveryInput}
+                  onChange={e => setRecoveryInput(e.target.value.toUpperCase())}
+                  placeholder="XXXX-XXXX-XXXX-XXXX"
+                  className="w-full px-4 py-3 pr-12 rounded-xl bg-input border border-border text-text text-center font-mono text-lg tracking-[4px] placeholder:text-text-dim/40 outline-none focus:border-primary"
+                  autoFocus
+                  autoComplete="off"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  data-bwignore="true"
+                  data-form-type="other"
+                  spellCheck="false"
+                  autoCorrect="off"
+                  autoCapitalize="characters"
+                  aria-label="Chiave di recupero"
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-dim hover:text-text transition-colors"
+                  onClick={() => setShowRecoveryKey(v => !v)}
+                  tabIndex={-1}
+                  aria-label={showRecoveryKey ? 'Nascondi chiave' : 'Mostra chiave'}
+                >
+                  {showRecoveryKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
               {recoveryError && (
-                <p className="text-danger text-2xs font-semibold">{recoveryError}</p>
+                <p className="text-danger text-2xs font-semibold" role="alert">{recoveryError}</p>
               )}
             </div>
             <div className="modal-footer">
-              <button onClick={() => setShowRecovery(false)} className="btn-cancel">Annulla</button>
+              <button type="button" onClick={closeRecoveryModal} className="btn-cancel">Annulla</button>
               <button
+                type="button"
                 onClick={async () => {
                   setRecoveryError('');
                   if (!recoveryInput || recoveryInput.length < 10) {
@@ -662,13 +848,14 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                   try {
                     const res = await api.unlockWithRecovery(recoveryInput.trim());
                     if (res?.success) {
-                      setShowRecovery(false);
+                      closeRecoveryModal();
                       onUnlock();
                     } else {
                       setRecoveryError(res?.error || 'Chiave non valida');
                     }
-                  } catch (e) {
-                    setRecoveryError(String(e));
+                  } catch (err) {
+                    devWarn('Recovery unlock error:', err);
+                    setRecoveryError('Chiave non valida o errore di sistema');
                   }
                 }}
                 className="btn-primary px-6 py-3 text-xs font-bold uppercase tracking-widest"

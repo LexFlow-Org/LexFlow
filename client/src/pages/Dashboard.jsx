@@ -2,6 +2,7 @@ import { useMemo, useState, useRef, useEffect, memo } from 'react';
 import PropTypes from 'prop-types';
 import { FolderOpen, CalendarDays, CalendarClock, Coffee, Sun, Sunrise, ChevronDown, Clock } from 'lucide-react';
 import { catDotClass, catPillClass, getHeroColor } from '../theme';
+import { toDateStr, parseLocalYMD } from '../utils/helpers';
 
 const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, periodLabel, onSelectPractice, onNavigate }) {
   const scrollRef = useRef(null);
@@ -62,46 +63,45 @@ const RelevantEventsWidget = memo(function RelevantEventsWidget({ relevant, peri
                 <div className="flex-1 h-px bg-white/10" />
               </div>
             )}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => { if (onNavigate) { const tp = ev.timeStart ? `&time=${ev.timeStart}` : ''; onNavigate('/agenda?date=' + ev.date + tp); } }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { const tp = ev.timeStart ? `&time=${ev.timeStart}` : ''; onNavigate?.('/agenda?date=' + ev.date + tp); } }}
-              className="w-full flex items-center gap-3 text-sm rounded-xl px-4 py-3 transition-colors group text-left cursor-pointer"
-              title="Apri in Agenda"
-            >
-              {/* Pallino categoria */}
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${catDotClass(ev.category)}`} />
-
-              {/* Orario evento */}
-              {ev.timeStart && (
-                <span className="text-xs-p font-mono font-bold flex-shrink-0 tabular-nums text-white/60">
-                  {ev.timeStart}
+            <div className="w-full flex items-center justify-between text-sm rounded-xl px-4 py-3 transition-all bg-white/[0.08] border border-white/15 hover:bg-white/15 hover:border-white/25 group">
+              {/* Blocco sinistro: row attivabile (NO nested buttons → role=button) */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => { if (onNavigate) { const tp = ev.timeStart ? `&time=${ev.timeStart}` : ''; onNavigate('/agenda?date=' + ev.date + tp); } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const tp = ev.timeStart ? `&time=${ev.timeStart}` : '';
+                    onNavigate?.('/agenda?date=' + ev.date + tp);
+                  }
+                }}
+                className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer text-left rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                title="Apri in Agenda"
+              >
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${catDotClass(ev.category)}`} />
+                {ev.timeStart && (
+                  <span className="text-xs font-mono font-bold flex-shrink-0 tabular-nums text-white/60">
+                    {ev.timeStart}
+                  </span>
+                )}
+                <span className="truncate font-semibold text-sm text-white">
+                  {ev.title}
                 </span>
-              )}
-
-              {/* Nome impegno — in una pill */}
-              <span className="truncate group-hover:text-primary transition-colors min-w-0 text-left font-semibold text-sm px-2.5 py-0.5 rounded-lg text-white">
-                {ev.title}
-              </span>
-
-              {/* Icona fascicolo (se collegato) — subito dopo il titolo */}
+              </div>
+              {/* Bottone fascicolo separato — non più nested */}
               {ev.practiceId && (
                 <button type="button"
                   onClick={(e) => { e.stopPropagation(); if (onSelectPractice) onSelectPractice(ev.practiceId); }}
-                  className="p-1.5 rounded-lg transition-colors flex-shrink-0 group/brief border border-transparent hover:border-white/20"
+                  className="p-1.5 rounded-lg transition-colors flex-shrink-0 hover:bg-white/15 ml-2"
                   title="Vai al Fascicolo"
                 >
-                  <FolderOpen size={14} className="text-white/70 group-hover/brief:text-white transition-colors" />
+                  <FolderOpen size={13} className="text-white/50 hover:text-white transition-colors" />
                 </button>
               )}
-
-              {/* Spacer per spingere la categoria all'estrema destra */}
-              <div className="flex-1 min-w-2" />
-
-              {/* Tipo impegno — all'estrema destra */}
+              {/* Pill categoria a destra */}
               {ev.category && (
-                <span className={`text-3xs font-bold uppercase tracking-wider flex-shrink-0 px-2.5 py-1 rounded-lg border ${catPillClass(ev.category)}`}
+                <span className={`text-3xs font-bold uppercase tracking-wider flex-shrink-0 px-2 py-0.5 rounded-md border ml-2 ${catPillClass(ev.category)}`}
                 >{ev.category}</span>
               )}
             </div>
@@ -150,6 +150,14 @@ Dashboard.propTypes = {
 
 export default function Dashboard({ practices, agendaEvents, onNavigate, onSelectPractice }) {
 
+  // ── Heartbeat orario: tick ogni 5 min, basta a far ricalcolare il greeting
+  // se la dashboard resta aperta a cavallo delle 13:00 / 18:00 / 5:00.
+  const [tick, setTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setTick(Date.now()), 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
   // ── Greeting contestuale — colori identici in dark e light ──
   const hero = useMemo(() => {
     const h = new Date().getHours();
@@ -176,12 +184,13 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       background,
       icon: <Coffee size={100} strokeWidth={1} />,
     };
-  }, []);
+    // tick triggers re-evaluation as hour rolls over
+  }, [tick]);
 
   // ── Calcoli statistiche (più informative) ──
   const stats = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = toDateStr(today); // local YMD, not UTC
     let activeCount = 0;
     let deadlineCount = 0;
 
@@ -189,21 +198,26 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       if (p.status === 'active') {
         activeCount++;
         (p.deadlines || []).forEach(d => {
-          const dd = new Date(d.date); dd.setHours(0, 0, 0, 0);
+          const dd = parseLocalYMD(d.date);
+          if (Number.isNaN(dd.getTime())) return;
           if (dd >= today) deadlineCount++;
         });
       }
     });
 
-    // Also count agenda "scadenza" events as deadlines
+    // Also count agenda "scadenza" events as deadlines — but EXCLUDE
+    // autoSync events: those are already counted as practice deadlines
+    // (they're auto-mirrored from practice.deadlines into agenda).
     (agendaEvents || []).forEach(e => {
-      if (e.category === 'scadenza' && !e.completed) {
-        const dd = new Date(e.date); dd.setHours(0, 0, 0, 0);
+      if (e.category === 'scadenza' && !e.completed && !e.autoSync) {
+        const dd = parseLocalYMD(e.date);
+        if (Number.isNaN(dd.getTime())) return;
         if (dd >= today) deadlineCount++;
       }
     });
 
-    // Impegni di oggi: totali e completati
+    // Impegni di oggi: totali e completati (autoSync already excluded — keeps
+    // todayRemaining and deadlineCount reading from the same source-of-truth)
     const todayEvents = (agendaEvents || []).filter(e => e.date === todayStr && !e.autoSync);
     const todayTotal = todayEvents.length;
     const todayCompleted = todayEvents.filter(e => e.completed).length;
@@ -216,9 +230,9 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
   const { relevant, periodLabel } = useMemo(() => {
     const now = new Date();
     const h = now.getHours();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = toDateStr(now); // local, not UTC
     const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const tomorrowStr = toDateStr(tomorrow);
 
     const events = agendaEvents || [];
     let filtered;
@@ -242,8 +256,18 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       periodLabel = 'questa sera';
     }
 
+    // Sort: untimed events go LAST (an event "all-day" should not jump above
+    // a timed 09:00 just because '' < '09:00'). Within timed events, ascending
+    // by HH:mm is enough thanks to lexicographic ordering.
     return {
-      relevant: filtered.sort((a, b) => (a.timeStart || '').localeCompare(b.timeStart || '')),
+      relevant: filtered.sort((a, b) => {
+        const at = a.timeStart || '';
+        const bt = b.timeStart || '';
+        if (!at && !bt) return 0;
+        if (!at) return 1;
+        if (!bt) return -1;
+        return at.localeCompare(bt);
+      }),
       periodLabel,
     };
   }, [agendaEvents]);

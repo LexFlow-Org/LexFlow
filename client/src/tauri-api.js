@@ -70,6 +70,8 @@ export const bioLogin = async () => {
     return null;
   }
 };
+// FIX-T4: alias kept — `loginBio` is consumed by LoginScreen.jsx.
+// Do not remove without migrating callers to `bioLogin`.
 export const loginBio = bioLogin;
 
 // Files / Folders
@@ -123,18 +125,26 @@ export const getSettings = () => safeInvoke('get_settings');
 export const saveSettings = (settings) => safeInvoke('save_settings', { settings });
 
 // Files
-export const selectFile = async () => (await safeInvoke('select_file')) || null;
+export const selectFile = async (extensions) => (await safeInvoke('select_file', { extensions })) || null;
+export const readFileBase64 = (path) => safeInvoke('read_file_base64', { path });
 export const selectFiles = async (extensions) => (await safeInvoke('select_files', { extensions })) || [];
 export const selectFolder = async () => (await safeInvoke('select_folder')) || null;
 export const openPath = (path) => safeInvoke('open_path', { path });
 
+// Save dialog (generic) — declared early so exporters can reuse it
+export const selectSavePath = (defaultName) => safeInvoke('select_pdf_save_path', { defaultName });
+
 // PDF export — uses Rust command to bypass FS plugin scope (restricted to $APPDATA)
 export const exportPDF = async (arrayBuffer, defaultName) => {
   // SECURITY FIX (Gemini Audit Chunk 01): validate buffer before writing
-  if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+  // FIX-T5: assert ArrayBuffer instance to prevent passing wrong types
+  if (!(arrayBuffer instanceof ArrayBuffer)) {
+    throw new Error('exportPDF: arrayBuffer must be an ArrayBuffer');
+  }
+  if (arrayBuffer.byteLength === 0) {
     throw new Error('Cannot export an empty PDF');
   }
-  const savePath = await safeInvoke('select_pdf_save_path', { defaultName });
+  const savePath = await selectSavePath(defaultName);
   if (savePath) {
     // Convert ArrayBuffer to plain Array<u8> for Tauri command serialization
     const data = Array.from(new Uint8Array(arrayBuffer));
@@ -156,7 +166,7 @@ export const generateTypstPdf = async (practiceData) => {
 // Full Typst export pipeline: generate + save dialog
 export const exportTypstPdf = async (practiceData, defaultName) => {
   const pdfBytes = await generateTypstPdf(practiceData);
-  const savePath = await safeInvoke('select_pdf_save_path', { defaultName });
+  const savePath = await selectSavePath(defaultName);
   if (savePath) {
     const data = Array.from(pdfBytes);
     await safeInvoke('write_pdf_to_path', { path: savePath, data });
@@ -173,22 +183,54 @@ export const syncNotificationSchedule = (schedule) =>
 export const checkLicense = () => safeInvoke('check_license');
 export const activateLicense = (key) => safeInvoke('activate_license', { key });
 
-// Save dialog (generic)
-export const selectSavePath = (defaultName) => safeInvoke('select_pdf_save_path', { defaultName });
-
 // Document Tools
+// FIX-T7/T8: clamp helpers — defense-in-depth before sending to the BE,
+// the backend is authoritative but we also reject obviously bogus FE input.
+const clampPositive = (n) => Math.max(0, Math.floor(Number(n) || 0));
+const clampOpacity = (n) => Math.min(1, Math.max(0, Number(n) || 0));
+const clampPagesArray = (arr, max = 10000) =>
+  (Array.isArray(arr) ? arr : []).slice(0, max).map(clampPositive).filter(n => n > 0);
+const clampRotation = (r) => {
+  const n = Number(r);
+  return [90, 180, 270].includes(n) ? n : 90;
+};
+
 export const pdfInfo = (path) => safeInvoke('pdf_info', { path });
 export const mergePdfs = (inputPaths, outputPath) => safeInvoke('merge_pdfs', { inputPaths, outputPath });
 export const splitPdf = (inputPath, outputDir) => safeInvoke('split_pdf', { inputPath, outputDir });
-export const removePages = (inputPath, outputPath, pagesToRemove) => safeInvoke('remove_pages', { inputPath, outputPath, pagesToRemove });
-export const extractPages = (inputPath, outputPath, pagesToExtract) => safeInvoke('extract_pages', { inputPath, outputPath, pagesToExtract });
+export const removePages = (inputPath, outputPath, pagesToRemove) =>
+  safeInvoke('remove_pages', { inputPath, outputPath, pagesToRemove: clampPagesArray(pagesToRemove) });
+export const extractPages = (inputPath, outputPath, pagesToExtract) =>
+  safeInvoke('extract_pages', { inputPath, outputPath, pagesToExtract: clampPagesArray(pagesToExtract) });
 export const compressPdf = (inputPath, outputPath) => safeInvoke('compress_pdf', { inputPath, outputPath });
-export const addWatermark = (inputPath, outputPath, text, opacity, fontSize) => safeInvoke('add_watermark', { inputPath, outputPath, text, opacity, fontSize });
-export const rotatePdf = (inputPath, outputPath, rotation, pagesToRotate) => safeInvoke('rotate_pdf', { inputPath, outputPath, rotation, pagesToRotate });
+export const addWatermark = (inputPath, outputPath, text, opacity, fontSize) =>
+  safeInvoke('add_watermark', {
+    inputPath,
+    outputPath,
+    text,
+    opacity: clampOpacity(opacity),
+    fontSize: clampPositive(fontSize),
+  });
+export const rotatePdf = (inputPath, outputPath, rotation, pagesToRotate) =>
+  safeInvoke('rotate_pdf', {
+    inputPath,
+    outputPath,
+    rotation: clampRotation(rotation),
+    pagesToRotate: pagesToRotate ? clampPagesArray(pagesToRotate) : null,
+  });
 export const pdfToText = (inputPath) => safeInvoke('pdf_to_text', { inputPath });
 export const imagesToPdf = (imagePaths, outputPath) => safeInvoke('images_to_pdf', { imagePaths, outputPath });
-export const reorderPages = (inputPath, outputPath, newOrder) => safeInvoke('reorder_pages', { inputPath, outputPath, newOrder });
-export const addPageNumbers = (inputPath, outputPath, position, formatStr, startFrom, fontSize) => safeInvoke('add_page_numbers', { inputPath, outputPath, position, formatStr, startFrom, fontSize });
+export const reorderPages = (inputPath, outputPath, newOrder) =>
+  safeInvoke('reorder_pages', { inputPath, outputPath, newOrder: clampPagesArray(newOrder) });
+export const addPageNumbers = (inputPath, outputPath, position, formatStr, startFrom, fontSize) =>
+  safeInvoke('add_page_numbers', {
+    inputPath,
+    outputPath,
+    position,
+    formatStr,
+    startFrom: clampPositive(startFrom),
+    fontSize: clampPositive(fontSize),
+  });
 export const redactPdf = (inputPath, outputPath, redactions) => safeInvoke('redact_pdf', { inputPath, outputPath, redactions });
 export const securePdf = (inputPath, outputPath, options) => safeInvoke('secure_pdf', { inputPath, outputPath, options });
 export const unsecurePdf = (inputPath, outputPath, password) => safeInvoke('unsecure_pdf', { inputPath, outputPath, password });
@@ -208,8 +250,11 @@ export const showMainWindow = () => safeInvoke('show_main_window');
 export const setContentProtection = (enabled) =>
   safeInvoke('set_content_protection', { enabled });
 export const pingActivity = () => safeInvoke('ping_activity');
-export const setAutolockMinutes = (minutes) =>
-  safeInvoke('set_autolock_minutes', { minutes });
+// FIX-API: clamp FE-side too (BE is authoritative). 1..1440 minutes (24h max).
+export const setAutolockMinutes = (minutes) => {
+  const n = Math.min(1440, Math.max(1, Math.floor(Number(minutes) || 5)));
+  return safeInvoke('set_autolock_minutes', { minutes: n });
+};
 export const getAutolockMinutes = () => safeInvoke('get_autolock_minutes');
 
 // Recovery key
@@ -217,14 +262,56 @@ export const generateRecoveryKey = () => safeInvoke('generate_recovery_key');
 export const unlockWithRecovery = (recoveryKey) => safeInvoke('unlock_with_recovery', { recoveryKey });
 
 // SECURITY: Clipboard with auto-clear after 30 seconds
-let clipboardTimer = null;
-export const secureCopy = (text) => {
-  navigator.clipboard.writeText(text).catch(() => {});
-  if (clipboardTimer) clearTimeout(clipboardTimer);
-  clipboardTimer = setTimeout(() => {
-    navigator.clipboard.writeText('').catch(() => {});
-    clipboardTimer = null;
-  }, 30000); // 30 seconds
+// FIX-T10: only wipe if our text is STILL on the clipboard (don't trash a
+// new copy the user just made). Also wipe early on window blur.
+let _secureCopyState = null;
+export const secureCopy = async (text) => {
+  // Cancel any pending wipe to avoid wiping user's new copy
+  if (_secureCopyState?.timeoutId) {
+    clearTimeout(_secureCopyState.timeoutId);
+  }
+  if (_secureCopyState?.onBlur) {
+    window.removeEventListener('blur', _secureCopyState.onBlur);
+  }
+  _secureCopyState = null;
+
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    return false;
+  }
+
+  const expectedText = text;
+
+  const wipeIfUnchanged = async () => {
+    try {
+      const current = await navigator.clipboard.readText();
+      if (current === expectedText) {
+        await navigator.clipboard.writeText('');
+      }
+    } catch {
+      /* clipboard read may fail in some contexts (no permission, blurred) */
+    }
+  };
+
+  const onBlur = async () => {
+    if (_secureCopyState?.text !== expectedText) return;
+    await wipeIfUnchanged();
+    if (_secureCopyState?.timeoutId) clearTimeout(_secureCopyState.timeoutId);
+    window.removeEventListener('blur', onBlur);
+    _secureCopyState = null;
+  };
+
+  const timeoutId = setTimeout(async () => {
+    await wipeIfUnchanged();
+    if (_secureCopyState?.onBlur) {
+      window.removeEventListener('blur', _secureCopyState.onBlur);
+    }
+    _secureCopyState = null;
+  }, 30000);
+
+  _secureCopyState = { text: expectedText, timeoutId, onBlur };
+  window.addEventListener('blur', onBlur, { once: false });
   return true;
 };
 
@@ -277,6 +364,15 @@ export const onNotificationAction = (cb) => {
   return () => { p.then(fn => fn?.()); };
 };
 
+// FIX-T13: sanitize notification text — strip control chars and cap length.
+// Defense against a compromised event channel injecting newlines / control
+// codes / oversized payloads into the OS notification bridge.
+const sanitizeNotifText = (s, maxLen = 256) => {
+  if (typeof s !== 'string') return '';
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/[\x00-\x1F\x7F]/g, '').slice(0, maxLen);
+};
+
 // Notification fallback listener (top-level await — Vite ESM)
 try {
   await listen('show-notification', async (event) => {
@@ -285,12 +381,15 @@ try {
         const granted = await notifPermGranted();
         if (granted) return;
       } catch { console.debug('[tauri-api] Not in Tauri runtime'); }
+      const title = sanitizeNotifText(event?.payload?.title, 64);
+      const body = sanitizeNotifText(event?.payload?.body, 256);
+      if (!title) return;
       if (globalThis.Notification) {
         if (Notification.permission === 'granted') {
-          new Notification(event.payload.title, { body: event.payload.body });
+          new Notification(title, { body });
         } else if (Notification.permission !== 'denied') {
           const p = await Notification.requestPermission();
-          if (p === 'granted') new Notification(event.payload.title, { body: event.payload.body });
+          if (p === 'granted') new Notification(title, { body });
         }
       }
     } catch { console.warn('Notification fallback error'); }

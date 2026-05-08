@@ -100,6 +100,13 @@ pub(crate) fn get_vault_key(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>
 }
 
 /// Get the v4 DEK (Data Encryption Key) from state.
+///
+/// SECURITY (BE-T2 #4): this returns a CLONE of the DEK in a Zeroizing<Vec>.
+/// The clone is NOT mlock'd, so it may be paged to swap. Prefer `with_vault_dek`
+/// which holds the mlock'd buffer under the lock for the duration of the
+/// closure and never copies the bytes.
+#[deprecated(note = "use with_vault_dek to avoid non-mlock'd clones (BE-T2 #4)")]
+#[allow(dead_code)]
 pub(crate) fn get_vault_dek(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>>, String> {
     state
         .vault_dek
@@ -108,6 +115,18 @@ pub(crate) fn get_vault_dek(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>
         .as_ref()
         .map(|k| Zeroizing::new(k.0.to_vec()))
         .ok_or_else(|| "Locked".into())
+}
+
+/// Run a closure with a borrow of the mlock'd DEK without cloning the bytes.
+/// This is the preferred accessor: the key buffer never leaves its mlock'd page.
+#[allow(dead_code)]
+pub(crate) fn with_vault_dek<R>(
+    state: &State<AppState>,
+    f: impl FnOnce(&[u8]) -> R,
+) -> Result<R, String> {
+    let dek = state.vault_dek.lock().unwrap_or_else(|e| e.into_inner());
+    let key = dek.as_ref().ok_or_else(|| "Locked".to_string())?;
+    Ok(f(&key.0))
 }
 
 /// Get the vault format version (2 or 4).
@@ -126,6 +145,15 @@ pub(crate) fn get_vault_version(state: &State<AppState>) -> u32 {
 /// limitation of the Rust/Tauri architecture — the IPC layer is outside our
 /// control. The real protection is Argon2id key derivation (password never
 /// stored, only the derived key) + mlock on the derived key + core dump disabled.
+///
+/// FE PRE-HASH POLICY (SEC-STATE-3):
+/// `unlock_vault` accepts a SHA-256-prehashed password from the frontend so the
+/// raw plaintext never crosses the IPC boundary. The following commands STILL
+/// accept plaintext `pwd: String` directly and should be migrated to the same
+/// pre-hash convention to fully close the residue window:
+///   - import_vault, export_vault, change_password, reset_vault
+// TODO(audit:SEC-STATE-3): extend FE pre-hash policy to import/export/change/reset
+// password (currently only unlock_vault uses it).
 pub(crate) fn zeroize_password(password: String) {
     let mut pwd_bytes = password.into_bytes();
     pwd_bytes.zeroize();

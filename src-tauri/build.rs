@@ -15,10 +15,11 @@ fn main() {
     seed.extend_from_slice(&(3u32).to_le_bytes()); // ARGON2_T_COST
     seed.extend_from_slice(&(1u32).to_le_bytes()); // ARGON2_P_COST
                                                    // PUBLIC_KEY_BYTES (must match license.rs exactly)
+    // ROTATED 2026-04-11: v5.0 — synced with license.rs
     seed.extend_from_slice(&[
-        8u8, 212u8, 13u8, 234u8, 134u8, 217u8, 61u8, 166u8, 154u8, 206u8, 97u8, 69u8, 17u8, 176u8,
-        126u8, 188u8, 80u8, 41u8, 136u8, 9u8, 103u8, 166u8, 26u8, 158u8, 179u8, 252u8, 216u8,
-        211u8, 172u8, 245u8, 136u8, 157u8,
+        68u8, 17u8, 204u8, 75u8, 33u8, 178u8, 142u8, 35u8, 80u8, 225u8, 11u8, 121u8, 146u8, 211u8,
+        252u8, 220u8, 179u8, 206u8, 88u8, 129u8, 82u8, 148u8, 38u8, 103u8, 113u8, 3u8, 106u8, 4u8,
+        9u8, 239u8, 47u8, 150u8,
     ]);
     seed.extend_from_slice(&(10u32).to_le_bytes()); // DEK_WIPE_THRESHOLD
 

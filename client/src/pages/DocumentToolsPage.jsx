@@ -1,135 +1,43 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   FileText, Merge, Split, Scissors, RotateCw,
   Minimize2, Stamp, FileOutput, Type, Images,
   Upload, Download, Check, AlertCircle, Loader2, X, Info,
-  ArrowUpDown, Hash, EyeOff, Shield, Unlock, Clock
+  ArrowUpDown, Hash, EyeOff, Eye, Shield, Unlock, Clock,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
+import { secureCopy } from '../tauri-api';
+import PdfRedactViewer from '../components/PdfRedactViewer';
 
+// NOTE: protect_pdf was removed by BE-4 + BE-8 (deprecated/dead). The corresponding
+// `protectPdf` wrapper has also been removed from `client/src/tauri-api.js`.
+// Do NOT re-add a `protect` tool here.
 const TOOLS = [
-  {
-    id: 'merge',
-    label: 'Unisci PDF',
-    icon: Merge,
-    description: 'Combina più PDF in un unico documento',
-    multiFile: true,
-    accept: '.pdf',
-  },
-  {
-    id: 'split',
-    label: 'Dividi PDF',
-    icon: Split,
-    description: 'Dividi un PDF in pagine singole',
-    multiFile: false,
-    accept: '.pdf',
-  },
-  {
-    id: 'remove',
-    label: 'Rimuovi Pagine',
-    icon: Scissors,
-    description: 'Elimina pagine specifiche da un PDF',
-    multiFile: false,
-    accept: '.pdf',
-    needsPages: true,
-  },
-  {
-    id: 'extract',
-    label: 'Estrai Pagine',
-    icon: FileOutput,
-    description: 'Estrai solo le pagine che ti servono',
-    multiFile: false,
-    accept: '.pdf',
-    needsPages: true,
-  },
-  {
-    id: 'rotate',
-    label: 'Ruota Pagine',
-    icon: RotateCw,
-    description: 'Ruota le pagine di 90°, 180° o 270°',
-    multiFile: false,
-    accept: '.pdf',
-    needsRotation: true,
-  },
-  {
-    id: 'compress',
-    label: 'Comprimi PDF',
-    icon: Minimize2,
-    description: 'Riduci la dimensione del PDF per PEC',
-    multiFile: false,
-    accept: '.pdf',
-  },
-  {
-    id: 'watermark',
-    label: 'Watermark',
-    icon: Stamp,
-    description: 'Aggiungi BOZZA, RISERVATO, COPIA CONFORME',
-    multiFile: false,
-    accept: '.pdf',
-    needsWatermark: true,
-  },
-  {
-    id: 'text',
-    label: 'Estrai Testo',
-    icon: Type,
-    description: 'Estrai il testo da un PDF',
-    multiFile: false,
-    accept: '.pdf',
-  },
-  {
-    id: 'images2pdf',
-    label: 'Immagini → PDF',
-    icon: Images,
-    description: 'Converti immagini in un unico PDF',
-    multiFile: true,
-    accept: '.png,.jpg,.jpeg,.webp,.bmp,.tiff,.gif',
-  },
-  {
-    id: 'reorder',
-    label: 'Organizza PDF',
-    icon: ArrowUpDown,
-    description: 'Riordina le pagine nel tuo PDF',
-    multiFile: false,
-    accept: '.pdf',
-    needsReorder: true,
-  },
-  {
-    id: 'pagenumbers',
-    label: 'Numeri di Pagina',
-    icon: Hash,
-    description: 'Aggiungi numerazione pagine per atti e fascicoli',
-    multiFile: false,
-    accept: '.pdf',
-    needsPageNumbers: true,
-  },
-  {
-    id: 'redact',
-    label: 'Censura PDF',
-    icon: EyeOff,
-    description: 'Oscura dati sensibili con barre nere (GDPR)',
-    multiFile: false,
-    accept: '.pdf',
-    needsRedact: true,
-  },
-  {
-    id: 'secure',
-    label: 'Proteggi PDF',
-    icon: Shield,
-    description: 'Blocca copia, stampa, modifica e condivisione',
-    multiFile: false,
-    accept: '.pdf',
-    needsSecure: true,
-  },
-  {
-    id: 'unsecure',
-    label: 'Rimuovi Protezione',
-    icon: Unlock,
-    description: 'Rimuovi restrizioni da un PDF protetto',
-    multiFile: false,
-    accept: '.pdf',
-    needsUnsecurePassword: true,
-  },
+  // ── Sicurezza & Protezione (piu' importanti) ──
+  { id: 'secure', label: 'Proteggi PDF', icon: Shield, description: 'Blocca copia, stampa, modifica e condivisione', multiFile: false, accept: '.pdf', needsSecure: true, defaultOutput: 'protetto.pdf' },
+  { id: 'unsecure', label: 'Rimuovi Protezione', icon: Unlock, description: 'Rimuovi restrizioni da un PDF protetto', multiFile: false, accept: '.pdf', needsUnsecurePassword: true, defaultOutput: 'sbloccato.pdf' },
+  { id: 'redact', label: 'Censura PDF', icon: EyeOff, description: 'Oscura dati sensibili con barre nere (GDPR)', multiFile: false, accept: '.pdf', needsRedact: true, defaultOutput: 'censurato.pdf' },
+  { id: 'watermark', label: 'Watermark', icon: Stamp, description: 'Aggiungi BOZZA, RISERVATO, COPIA CONFORME', multiFile: false, accept: '.pdf', needsWatermark: true, defaultOutput: 'watermark.pdf' },
+  // ── Operazioni comuni ──
+  { id: 'merge', label: 'Unisci PDF', icon: Merge, description: 'Combina piu\' PDF in un unico documento', multiFile: true, accept: '.pdf', defaultOutput: 'unione.pdf' },
+  { id: 'compress', label: 'Comprimi PDF', icon: Minimize2, description: 'Riduci la dimensione del PDF per PEC', multiFile: false, accept: '.pdf', defaultOutput: 'compresso.pdf' },
+  { id: 'split', label: 'Dividi PDF', icon: Split, description: 'Dividi un PDF in pagine singole', multiFile: false, accept: '.pdf' },
+  { id: 'pagenumbers', label: 'Numeri di Pagina', icon: Hash, description: 'Aggiungi numerazione pagine per atti e fascicoli', multiFile: false, accept: '.pdf', needsPageNumbers: true, defaultOutput: 'numerato.pdf' },
+  // ── Modifica pagine ──
+  { id: 'extract', label: 'Estrai Pagine', icon: FileOutput, description: 'Estrai solo le pagine che ti servono', multiFile: false, accept: '.pdf', needsPages: true, defaultOutput: 'estratto.pdf' },
+  { id: 'remove', label: 'Rimuovi Pagine', icon: Scissors, description: 'Elimina pagine specifiche da un PDF', multiFile: false, accept: '.pdf', needsPages: true, defaultOutput: 'modificato.pdf' },
+  { id: 'reorder', label: 'Organizza PDF', icon: ArrowUpDown, description: 'Riordina le pagine nel tuo PDF', multiFile: false, accept: '.pdf', needsReorder: true, defaultOutput: 'riordinato.pdf' },
+  { id: 'rotate', label: 'Ruota Pagine', icon: RotateCw, description: 'Ruota le pagine di 90\u00b0, 180\u00b0 o 270\u00b0', multiFile: false, accept: '.pdf', needsRotation: true, defaultOutput: 'ruotato.pdf' },
+  // ── Conversione ──
+  { id: 'text', label: 'Estrai Testo', icon: Type, description: 'Estrai il testo da un PDF', multiFile: false, accept: '.pdf' },
+  { id: 'images2pdf', label: 'Immagini \u2192 PDF', icon: Images, description: 'Converti immagini in un unico PDF', multiFile: true, accept: '.png,.jpg,.jpeg,.webp,.bmp,.tiff,.gif', defaultOutput: 'immagini.pdf' },
 ];
+
+// Limits for images\u2192PDF tool (FIX-12)
+const IMAGES2PDF_MAX_FILES = 100;
+const IMAGES2PDF_MAX_TOTAL_BYTES = 200 * 1024 * 1024; // 200 MB
 
 const WATERMARK_PRESETS = ['BOZZA', 'RISERVATO', 'COPIA CONFORME', 'CONFIDENZIALE', 'URGENTE'];
 const ROTATION_OPTIONS = [
@@ -162,7 +70,7 @@ export default function DocumentToolsPage() {
   const [dragIdx, setDragIdx] = useState(null);
 
   // Redact state
-  const [redactAreas, setRedactAreas] = useState([{ page: 1, x: 50, y: 750, width: 200, height: 20 }]);
+  const [redactAreas, setRedactAreas] = useState([]);
 
   // Secure PDF state
   const [secNoCopy, setSecNoCopy] = useState(true);
@@ -174,10 +82,23 @@ export default function DocumentToolsPage() {
   // Unsecure password
   const [unsecurePassword, setUnsecurePassword] = useState('');
 
+  // Owner-password reveal state (FIX-2): hidden by default, auto-hides after 60s
+  const [revealOwnerPwd, setRevealOwnerPwd] = useState(false);
+
   // History
   const [history, setHistory] = useState([]);
   useEffect(() => {
     try { setHistory(JSON.parse(localStorage.getItem('lexflow_pdf_history') || '[]')); } catch { setHistory([]); }
+  }, []);
+
+  // FIX-19 STO-1: clear PDF tool history when the vault is locked, so input
+  // filenames (which can leak case context) are not persisted across sessions.
+  useEffect(() => {
+    const off = api.onVaultLocked?.(() => {
+      try { localStorage.removeItem('lexflow_pdf_history'); } catch { /* ignore */ }
+      setHistory([]);
+    });
+    return () => { try { off?.(); } catch { /* ignore */ } };
   }, []);
 
   const resetState = () => {
@@ -189,7 +110,7 @@ export default function DocumentToolsPage() {
     setProcessing(false);
     setReorderList([]);
     setDragIdx(null);
-    setRedactAreas([{ page: 1, x: 50, y: 750, width: 200, height: 20 }]);
+    setRedactAreas([]);
     setPageNumPosition('bottom-center');
     setPageNumFormat('Pag. {n} di {total}');
     setPageNumStart(1);
@@ -197,11 +118,16 @@ export default function DocumentToolsPage() {
     setUnsecurePassword('');
   };
 
+  // FIX-9 BUG-5: use a functional updater so consecutive calls don't race on stale state.
+  // FIX-19 STO-1: persist to localStorage from the same updater (single source of truth).
+  // `inputName` is already the basename (caller passes filename only, not full path) — see executeTool.
   const addToHistory = (tool, inputName, outputPath) => {
     const entry = { tool, input: inputName, output: outputPath, date: new Date().toISOString() };
-    const updated = [entry, ...history].slice(0, 50);
-    setHistory(updated);
-    try { localStorage.setItem('lexflow_pdf_history', JSON.stringify(updated)); } catch { /* ignore */ }
+    setHistory(prev => {
+      const updated = [entry, ...prev].slice(0, 50);
+      try { localStorage.setItem('lexflow_pdf_history', JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
   };
 
   const selectTool = (tool) => {
@@ -237,11 +163,16 @@ export default function DocumentToolsPage() {
           try {
             const info = await api.pdfInfo(paths[paths.length - 1]);
             setPdfInfo(info);
-          } catch { /* ignore */ }
+          } catch {
+            // FIX-7 BUG-3: surface PDF parse errors instead of silently swallowing
+            setPdfInfo(null);
+            toast.error('PDF illeggibile o danneggiato.');
+          }
         }
       }
     } else {
-      const result = await api.selectFile();
+      const exts = tool.accept.split(',').map(e => e.replace('.', '').trim());
+      const result = await api.selectFile(exts);
       const path = toPath(result);
       if (path) {
         setFiles([path]);
@@ -252,7 +183,11 @@ export default function DocumentToolsPage() {
             if (tool.needsReorder && info?.pages) {
               setReorderList(Array.from({ length: info.pages }, (_, i) => i + 1));
             }
-          } catch { /* ignore */ }
+          } catch {
+            // FIX-7 BUG-3
+            setPdfInfo(null);
+            toast.error('PDF illeggibile o danneggiato.');
+          }
         }
       }
     }
@@ -262,25 +197,64 @@ export default function DocumentToolsPage() {
     setFiles(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const parsePages = (input, total) => {
-    const pages = [];
+  // FIX-10 VAL-1: parser that also returns invalid tokens for inline diagnostics.
+  const parsePagesWithDiag = (input, total) => {
+    const valid = [];
+    const invalid = [];
+    if (!input?.trim()) return { valid: [], invalid: [] };
     for (const part of input.split(',')) {
       const trimmed = part.trim();
+      if (!trimmed) continue;
       if (trimmed.includes('-')) {
-        const [a, b] = trimmed.split('-').map(Number);
-        if (!isNaN(a) && !isNaN(b)) {
-          for (let i = Math.max(1, a); i <= Math.min(total, b); i++) pages.push(i);
+        const [a, b] = trimmed.split('-').map(s => s.trim());
+        const ai = parseInt(a, 10);
+        const bi = parseInt(b, 10);
+        if (Number.isNaN(ai) || Number.isNaN(bi) || ai > bi || ai < 1 || bi > total) {
+          invalid.push(trimmed);
+          continue;
         }
+        for (let i = Math.max(1, ai); i <= Math.min(total, bi); i++) valid.push(i);
       } else {
-        const n = parseInt(trimmed);
-        if (!isNaN(n) && n >= 1 && n <= total) pages.push(n);
+        const n = parseInt(trimmed, 10);
+        if (Number.isNaN(n) || n < 1 || n > total) {
+          invalid.push(trimmed);
+        } else {
+          valid.push(n);
+        }
       }
     }
-    return [...new Set(pages)].sort((a, b) => a - b);
+    return {
+      valid: [...new Set(valid)].sort((a, b) => a - b),
+      invalid,
+    };
+  };
+
+  // Backwards-compatible wrapper used inside executeTool.
+  const parsePages = (input, total) => parsePagesWithDiag(input, total).valid;
+
+  // FIX-8 BUG-4: clamp a page-number input to [1, total].
+  const setPageNumStartClamped = (val) => {
+    const n = Math.max(1, parseInt(val, 10) || 1);
+    setPageNumStart(Math.min(n, pdfInfo?.pages ?? n));
+  };
+
+  // Live preview of valid/invalid tokens for the current pageInput.
+  const pageDiag = useMemo(() => {
+    if (!pdfInfo || !pageInput) return { valid: [], invalid: [] };
+    return parsePagesWithDiag(pageInput, pdfInfo.pages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageInput, pdfInfo?.pages]);
+
+  // FIX-5 BUG-1 + FIX-6 BUG-2: helper to mark a save-dialog cancellation
+  // with a neutral (not-error) banner and a small toast.
+  const markCancelled = () => {
+    setResult({ success: null, message: 'Operazione annullata.' });
+    toast('Annullato', { icon: 'ℹ️' });
   };
 
   const executeTool = async () => {
     if (files.length === 0) return;
+    const tool = TOOLS.find(t => t.id === activeTool);
     setProcessing(true);
     setResult(null);
     setExtractedText(null);
@@ -291,15 +265,15 @@ export default function DocumentToolsPage() {
       switch (activeTool) {
         case 'merge': {
           if (files.length < 2) { setResult({ success: false, message: 'Servono almeno 2 file.' }); break; }
-          const out = await api.selectSavePath('unione.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.mergePdfs(files, out);
           setResult(res);
           break;
         }
         case 'split': {
           const dir = await api.selectFolder();
-          if (!dir) break;
+          if (!dir) { markCancelled(); break; }
           res = await api.splitPdf(files[0], dir);
           setResult(res);
           break;
@@ -308,8 +282,8 @@ export default function DocumentToolsPage() {
           if (!pdfInfo || !pageInput) break;
           const pages = parsePages(pageInput, pdfInfo.pages);
           if (pages.length === 0) { setResult({ success: false, message: 'Nessuna pagina valida.' }); break; }
-          const out = await api.selectSavePath('modificato.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.removePages(files[0], out, pages);
           setResult(res);
           break;
@@ -318,29 +292,29 @@ export default function DocumentToolsPage() {
           if (!pdfInfo || !pageInput) break;
           const pages = parsePages(pageInput, pdfInfo.pages);
           if (pages.length === 0) { setResult({ success: false, message: 'Nessuna pagina valida.' }); break; }
-          const out = await api.selectSavePath('estratto.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.extractPages(files[0], out, pages);
           setResult(res);
           break;
         }
         case 'rotate': {
-          const out = await api.selectSavePath('ruotato.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.rotatePdf(files[0], out, rotation, null);
           setResult(res);
           break;
         }
         case 'compress': {
-          const out = await api.selectSavePath('compresso.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.compressPdf(files[0], out);
           setResult(res);
           break;
         }
         case 'watermark': {
-          const out = await api.selectSavePath('watermark.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.addWatermark(files[0], out, watermarkText, watermarkOpacity, null);
           setResult(res);
           break;
@@ -352,38 +326,43 @@ export default function DocumentToolsPage() {
           break;
         }
         case 'images2pdf': {
-          const out = await api.selectSavePath('immagini.pdf');
-          if (!out) break;
+          // FIX-12 VAL-3: hard caps on file count + total bytes (running counter shown in UI).
+          if (files.length > IMAGES2PDF_MAX_FILES) {
+            setResult({ success: false, message: `Massimo ${IMAGES2PDF_MAX_FILES} immagini per conversione.` });
+            break;
+          }
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.imagesToPdf(files, out);
           setResult(res);
           break;
         }
         case 'reorder': {
           if (reorderList.length === 0) { setResult({ success: false, message: 'Nessun ordine specificato.' }); break; }
-          const out = await api.selectSavePath('riordinato.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.reorderPages(files[0], out, reorderList);
           setResult(res);
           break;
         }
         case 'pagenumbers': {
-          const out = await api.selectSavePath('numerato.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.addPageNumbers(files[0], out, pageNumPosition, pageNumFormat, pageNumStart, null);
           setResult(res);
           break;
         }
         case 'redact': {
           if (redactAreas.length === 0) { setResult({ success: false, message: 'Nessuna area da censurare.' }); break; }
-          const out = await api.selectSavePath('censurato.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.redactPdf(files[0], out, redactAreas);
           setResult(res);
           break;
         }
         case 'secure': {
-          const out = await api.selectSavePath('protetto.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.securePdf(files[0], out, {
             noCopy: secNoCopy,
             noPrint: secNoPrint,
@@ -395,8 +374,8 @@ export default function DocumentToolsPage() {
           break;
         }
         case 'unsecure': {
-          const out = await api.selectSavePath('sbloccato.pdf');
-          if (!out) break;
+          const out = await api.selectSavePath(tool.defaultOutput);
+          if (!out) { markCancelled(); break; }
           res = await api.unsecurePdf(files[0], out, unsecurePassword || null);
           setResult(res);
           break;
@@ -404,17 +383,35 @@ export default function DocumentToolsPage() {
       }
       // Save to history if successful
       if (res?.success && res?.output_path) {
+        // Store only the basename (FIX-19 STO-1) to avoid persisting user paths in localStorage.
         const inputName = (typeof files[0] === 'string' ? files[0] : '').split('/').pop() || 'file';
         addToHistory(activeTool, inputName, res.output_path);
       }
     } catch (err) {
       setResult({ success: false, message: err?.message || String(err) });
     } finally {
+      // FIX-1 SEC-2: passwords must NEVER linger in React state once a tool run finishes,
+      // regardless of success/failure. Clearing here also covers the cancellation path.
       setProcessing(false);
+      setSecPassword('');
+      setUnsecurePassword('');
     }
   };
 
-  const currentTool = TOOLS.find(t => t.id === activeTool);
+  // FIX-17 PERF-1: avoid re-running TOOLS.find on every render
+  const currentTool = useMemo(() => TOOLS.find(t => t.id === activeTool), [activeTool]);
+
+  // FIX-2 SEC-2: auto-hide the owner password 60 seconds after it appears,
+  // and reset the reveal toggle whenever a new password is shown.
+  useEffect(() => {
+    if (!result?.details?.owner_password) {
+      setRevealOwnerPwd(false);
+      return;
+    }
+    setRevealOwnerPwd(false);
+    const id = setTimeout(() => setRevealOwnerPwd(false), 60000);
+    return () => clearTimeout(id);
+  }, [result?.details?.owner_password]);
 
   // ─── Tool Grid (no tool selected) ────────────────────────
   if (!activeTool) {
@@ -423,7 +420,7 @@ export default function DocumentToolsPage() {
         {/* Header */}
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
-            <FileText size={28} className="text-primary" />
+            <FileText size={28} className="text-primary" aria-hidden="true" />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-text tracking-tight">Strumenti PDF</h1>
@@ -443,7 +440,7 @@ export default function DocumentToolsPage() {
               >
                 <div className="flex items-start gap-4">
                   <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center border border-primary/20 group-hover:bg-primary/20 transition-colors">
-                    <Icon size={20} className="text-primary" />
+                    <Icon size={20} className="text-primary" aria-hidden="true" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-bold text-text">{tool.label}</h3>
@@ -459,7 +456,7 @@ export default function DocumentToolsPage() {
         {history.length > 0 && (
           <div className="mt-8">
             <div className="flex items-center gap-2 mb-3">
-              <Clock size={14} className="text-text-dim" />
+              <Clock size={14} className="text-text-dim" aria-hidden="true" />
               <h3 className="text-2xs font-black text-text-dim uppercase tracking-label">Ultimi file modificati</h3>
             </div>
             <div className="space-y-1.5">
@@ -488,12 +485,13 @@ export default function DocumentToolsPage() {
       <div className="flex items-center gap-4">
         <button
           onClick={() => { setActiveTool(null); resetState(); }}
-          className="w-10 h-10 rounded-xl bg-card hover:bg-card-hover flex items-center justify-center transition-colors border border-border/30"
+          aria-label="Torna agli strumenti"
+          className="min-w-11 min-h-11 rounded-xl bg-card hover:bg-card-hover flex items-center justify-center transition-colors border border-border/30"
         >
-          <X size={18} className="text-text-dim" />
+          <X size={18} className="text-text-dim" aria-hidden="true" />
         </button>
         <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
-          <Icon size={24} className="text-primary" />
+          <Icon size={24} className="text-primary" aria-hidden="true" />
         </div>
         <div>
           <h1 className="text-xl font-bold text-text">{currentTool.label}</h1>
@@ -511,7 +509,7 @@ export default function DocumentToolsPage() {
             onClick={handleFileSelect}
             className="btn-primary px-5 py-2.5 text-xs font-bold uppercase tracking-widest flex items-center gap-2"
           >
-            <Upload size={14} /> Sfoglia
+            <Upload size={14} aria-hidden="true" /> Sfoglia
           </button>
         </div>
 
@@ -520,11 +518,15 @@ export default function DocumentToolsPage() {
           <div className="space-y-2">
             {files.map((f, i) => (
               <div key={i} className="flex items-center gap-3 bg-card rounded-xl px-4 py-3 border border-border/20">
-                <FileText size={16} className="text-primary flex-shrink-0" />
+                <FileText size={16} className="text-primary flex-shrink-0" aria-hidden="true" />
                 <span className="text-xs text-text truncate flex-1">{(typeof f === 'string' ? f : f?.path || f?.name || '').split('/').pop()}</span>
                 {currentTool.multiFile && (
-                  <button onClick={() => removeFile(i)} className="text-text-dim hover:text-danger transition-colors">
-                    <X size={14} />
+                  <button
+                    onClick={() => removeFile(i)}
+                    aria-label={`Rimuovi ${(typeof f === 'string' ? f : f?.path || f?.name || '').split('/').pop()}`}
+                    className="text-text-dim hover:text-danger transition-colors min-w-11 min-h-11 flex items-center justify-center"
+                  >
+                    <X size={14} aria-hidden="true" />
                   </button>
                 )}
               </div>
@@ -535,7 +537,7 @@ export default function DocumentToolsPage() {
         {/* PDF Info */}
         {pdfInfo && (
           <div className="flex items-center gap-4 text-xs text-text-dim bg-card rounded-xl px-4 py-3 border border-border/20">
-            <Info size={14} className="text-primary flex-shrink-0" />
+            <Info size={14} className="text-primary flex-shrink-0" aria-hidden="true" />
             <span>{pdfInfo.pages} pagine</span>
             <span className="opacity-40">|</span>
             <span>{pdfInfo.file_size_label}</span>
@@ -551,28 +553,42 @@ export default function DocumentToolsPage() {
         {/* Tool-specific Options */}
         {(currentTool.needsPages) && pdfInfo && (
           <div className="space-y-2">
-            <label className="text-xs font-bold text-text-dim uppercase tracking-widest">
+            <label className="text-xs font-bold text-text-dim uppercase tracking-widest" htmlFor="pdf-pages-input">
               Pagine ({activeTool === 'remove' ? 'da rimuovere' : 'da estrarre'})
             </label>
             <input
+              id="pdf-pages-input"
               type="text"
               value={pageInput}
               onChange={e => setPageInput(e.target.value)}
               placeholder="Es: 1,3,5-8,12"
+              aria-describedby="pdf-pages-help"
               className="input-field w-full px-4 py-3 rounded-xl bg-input border-border text-text text-sm"
             />
-            <p className="text-2xs text-text-dim">Usa virgole per singole pagine, trattino per intervalli. Totale: {pdfInfo.pages} pagine.</p>
+            <p id="pdf-pages-help" className="text-2xs text-text-dim">Usa virgole per singole pagine, trattino per intervalli. Totale: {pdfInfo.pages} pagine.</p>
+            {/* FIX-10 VAL-1: live preview of valid/invalid tokens */}
+            {pageDiag.invalid.length > 0 && (
+              <p className="text-2xs text-warning">
+                Token non validi: {pageDiag.invalid.join(', ')}
+              </p>
+            )}
+            {pageDiag.valid.length > 0 && (
+              <p className="text-2xs text-text-dim">
+                Pagine selezionate ({pageDiag.valid.length}): {pageDiag.valid.join(', ')}
+              </p>
+            )}
           </div>
         )}
 
         {currentTool.needsRotation && (
           <div className="space-y-2">
             <label className="text-xs font-bold text-text-dim uppercase tracking-widest">Rotazione</label>
-            <div className="flex gap-2">
+            <div className="flex gap-2" role="group" aria-label="Rotazione">
               {ROTATION_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => setRotation(opt.value)}
+                  aria-pressed={rotation === opt.value}
                   className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-colors border ${
                     rotation === opt.value
                       ? 'bg-primary/20 border-primary/40 text-primary'
@@ -590,11 +606,12 @@ export default function DocumentToolsPage() {
           <div className="space-y-3">
             <div className="space-y-2">
               <label className="text-xs font-bold text-text-dim uppercase tracking-widest">Testo watermark</label>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap" role="group" aria-label="Preset watermark">
                 {WATERMARK_PRESETS.map(preset => (
                   <button
                     key={preset}
                     onClick={() => setWatermarkText(preset)}
+                    aria-pressed={watermarkText === preset}
                     className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors border ${
                       watermarkText === preset
                         ? 'bg-primary/20 border-primary/40 text-primary'
@@ -614,16 +631,18 @@ export default function DocumentToolsPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-text-dim uppercase tracking-widest">
+              <label className="text-xs font-bold text-text-dim uppercase tracking-widest" htmlFor="watermark-opacity">
                 Opacità: {Math.round(watermarkOpacity * 100)}%
               </label>
               <input
+                id="watermark-opacity"
                 type="range"
                 min="0.05"
                 max="0.5"
                 step="0.05"
                 value={watermarkOpacity}
                 onChange={e => setWatermarkOpacity(parseFloat(e.target.value))}
+                aria-valuetext={`${Math.round(watermarkOpacity * 100)} percento`}
                 className="w-full accent-primary"
               />
             </div>
@@ -634,9 +653,9 @@ export default function DocumentToolsPage() {
         {currentTool.needsReorder && pdfInfo && reorderList.length > 0 && (
           <div className="space-y-2">
             <label className="text-xs font-bold text-text-dim uppercase tracking-widest">
-              Ordine pagine (trascina per riordinare)
+              Ordine pagine (trascina o usa le frecce per riordinare)
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" role="list">
               {reorderList.map((pageNum, idx) => (
                 <div
                   key={idx}
@@ -645,21 +664,60 @@ export default function DocumentToolsPage() {
                   onDragOver={e => e.preventDefault()}
                   onDrop={() => {
                     if (dragIdx === null || dragIdx === idx) return;
-                    const next = [...reorderList];
-                    const [moved] = next.splice(dragIdx, 1);
-                    next.splice(idx, 0, moved);
-                    setReorderList(next);
+                    setReorderList(prev => {
+                      const next = [...prev];
+                      const [moved] = next.splice(dragIdx, 1);
+                      next.splice(idx, 0, moved);
+                      return next;
+                    });
                     setDragIdx(null);
                   }}
-                  className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold border cursor-grab active:cursor-grabbing transition-colors ${
+                  role="listitem"
+                  aria-label={`Pagina ${pageNum}, posizione ${idx + 1} di ${reorderList.length}`}
+                  className={`group flex items-center gap-1 rounded-xl border transition-colors ${
                     dragIdx === idx ? 'bg-primary/30 border-primary text-primary' : 'bg-card border-border/20 text-text hover:border-primary/30'
                   }`}
                 >
-                  {pageNum}
+                  {/* FIX-14 A11Y-2: keyboard reorder buttons (44x44 touch target) */}
+                  <button
+                    type="button"
+                    aria-label={`Sposta pagina ${pageNum} indietro`}
+                    disabled={idx === 0}
+                    onClick={() => {
+                      setReorderList(prev => {
+                        if (idx === 0) return prev;
+                        const next = [...prev];
+                        [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                        return next;
+                      });
+                    }}
+                    className="min-w-11 min-h-11 flex items-center justify-center rounded-l-xl hover:bg-primary/10 disabled:opacity-30"
+                  >
+                    <ChevronUp size={14} aria-hidden="true" />
+                  </button>
+                  <span className="cursor-grab active:cursor-grabbing min-w-8 text-center text-sm font-bold select-none">
+                    {pageNum}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Sposta pagina ${pageNum} avanti`}
+                    disabled={idx === reorderList.length - 1}
+                    onClick={() => {
+                      setReorderList(prev => {
+                        if (idx === prev.length - 1) return prev;
+                        const next = [...prev];
+                        [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                        return next;
+                      });
+                    }}
+                    className="min-w-11 min-h-11 flex items-center justify-center rounded-r-xl hover:bg-primary/10 disabled:opacity-30"
+                  >
+                    <ChevronDown size={14} aria-hidden="true" />
+                  </button>
                 </div>
               ))}
             </div>
-            <p className="text-2xs text-text-dim">Trascina i numeri per cambiare l'ordine. Totale: {pdfInfo.pages} pagine.</p>
+            <p className="text-2xs text-text-dim">Trascina i numeri o usa le frecce per cambiare l'ordine. Totale: {pdfInfo.pages} pagine.</p>
           </div>
         )}
 
@@ -668,7 +726,7 @@ export default function DocumentToolsPage() {
           <div className="space-y-3">
             <div className="space-y-2">
               <label className="text-xs font-bold text-text-dim uppercase tracking-widest">Posizione</label>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Posizione numero di pagina">
                 {[
                   { v: 'bottom-center', l: 'Basso centro' },
                   { v: 'bottom-right', l: 'Basso destra' },
@@ -680,6 +738,7 @@ export default function DocumentToolsPage() {
                   <button
                     key={opt.v}
                     onClick={() => setPageNumPosition(opt.v)}
+                    aria-pressed={pageNumPosition === opt.v}
                     className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors border ${
                       pageNumPosition === opt.v
                         ? 'bg-primary/20 border-primary/40 text-primary'
@@ -693,7 +752,7 @@ export default function DocumentToolsPage() {
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-text-dim uppercase tracking-widest">Formato</label>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Formato numero di pagina">
                 {[
                   { v: '{n}', l: '1, 2, 3...' },
                   { v: 'Pag. {n}', l: 'Pag. 1' },
@@ -703,6 +762,7 @@ export default function DocumentToolsPage() {
                   <button
                     key={opt.v}
                     onClick={() => setPageNumFormat(opt.v)}
+                    aria-pressed={pageNumFormat === opt.v}
                     className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors border ${
                       pageNumFormat === opt.v
                         ? 'bg-primary/20 border-primary/40 text-primary'
@@ -715,63 +775,29 @@ export default function DocumentToolsPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-text-dim uppercase tracking-widest">Inizia da</label>
+              <label className="text-xs font-bold text-text-dim uppercase tracking-widest" htmlFor="pdf-pagenum-start">Inizia da</label>
               <input
+                id="pdf-pagenum-start"
                 type="number"
                 min="1"
+                max={pdfInfo.pages}
                 value={pageNumStart}
-                onChange={e => setPageNumStart(Math.max(1, parseInt(e.target.value) || 1))}
+                onChange={e => setPageNumStartClamped(e.target.value)}
                 className="input-field w-24 px-4 py-3 rounded-xl bg-input border-border text-text text-sm"
               />
+              <p className="text-2xs text-text-dim">Min 1 — max {pdfInfo.pages}.</p>
             </div>
           </div>
         )}
 
-        {/* Redact Options */}
-        {currentTool.needsRedact && pdfInfo && (
-          <div className="space-y-3">
-            <label className="text-xs font-bold text-text-dim uppercase tracking-widest">
-              Aree da censurare (coordinate PDF: origine in basso a sinistra)
-            </label>
-            {redactAreas.map((area, idx) => (
-              <div key={idx} className="flex items-center gap-2 flex-wrap bg-card rounded-xl px-3 py-2 border border-border/20">
-                <span className="text-2xs text-text-dim w-8">#{idx + 1}</span>
-                <label className="text-2xs text-text-dim">Pag</label>
-                <input type="number" min="1" max={pdfInfo.pages} value={area.page}
-                  onChange={e => { const n = [...redactAreas]; n[idx] = { ...n[idx], page: parseInt(e.target.value) || 1 }; setRedactAreas(n); }}
-                  className="input-field w-16 px-2 py-1.5 rounded-lg bg-input border-border text-text text-xs" />
-                <label className="text-2xs text-text-dim">X</label>
-                <input type="number" value={area.x}
-                  onChange={e => { const n = [...redactAreas]; n[idx] = { ...n[idx], x: parseFloat(e.target.value) || 0 }; setRedactAreas(n); }}
-                  className="input-field w-16 px-2 py-1.5 rounded-lg bg-input border-border text-text text-xs" />
-                <label className="text-2xs text-text-dim">Y</label>
-                <input type="number" value={area.y}
-                  onChange={e => { const n = [...redactAreas]; n[idx] = { ...n[idx], y: parseFloat(e.target.value) || 0 }; setRedactAreas(n); }}
-                  className="input-field w-16 px-2 py-1.5 rounded-lg bg-input border-border text-text text-xs" />
-                <label className="text-2xs text-text-dim">L</label>
-                <input type="number" value={area.width}
-                  onChange={e => { const n = [...redactAreas]; n[idx] = { ...n[idx], width: parseFloat(e.target.value) || 0 }; setRedactAreas(n); }}
-                  className="input-field w-16 px-2 py-1.5 rounded-lg bg-input border-border text-text text-xs" />
-                <label className="text-2xs text-text-dim">A</label>
-                <input type="number" value={area.height}
-                  onChange={e => { const n = [...redactAreas]; n[idx] = { ...n[idx], height: parseFloat(e.target.value) || 0 }; setRedactAreas(n); }}
-                  className="input-field w-16 px-2 py-1.5 rounded-lg bg-input border-border text-text text-xs" />
-                {redactAreas.length > 1 && (
-                  <button onClick={() => setRedactAreas(redactAreas.filter((_, i) => i !== idx))}
-                    className="text-text-dim hover:text-danger transition-colors ml-auto">
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            ))}
-            <button
-              onClick={() => setRedactAreas([...redactAreas, { page: 1, x: 50, y: 700, width: 200, height: 20 }])}
-              className="text-xs text-primary hover:underline font-bold"
-            >
-              + Aggiungi area
-            </button>
-            <p className="text-2xs text-text-dim">Le coordinate usano il sistema PDF: X da sinistra, Y dal basso. L = larghezza, A = altezza in punti.</p>
-          </div>
+        {/* Redact Options — Visual PDF Viewer */}
+        {currentTool.needsRedact && pdfInfo && files[0] && (
+          <PdfRedactViewer
+            filePath={files[0]}
+            redactAreas={redactAreas}
+            onRedactAreasChange={setRedactAreas}
+            totalPages={pdfInfo.pages}
+          />
         )}
 
         {/* Secure PDF Options */}
@@ -811,38 +837,59 @@ export default function DocumentToolsPage() {
           </div>
         )}
 
-        {/* Execute Button */}
+        {/* FIX-12 VAL-3: running counter + cap warning for images→PDF */}
+        {currentTool.id === 'images2pdf' && files.length > 0 && (
+          <p className={`text-2xs ${files.length > IMAGES2PDF_MAX_FILES ? 'text-danger' : 'text-text-dim'}`}>
+            {files.length} / {IMAGES2PDF_MAX_FILES} immagini selezionate
+            {files.length > IMAGES2PDF_MAX_FILES && ' — supera il limite'}
+          </p>
+        )}
+
+        {/* Execute Button — FIX-11 VAL-2: also disable merge when < 2 files */}
         <button
           onClick={executeTool}
-          disabled={files.length === 0 || processing}
+          disabled={
+            files.length === 0
+            || processing
+            || (currentTool.id === 'merge' && files.length < 2)
+            || (currentTool.id === 'images2pdf' && files.length > IMAGES2PDF_MAX_FILES)
+          }
           className="btn-primary w-full py-4 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-3 disabled:opacity-40"
         >
           {processing ? (
             <>
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
               Elaborazione...
             </>
           ) : (
             <>
-              <Download size={16} />
+              <Download size={16} aria-hidden="true" />
               {activeTool === 'text' ? 'Estrai Testo' : 'Esegui'}
             </>
           )}
         </button>
       </div>
 
-      {/* Result */}
+      {/* Result — FIX-5 BUG-1: tri-state (success / null=cancelled / false=error) */}
       {result && (
         <div className={`glass-card p-5 flex items-start gap-4 border ${
-          result.success ? 'border-success/30' : 'border-danger/30'
-        }`}>
-          {result.success ? (
-            <Check size={20} className="text-success flex-shrink-0 mt-0.5" />
+          result.success === true ? 'border-success/30' :
+          result.success === null ? 'border-border/30' :
+          'border-danger/30'
+        }`} role="status">
+          {result.success === true ? (
+            <Check size={20} className="text-success flex-shrink-0 mt-0.5" aria-hidden="true" />
+          ) : result.success === null ? (
+            <Info size={20} className="text-text-dim flex-shrink-0 mt-0.5" aria-hidden="true" />
           ) : (
-            <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
+            <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" aria-hidden="true" />
           )}
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-semibold ${result.success ? 'text-success' : 'text-danger'}`}>
+            <p className={`text-sm font-semibold ${
+              result.success === true ? 'text-success' :
+              result.success === null ? 'text-text-dim' :
+              'text-danger'
+            }`}>
               {result.message}
             </p>
             {result.output_path && (
@@ -858,6 +905,45 @@ export default function DocumentToolsPage() {
                 Risparmiato {result.details.saved_percent}% ({(result.details.saved_bytes / 1024).toFixed(0)} KB)
               </p>
             )}
+            {result.details?.owner_password && (
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-2xs text-text-dim">Password proprietario:</span>
+                  {/* FIX-2 SEC-2: hidden by default, reveal toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setRevealOwnerPwd(v => !v)}
+                    aria-label="Mostra/nascondi owner password"
+                    aria-pressed={revealOwnerPwd}
+                    className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-md hover:bg-card/50 text-text-dim hover:text-text transition-colors"
+                  >
+                    {revealOwnerPwd ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
+                  </button>
+                  <code className="text-xs bg-input px-2 py-1 rounded border border-border/30 text-text font-mono">
+                    {revealOwnerPwd ? result.details.owner_password : '•'.repeat(16)}
+                  </code>
+                  {/* FIX-3 SEC-3: secureCopy auto-clears clipboard at ~30s */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await secureCopy(result.details.owner_password);
+                        toast.success('Password copiata (cancellata automaticamente fra 30s)');
+                      } catch {
+                        toast.error('Impossibile copiare la password.');
+                      }
+                    }}
+                    className="text-2xs text-primary hover:underline font-bold"
+                  >
+                    Copia
+                  </button>
+                </div>
+                <small className="text-2xs text-text-dim block">
+                  La password verrà nascosta automaticamente fra 60 secondi.
+                  Conservala in un password manager — non sarà mostrata di nuovo.
+                </small>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -867,8 +953,16 @@ export default function DocumentToolsPage() {
         <div className="glass-card p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-text">Testo estratto</h3>
+            {/* FIX-3 SEC-3: secureCopy with auto-clear */}
             <button
-              onClick={() => navigator.clipboard.writeText(extractedText)}
+              onClick={async () => {
+                try {
+                  await secureCopy(extractedText);
+                  toast.success('Testo copiato (cancellato automaticamente fra 30s)');
+                } catch {
+                  toast.error('Impossibile copiare il testo.');
+                }
+              }}
               className="text-xs text-primary hover:underline font-bold"
             >
               Copia tutto

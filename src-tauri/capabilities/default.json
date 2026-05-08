@@ -2,6 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "LexFlow default capabilities — Maximum security, zero network access",
+  "_audit_BE-5": "Capability scope hardening (audit-report.md HIGH F3 / BE-5). Each shell:allow-execute entry is scoped to a specific qpdf or typst invocation pattern actually used by src-tauri/src/doc_tools.rs. Validators reject leading '-' in path slots so file paths cannot be smuggled as flags. Backend already canonicalises paths (validate_input_path / validate_output_path), but defense-in-depth requires capability-level enforcement. DO NOT widen these without security review.",
+  "_audit_path_validator": "Path slots use ^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$ — alphanumerics, '/', '.', '_', '-', ':', '\\\\', space. Length cap 4096. Rejects newlines, control chars, shell metacharacters ($, ;, |, &, `, *, ?, !, <, >, etc.) and any leading dash.",
+  "_audit_pagespec_validator": "Page-spec slots use ^[0-9,zr\\-]{1,1024}$ — digits, comma, 'z' (last-page sentinel), 'r' (reverse), '-' (range). Used for qpdf --pages and --rotate ranges.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -27,28 +30,114 @@
     "notification:allow-permission-state",
     {
       "identifier": "shell:allow-execute",
+      "_audit_purpose": "Sidecar invocations: typst (PDF generation from .typ source) + qpdf (PDF transforms). NO other binaries permitted. NO arbitrary shell commands.",
       "allow": [
         {
+          "_audit_mode": "typst compile <input.typ> <output.pdf> --font-path <dir>  — used by images_to_pdf and any template that needs Libertinus Serif",
           "name": "binaries/typst",
           "sidecar": true,
           "args": [
             "compile",
-            { "validator": "\\S+" },
-            { "validator": "\\S+" },
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" },
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" },
             "--font-path",
-            { "validator": "\\S+" }
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" }
           ]
         },
         {
+          "_audit_mode": "typst compile <input.typ> <output.pdf>  — used by add_watermark, add_page_numbers, redact_pdf (no font-path needed)",
           "name": "binaries/typst",
           "sidecar": true,
           "args": [
             "compile",
-            { "validator": "\\S+" },
-            { "validator": "\\S+" }
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" },
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" }
           ]
         },
         {
+          "_audit_mode": "qpdf --show-npages <input>  — used by pdf_info, add_watermark, add_page_numbers, redact_pdf for page count",
+          "name": "binaries/qpdf",
+          "sidecar": true,
+          "args": [
+            "--show-npages",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" }
+          ]
+        },
+        {
+          "_audit_mode": "qpdf --show-encryption <input>  — reserved for future use; harmless read-only inspection",
+          "name": "binaries/qpdf",
+          "sidecar": true,
+          "args": [
+            "--show-encryption",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" }
+          ]
+        },
+        {
+          "_audit_mode": "qpdf --empty --pages <input> <pagespec> -- -- <output>  — used by remove_pages, extract_pages (split/keep specific pages)",
+          "name": "binaries/qpdf",
+          "sidecar": true,
+          "args": [
+            "--empty",
+            "--pages",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" },
+            { "validator": "^[0-9,zr\\-]{1,1024}$" },
+            "--",
+            "--",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" }
+          ]
+        },
+        {
+          "_audit_mode": "qpdf <input> --stream-data=compress --recompress-flate --object-streams=generate --remove-unreferenced-resources=yes -- <output>  — used by compress_pdf",
+          "name": "binaries/qpdf",
+          "sidecar": true,
+          "args": [
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" },
+            "--stream-data=compress",
+            "--recompress-flate",
+            "--object-streams=generate",
+            "--remove-unreferenced-resources=yes",
+            "--",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" }
+          ]
+        },
+        {
+          "_audit_mode": "qpdf <input> --rotate=+<deg>:<pagespec> -- <output>  — used by rotate_pdf. The combined --rotate=+N:spec arg is matched as a single token; validator allows only digits, ':', ',', '-', '+', 'z', 'r' after the literal --rotate= prefix.",
+          "name": "binaries/qpdf",
+          "sidecar": true,
+          "args": [
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" },
+            { "validator": "^--rotate=\\+(0|90|180|270):[0-9,zr\\-]{1,1024}$" },
+            "--",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" }
+          ]
+        },
+        {
+          "_audit_mode": "qpdf <input> --overlay <overlay.pdf> -- -- <output>  — used by add_watermark, add_page_numbers, redact_pdf (overlay step). Note the literal '-- --' separator (qpdf overlay delimiter then qpdf positional delimiter).",
+          "name": "binaries/qpdf",
+          "sidecar": true,
+          "args": [
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" },
+            "--overlay",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" },
+            "--",
+            "--",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" }
+          ]
+        },
+        {
+          "_audit_mode": "qpdf --decrypt <input> -- <output>  — used by unsecure_pdf when no password is supplied",
+          "name": "binaries/qpdf",
+          "sidecar": true,
+          "args": [
+            "--decrypt",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" },
+            "--",
+            { "validator": "^[A-Za-z0-9/._\\-:\\\\ ]{1,4096}$" }
+          ]
+        },
+        {
+          "_audit_TODO_BE-5_encrypt": "TODO: enumerate qpdf --encrypt invocations (used by secure_pdf and redact_pdf step 5). The --encrypt syntax embeds a variable-length owner password (LF_<16hex> or user-supplied) and N flags whose count varies (--extract, --print, --modify, --assemble, --annotate, --form, --extract+--print+--modify only for redact). Backend already generates the owner password server-side from rand::random and validates paths. Until per-pattern entries are added, fall back to args:true scoped to qpdf only.",
+          "_audit_TODO_BE-5_decrypt_pwd": "TODO: enumerate qpdf --password <pwd> --decrypt <input> -- <output>. Password is user-supplied — needs a length-bounded validator that does NOT leak via shell. See BE-4 (password-file fix) which may obviate this entry.",
           "name": "binaries/qpdf",
           "sidecar": true,
           "args": true

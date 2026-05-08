@@ -6,6 +6,10 @@ import App from './App.jsx'
 import ErrorBoundary from './ErrorBoundary'
 
 const root = document.getElementById('root');
+if (!root) {
+  // Errore catastrofico — il template index.html è rotto
+  throw new Error('Root element #root not found in index.html');
+}
 
 createRoot(root).render(
   <StrictMode>

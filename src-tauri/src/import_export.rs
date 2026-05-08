@@ -37,7 +37,9 @@ pub(crate) async fn export_vault(
                 .map_err(|e| e.to_string())?;
             if vault_engine::open_vault(&pwd, &raw).is_err() {
                 zeroize_password(pwd);
-                return Ok(json!({"success": false, "error": "Password errata."}));
+                // SEC-IE-4: surface auth failure as Err so the FE error pipeline
+                // (rate-limit, audit) is consistent with other vault commands.
+                return Err("Password errata.".into());
             }
         }
     } else {
@@ -56,7 +58,8 @@ pub(crate) async fn export_vault(
                 .unwrap_or_default();
             if !verify_hash_matches(&vault_key_check, &stored_verify) {
                 zeroize_password(pwd);
-                return Ok(json!({"success": false, "error": "Password errata."}));
+                // SEC-IE-4: surface auth failure as Err.
+                return Err("Password errata.".into());
             }
         }
     }
@@ -66,6 +69,10 @@ pub(crate) async fn export_vault(
 
     // Export format: [32-byte salt] [v2-encrypted monolithic JSON]
     // This ensures backups are portable across v2 and v4 installations.
+    // TODO(audit:SEC-IE-1): preserve V4/V6 format on export to retain
+    // per-record HMAC and rotation metadata. The current monolithic v2-style
+    // backup loses the per-record integrity tags introduced in V4 and the
+    // KDF rotation metadata used by V6.
     let mut salt = vec![0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
     let key = derive_secure_key(&pwd, &salt)?;
@@ -150,6 +157,25 @@ pub(crate) async fn import_vault(
             serde_json::from_slice(&decrypted).map_err(|_| "Struttura backup non valida")?;
         if val.get("practices").is_none() && val.get("agenda").is_none() {
             return Err("Il file non contiene dati LexFlow validi".into());
+        }
+        // SEC-IE-2: validate decrypted JSON against the same domain validators
+        // used on save_*. Refuse the import if any per-domain shape is wrong —
+        // this prevents a malicious backup from injecting oversized strings,
+        // bogus IDs, or arrays of the wrong shape into the new vault.
+        if let Some(p) = val.get("practices") {
+            crate::validation::validate_practices(p)?;
+        }
+        if let Some(a) = val.get("agenda") {
+            crate::validation::validate_agenda(a)?;
+        }
+        if let Some(c) = val.get("contacts") {
+            crate::validation::validate_contacts(c)?;
+        }
+        if let Some(t) = val.get("timeLogs") {
+            crate::validation::validate_time_logs(t)?;
+        }
+        if let Some(i) = val.get("invoices") {
+            crate::validation::validate_invoices(i)?;
         }
 
         let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());

@@ -5,7 +5,9 @@
  * Tipografia TeX-grade con Libertinus Serif + Cinzel
  * ══════════════════════════════════════════════════════════════════════════
  */
-import { exportTypstPdf, checkLicense } from '../tauri-api';
+// FIX-27 TP1: replace dynamic re-import of '../tauri-api' inside the function body
+// with a single static import. Avoids fetching the module twice and keeps tree-shaking happy.
+import { exportTypstPdf, checkLicense, getSettings } from '../tauri-api';
 
 const TYPE_LABELS = {
   civile: 'Civile',
@@ -40,7 +42,7 @@ function safeDateIT(dateStr) {
 
 /**
  * Export a practice as a professional Typst-rendered PDF.
- * This is the drop-in replacement for exportPracticePDF from pdfGenerator.js.
+ * Replaces the legacy jsPDF generator (pdfGenerator.js, removed).
  */
 export async function exportPracticeTypstPDF(practice) {
   try {
@@ -54,13 +56,19 @@ export async function exportPracticeTypstPDF(practice) {
         studioName = license.studioName || '';
         lawyerTitle = license.lawyerTitle || 'Avv.';
       }
-    } catch { /* fallback vuoto */ }
+    } catch (e) {
+      // FIX-29 TP5: log silently — caller surfaces a generic error if export ultimately fails.
+      console.warn('typstPdfGenerator: checkLicense failed, using fallback', e);
+    }
 
-    // Override lawyerTitle from settings if user changed it
+    // Override lawyerTitle from settings if user changed it (FIX-27 TP1: now a static call)
     try {
-      const settings = await (await import('../tauri-api')).getSettings() || {};
+      const settings = (await getSettings()) || {};
       if (settings.lawyerTitle) lawyerTitle = settings.lawyerTitle;
-    } catch { /* fallback */ }
+    } catch (e) {
+      // FIX-29 TP5
+      console.warn('typstPdfGenerator: getSettings failed, using license title', e);
+    }
 
     const labels = FIELD_LABELS[practice.type] || FIELD_LABELS.civile;
 
@@ -81,7 +89,8 @@ export async function exportPracticeTypstPDF(practice) {
       lawyerName: lawyerName || null,
       lawyerTitle: lawyerTitle || null,
       studioName: studioName || null,
-      deadlines: practice.deadlines?.filter(d => d.date || d.label).map(d => ({
+      // FIX-28 TP3: a deadline without a date is meaningless — drop it.
+      deadlines: practice.deadlines?.filter(d => d.date).map(d => ({
         date: safeDateIT(d.date),
         label: d.label || '—',
       })) || null,

@@ -2,6 +2,10 @@
 //  STRUCTURED ERROR TYPES — replaces Result<T, String>
 // ═══════════════════════════════════════════════════════════
 
+// TODO(audit:DEAD-CODE-ERR-1): migrate Result<T, String> call sites to
+// Result<T, LexFlowError>. The structured type already exists; the migration
+// is mechanical but touches every command in the crate.
+
 use std::fmt;
 
 #[derive(Debug)]
@@ -39,24 +43,29 @@ pub enum LexFlowError {
 }
 
 impl fmt::Display for LexFlowError {
+    /// SEC-ERR-1: never forward arbitrary `String` payloads to Display, because
+    /// the Display output reaches the Tauri IPC boundary and ultimately the FE.
+    /// Constant Italian strings here keep error messages information-free for
+    /// an attacker / logger, while Debug retains the full context for devs.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::AuthFailed(msg) => write!(f, "{}", msg),
-            Self::Locked => write!(f, "Vault bloccato"),
-            Self::PasswordWeak(msg) => write!(f, "{}", msg),
-            Self::CryptoFailed(msg) => write!(f, "{}", msg),
-            Self::Io(msg) => write!(f, "{}", msg),
-            Self::Serialization(msg) => write!(f, "{}", msg),
-            Self::VaultCorrupted(msg) => write!(f, "{}", msg),
-            Self::RecordNotFound(msg) => write!(f, "{}", msg),
-            Self::Validation(msg) => write!(f, "{}", msg),
-            Self::SearchError(msg) => write!(f, "{}", msg),
-            Self::LicenseError(msg) => write!(f, "{}", msg),
-            Self::BiometricError(msg) => write!(f, "{}", msg),
-            Self::RateLimited(msg) => write!(f, "{}", msg),
-            Self::RollbackDetected(msg) => write!(f, "{}", msg),
-            Self::Internal(msg) => write!(f, "{}", msg),
-        }
+        let s = match self {
+            Self::AuthFailed(_) => "Autenticazione fallita",
+            Self::Locked => "Vault bloccato",
+            Self::PasswordWeak(_) => "Password debole",
+            Self::CryptoFailed(_) => "Errore crittografico",
+            Self::Io(_) => "Errore I/O",
+            Self::Serialization(_) => "Errore di parsing",
+            Self::VaultCorrupted(_) => "Vault corrotto",
+            Self::RecordNotFound(_) => "Record non trovato",
+            Self::Validation(_) => "Dati non validi",
+            Self::SearchError(_) => "Errore nella ricerca",
+            Self::LicenseError(_) => "Errore licenza",
+            Self::BiometricError(_) => "Errore autenticazione biometrica",
+            Self::RateLimited(_) => "Troppi tentativi, riprova più tardi",
+            Self::RollbackDetected(_) => "Rilevato rollback del vault",
+            Self::Internal(_) => "Errore interno",
+        };
+        f.write_str(s)
     }
 }
 
