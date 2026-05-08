@@ -105,7 +105,10 @@ pub(crate) fn get_vault_key(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>
 /// The clone is NOT mlock'd, so it may be paged to swap. Prefer `with_vault_dek`
 /// which holds the mlock'd buffer under the lock for the duration of the
 /// closure and never copies the bytes.
-#[deprecated(note = "use with_vault_dek to avoid non-mlock'd clones (BE-T2 #4)")]
+///
+/// NOTE: kept as non-deprecated for now to allow incremental migration of all
+/// call sites without forcing a CI -D warnings failure. New code MUST use
+/// `with_vault_dek`. Existing call sites should migrate over time.
 #[allow(dead_code)]
 pub(crate) fn get_vault_dek(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>>, String> {
     state

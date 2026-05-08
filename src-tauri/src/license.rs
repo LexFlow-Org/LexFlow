@@ -938,6 +938,7 @@ fn perform_license_activation(
 // internal Ed25519 verification logic used by `check_license`/`activate_license`.
 // Removing the attribute shrinks the IPC attack surface; BE-8 removes the
 // matching entries from `lib.rs`'s invoke_handler.
+#[allow(dead_code)]
 pub(crate) fn get_machine_fingerprint() -> String {
     compute_machine_fingerprint()
 }
@@ -986,7 +987,7 @@ pub(crate) fn verify_license(key_string: String) -> VerificationResult {
         }
     };
 
-    let public_key = match VerifyingKey::from_bytes(&*PUBLIC_KEY_BYTES) {
+    let public_key = match VerifyingKey::from_bytes(&PUBLIC_KEY_BYTES) {
         Ok(k) => k,
         Err(_) => {
             return VerificationResult {

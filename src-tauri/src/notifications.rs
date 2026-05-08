@@ -8,7 +8,7 @@ use crate::io::{atomic_write_with_sync, safe_bounded_read};
 use crate::platform::{decrypt_local_with_migration, get_local_encryption_key};
 use crate::state::AppState;
 use chrono::TimeZone as _;
-use serde_json::{json, Value};
+use serde_json::Value;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State};

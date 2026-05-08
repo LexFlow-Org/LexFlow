@@ -784,16 +784,14 @@ pub(crate) async fn generate_typst_pdf(
             CommandEvent::Stderr(line) => {
                 stderr_output.push_str(&String::from_utf8_lossy(&line));
             }
-            CommandEvent::Terminated(payload) => {
-                if payload.code != Some(0) {
-                    let _ = crate::security::secure_delete_file(&file_typst);
-                    let _ = crate::security::secure_delete_file(&file_pdf);
-                    return Err(format!(
-                        "Typst compilation failed (exit {}): {}",
-                        payload.code.unwrap_or(-1),
-                        stderr_output
-                    ));
-                }
+            CommandEvent::Terminated(payload) if payload.code != Some(0) => {
+                let _ = crate::security::secure_delete_file(&file_typst);
+                let _ = crate::security::secure_delete_file(&file_pdf);
+                return Err(format!(
+                    "Typst compilation failed (exit {}): {}",
+                    payload.code.unwrap_or(-1),
+                    stderr_output
+                ));
             }
             _ => {}
         }

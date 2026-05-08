@@ -191,7 +191,7 @@ pub(crate) fn verify_binary_integrity(app_handle: &AppHandle) {
         <Hmac<Sha256> as Mac>::new_from_slice(&hmac_key).expect("HMAC can take key of any size");
     mac.update(&integrity_seed);
     let computed = mac.finalize();
-    let computed_hex = hex::encode(computed.into_bytes());
+    let _computed_hex = hex::encode(computed.into_bytes());
 
     // Expected HMAC is computed at build time by build.rs and injected as env var.
     // This guarantees it ALWAYS matches the compiled constants, regardless of

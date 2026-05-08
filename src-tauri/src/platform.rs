@@ -211,6 +211,7 @@ fn get_local_encryption_key_v3() -> Zeroizing<Vec<u8>> {
 /// force the action. A stronger compile-time check belongs in `build.rs`
 /// (owned by a sibling subagent); if/when added there, prefer that.
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+#[allow(dead_code)]
 pub(crate) const LEGACY_V2_SUNSET_UNIX: i64 = 1_798_761_600;
 
 /// Records that a V2-encrypted artefact was just successfully decrypted with

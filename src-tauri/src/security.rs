@@ -43,7 +43,7 @@ pub(crate) fn disable_core_dumps() -> Result<(), String> {
         let result = unsafe { setrlimit(RLIMIT_CORE, &rl) };
         if result == 0 {
             eprintln!("[LexFlow] SECURITY: Core dumps disabled ✓");
-            return Ok(());
+            Ok(())
         } else {
             let msg = format!(
                 "Failed to disable core dumps: setrlimit returned {} (errno={})",
@@ -51,7 +51,7 @@ pub(crate) fn disable_core_dumps() -> Result<(), String> {
                 std::io::Error::last_os_error()
             );
             eprintln!("[LexFlow] WARNING: {}", msg);
-            return Err(msg);
+            Err(msg)
         }
     }
     #[cfg(windows)]
@@ -111,6 +111,7 @@ extern "system" {
 /// LOW SEC-SE-6 (audit): `#[must_use]` so callers cannot silently ignore a
 /// failed lock attempt.
 #[must_use]
+#[allow(dead_code)]
 pub(crate) fn mlock_buffer_slice(buf: &[u8]) -> bool {
     #[cfg(unix)]
     unsafe {

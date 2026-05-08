@@ -552,9 +552,9 @@ pub async fn remove_pages(
             eprintln!("[doc_tools::remove_pages] qpdf stderr: {}", stderr);
             err_result(map_qpdf_stderr(&stderr))
         }
-        Err(e) => {
+        Err(_e) => {
             #[cfg(debug_assertions)]
-            eprintln!("[doc_tools] qpdf exec error: {}", e);
+            eprintln!("[doc_tools] qpdf exec error: {}", _e);
             err_result("Errore esecuzione qpdf")
         }
     }
@@ -608,9 +608,9 @@ pub async fn extract_pages(
             eprintln!("[doc_tools::extract_pages] qpdf stderr: {}", stderr);
             err_result(map_qpdf_stderr(&stderr))
         }
-        Err(e) => {
+        Err(_e) => {
             #[cfg(debug_assertions)]
-            eprintln!("[doc_tools] qpdf exec error: {}", e);
+            eprintln!("[doc_tools] qpdf exec error: {}", _e);
             err_result("Errore esecuzione qpdf")
         }
     }
@@ -701,9 +701,9 @@ pub async fn compress_pdf(
                 err_result(map_qpdf_stderr(&stderr))
             }
         }
-        Err(e) => {
+        Err(_e) => {
             #[cfg(debug_assertions)]
-            eprintln!("[doc_tools] qpdf exec error: {}", e);
+            eprintln!("[doc_tools] qpdf exec error: {}", _e);
             err_result("Errore esecuzione qpdf")
         }
     }
@@ -819,9 +819,9 @@ pub async fn add_watermark(
             eprintln!("[doc_tools::add_watermark] qpdf stderr: {}", stderr);
             err_result(map_qpdf_stderr(&stderr))
         }
-        Err(e) => {
+        Err(_e) => {
             #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::add_watermark] qpdf exec error: {}", e);
+            eprintln!("[doc_tools::add_watermark] qpdf exec error: {}", _e);
             err_result("Errore esecuzione qpdf")
         }
     };
@@ -911,9 +911,9 @@ pub async fn rotate_pdf(
                 err_result(map_qpdf_stderr(&stderr))
             }
         }
-        Err(e) => {
+        Err(_e) => {
             #[cfg(debug_assertions)]
-            eprintln!("[doc_tools] qpdf exec error: {}", e);
+            eprintln!("[doc_tools] qpdf exec error: {}", _e);
             err_result("Errore esecuzione qpdf")
         }
     }
@@ -1333,9 +1333,9 @@ pub async fn add_page_numbers(
             eprintln!("[doc_tools::add_page_numbers] qpdf stderr: {}", stderr);
             err_result(map_qpdf_stderr(&stderr))
         }
-        Err(e) => {
+        Err(_e) => {
             #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::add_page_numbers] qpdf exec error: {}", e);
+            eprintln!("[doc_tools::add_page_numbers] qpdf exec error: {}", _e);
             err_result("Errore esecuzione qpdf")
         }
     };
@@ -1539,11 +1539,11 @@ pub async fn redact_pdf(
         &pages_with_redactions,
     ) {
         Ok(_) => true,
-        Err(e) => {
+        Err(_e) => {
             #[cfg(debug_assertions)]
             eprintln!(
                 "[doc_tools::redact_pdf] destructive content-stream pass failed: {}",
-                e
+                _e
             );
             false
         }
@@ -1635,10 +1635,10 @@ pub async fn redact_pdf(
             // requested redaction.
             err_result(map_qpdf_stderr(&stderr))
         }
-        Err(e) => {
+        Err(_e) => {
             let _ = crate::security::secure_delete_file(&tmp_overlaid);
             #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::redact_pdf] qpdf encrypt exec error: {}", e);
+            eprintln!("[doc_tools::redact_pdf] qpdf encrypt exec error: {}", _e);
             err_result("Errore esecuzione qpdf")
         }
     };
@@ -1930,10 +1930,10 @@ pub async fn secure_pdf(
                 err_result(map_qpdf_stderr(&stderr))
             }
         }
-        Err(e) => {
+        Err(_e) => {
             let _ = std::fs::remove_file(&tmp_encrypted);
             #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::secure_pdf] qpdf exec error: {}", e);
+            eprintln!("[doc_tools::secure_pdf] qpdf exec error: {}", _e);
             err_result("Errore esecuzione qpdf")
         }
     };
@@ -2032,9 +2032,9 @@ pub async fn unsecure_pdf(
                 err_result(map_qpdf_stderr(&stderr))
             }
         }
-        Err(e) => {
+        Err(_e) => {
             #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::unsecure_pdf] exec error: {}", e);
+            eprintln!("[doc_tools::unsecure_pdf] exec error: {}", _e);
             err_result("Errore esecuzione qpdf")
         }
     };
