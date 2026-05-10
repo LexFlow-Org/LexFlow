@@ -34,7 +34,7 @@ mod tests {
         let plaintext = b"Hello, LexFlow v4!";
         let block = encrypt_record(&dek, plaintext).unwrap();
         let decrypted = decrypt_record(&dek, &block).unwrap();
-        assert_eq!(&decrypted, plaintext);
+        assert_eq!(decrypted.as_slice(), plaintext.as_slice());
     }
 
     #[test]
@@ -486,8 +486,8 @@ mod tests {
         for (i, d) in cases.iter().enumerate() {
             let block = encrypt_record(&dek, d).unwrap();
             assert_eq!(
-                &decrypt_record(&dek, &block).unwrap(),
-                d,
+                decrypt_record(&dek, &block).unwrap().as_slice(),
+                *d,
                 "Case {} failed",
                 i
             );
@@ -580,7 +580,7 @@ mod tests {
         let (opened, opened_dek) = open_vault("OldPassword123!", &serialized).unwrap();
         let rec =
             read_current_version(opened.records.get("rec_001").unwrap(), &opened_dek).unwrap();
-        assert_eq!(&rec, plaintext);
+        assert_eq!(rec.as_slice(), plaintext.as_slice());
 
         // Wrong password MUST fail
         assert!(open_vault("WrongPassword123!", &serialized).is_err());
@@ -644,7 +644,10 @@ mod tests {
         bad.data = B64.encode(&d);
 
         // Good record still decrypts
-        assert_eq!(&decrypt_record(&dek, &good).unwrap(), b"Good record");
+        assert_eq!(
+            decrypt_record(&dek, &good).unwrap().as_slice(),
+            b"Good record"
+        );
         // Bad record fails cleanly
         assert!(decrypt_record(&dek, &bad).is_err());
     }
@@ -663,7 +666,7 @@ mod tests {
             let dek = generate_dek();
             let block = encrypt_record(&dek, &plaintext).unwrap();
             let recovered = decrypt_record(&dek, &block).unwrap();
-            prop_assert_eq!(plaintext, recovered);
+            prop_assert_eq!(plaintext.as_slice(), recovered.as_slice());
         }
 
         #[test]
@@ -720,7 +723,7 @@ mod tests {
         for i in 0..100 {
             let data = format!("version_{}", i);
             let block = encrypt_record(&dek, data.as_bytes()).unwrap();
-            last_data = decrypt_record(&dek, &block).unwrap();
+            last_data = decrypt_record(&dek, &block).unwrap().to_vec();
         }
         assert_eq!(String::from_utf8(last_data).unwrap(), "version_99");
     }
@@ -744,7 +747,7 @@ mod tests {
                 "Record #{} - Fascicolo legale con dati sensibili del cliente",
                 i
             );
-            assert_eq!(dec, expected.as_bytes(), "Record {} mismatch", i);
+            assert_eq!(dec.as_slice(), expected.as_bytes(), "Record {} mismatch", i);
         }
     }
 
@@ -764,7 +767,7 @@ mod tests {
                     match encrypt_record(&dek, data.as_bytes()) {
                         Ok(block) => match decrypt_record(&dek, &block) {
                             Ok(dec) => {
-                                if dec != data.as_bytes() {
+                                if dec.as_slice() != data.as_bytes() {
                                     err.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                 }
                             }
@@ -892,7 +895,7 @@ mod tests {
         let dek = generate_dek();
         let text = "perché l'avvocato disse: è già così, più tardi andrò là".as_bytes();
         let block = encrypt_record(&dek, text).unwrap();
-        assert_eq!(decrypt_record(&dek, &block).unwrap(), text);
+        assert_eq!(decrypt_record(&dek, &block).unwrap().as_slice(), &text[..]);
     }
 
     #[test]
@@ -900,7 +903,7 @@ mod tests {
         let dek = generate_dek();
         let text = "Art. 1322 c.c. - comma 2°, § 3, n° 42/2024".as_bytes();
         let block = encrypt_record(&dek, text).unwrap();
-        assert_eq!(decrypt_record(&dek, &block).unwrap(), text);
+        assert_eq!(decrypt_record(&dek, &block).unwrap().as_slice(), &text[..]);
     }
 
     #[test]
@@ -908,7 +911,7 @@ mod tests {
         let dek = generate_dek();
         let text = "€ 1.234,56 — il 50% del ⅓ totale".as_bytes();
         let block = encrypt_record(&dek, text).unwrap();
-        assert_eq!(decrypt_record(&dek, &block).unwrap(), text);
+        assert_eq!(decrypt_record(&dek, &block).unwrap().as_slice(), &text[..]);
     }
 
     #[test]
@@ -916,7 +919,7 @@ mod tests {
         let dek = generate_dek();
         let text = "Cliente soddisfatto 👍🏽 caso risolto ⚖️".as_bytes();
         let block = encrypt_record(&dek, text).unwrap();
-        assert_eq!(decrypt_record(&dek, &block).unwrap(), text);
+        assert_eq!(decrypt_record(&dek, &block).unwrap().as_slice(), &text[..]);
     }
 
     #[test]
@@ -924,7 +927,7 @@ mod tests {
         let dek = generate_dek();
         let text = "testo\u{200B}con\u{200C}zero\u{200D}width\u{FEFF}chars".as_bytes();
         let block = encrypt_record(&dek, text).unwrap();
-        assert_eq!(decrypt_record(&dek, &block).unwrap(), text);
+        assert_eq!(decrypt_record(&dek, &block).unwrap().as_slice(), &text[..]);
     }
 
     #[test]
@@ -932,7 +935,7 @@ mod tests {
         let dek = generate_dek();
         let text = b"riga1\r\nriga2\nriga3\rriga4";
         let block = encrypt_record(&dek, text).unwrap();
-        assert_eq!(decrypt_record(&dek, &block).unwrap(), text);
+        assert_eq!(decrypt_record(&dek, &block).unwrap().as_slice(), &text[..]);
     }
 
     #[test]
@@ -940,7 +943,7 @@ mod tests {
         let dek = generate_dek();
         let text = b"prima\0dopo\0\0fine";
         let block = encrypt_record(&dek, text).unwrap();
-        assert_eq!(decrypt_record(&dek, &block).unwrap(), text);
+        assert_eq!(decrypt_record(&dek, &block).unwrap().as_slice(), &text[..]);
     }
 
     #[test]
@@ -948,7 +951,10 @@ mod tests {
         let dek = generate_dek();
         let text = "A".repeat(100_000); // 100KB — safe for test env
         let block = encrypt_record(&dek, text.as_bytes()).unwrap();
-        assert_eq!(decrypt_record(&dek, &block).unwrap(), text.as_bytes());
+        assert_eq!(
+            decrypt_record(&dek, &block).unwrap().as_slice(),
+            text.as_bytes()
+        );
     }
 
     #[test]
@@ -956,7 +962,7 @@ mod tests {
         let dek = generate_dek();
         for text in [b"".as_slice(), b"   \t\n\r\n   "] {
             let block = encrypt_record(&dek, text).unwrap();
-            assert_eq!(decrypt_record(&dek, &block).unwrap(), text);
+            assert_eq!(decrypt_record(&dek, &block).unwrap().as_slice(), &text[..]);
         }
     }
 
@@ -965,7 +971,7 @@ mod tests {
         let dek = generate_dek();
         let text: Vec<u8> = (0..=255).collect();
         let block = encrypt_record(&dek, &text).unwrap();
-        assert_eq!(decrypt_record(&dek, &block).unwrap(), text);
+        assert_eq!(decrypt_record(&dek, &block).unwrap().as_slice(), &text[..]);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -1007,7 +1013,12 @@ mod tests {
             // Verify the record is accessible by its key
             let rec = vault_records.get(*id).unwrap();
             let dec = read_current_version(rec, &dek).unwrap();
-            assert_eq!(&dec, plaintext, "Record with key '{}' failed", id);
+            assert_eq!(
+                dec.as_slice(),
+                plaintext.as_slice(),
+                "Record with key \'{}\' failed",
+                id
+            );
         }
     }
 
@@ -1044,7 +1055,7 @@ mod tests {
             };
             map.insert(id.to_string(), entry);
             let rec = map.get(id).unwrap();
-            assert_eq!(read_current_version(rec, &dek).unwrap(), b"test");
+            assert_eq!(read_current_version(rec, &dek).unwrap().as_slice(), b"test");
         }
     }
 
@@ -1081,11 +1092,15 @@ mod tests {
 
         append_record_version(&mut entry, &dek, b"version_1").unwrap();
         let v1 = read_current_version(&entry, &dek).unwrap();
-        assert_eq!(v1, b"version_1");
+        assert_eq!(v1.as_slice(), b"version_1");
 
         append_record_version(&mut entry, &dek, b"version_2").unwrap();
         let v2 = read_current_version(&entry, &dek).unwrap();
-        assert_eq!(v2, b"version_2", "Must read updated version, not cached");
+        assert_eq!(
+            v2.as_slice(),
+            b"version_2",
+            "Must read updated version, not cached"
+        );
     }
 
     #[test]
@@ -1192,7 +1207,7 @@ mod tests {
         let (_, dek2) = open_vault("BackupTest123!", &bytes).unwrap();
 
         let rec = read_current_version(vault2.records.get("r1").unwrap(), &dek2).unwrap();
-        assert_eq!(rec, b"Fascicolo importante");
+        assert_eq!(rec.as_slice(), b"Fascicolo importante");
     }
 
     #[test]
@@ -1380,8 +1395,8 @@ mod tests {
         let dec_a = decrypt_record(&dek, &block_a).unwrap();
         let dec_b = decrypt_record(&dek, &block_b).unwrap();
         // Content is authentic, but could be in wrong slot
-        assert_eq!(&dec_a, data_a);
-        assert_eq!(&dec_b, data_b);
+        assert_eq!(dec_a.as_slice(), data_a.as_slice());
+        assert_eq!(dec_b.as_slice(), data_b.as_slice());
         // DOCUMENTED: intra-vault record swap is possible.
         // Mitigation: header HMAC covers the entire vault structure including record positions.
     }
@@ -1533,7 +1548,7 @@ mod tests {
                     let data = format!("Thread {} Op {}", t, i);
                     let block = encrypt_record(&dek, data.as_bytes()).unwrap();
                     let dec = decrypt_record(&dek, &block).unwrap();
-                    if dec != data.as_bytes() {
+                    if dec.as_slice() != data.as_bytes() {
                         err.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     }
                 }

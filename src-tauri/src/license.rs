@@ -1347,7 +1347,7 @@ mod tests {
 
         let encrypted = encrypt_data(&*subkey, plaintext).expect("encrypt ok");
         let decrypted = decrypt_data(&*subkey, &encrypted).expect("decrypt ok");
-        assert_eq!(&decrypted, plaintext);
+        assert_eq!(decrypted.as_slice(), plaintext.as_slice());
 
         // Master key cannot decrypt sub-key-encrypted material.
         assert!(decrypt_data(&master, &encrypted).is_err());

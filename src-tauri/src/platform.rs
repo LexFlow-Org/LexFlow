@@ -578,7 +578,7 @@ mod tests {
 
         let result = decrypt_local_with_migration(&path);
         assert!(result.is_some());
-        assert_eq!(result.unwrap(), plaintext);
+        assert_eq!(result.unwrap().as_slice(), plaintext.as_slice());
         std::fs::remove_file(&path).ok();
     }
 
