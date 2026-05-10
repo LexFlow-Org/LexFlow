@@ -127,9 +127,7 @@ pub(crate) fn get_or_create_machine_id() -> String {
 
     #[cfg(debug_assertions)]
     {
-        panic!(
-            "machine_id non inizializzato — chiama init_machine_id() in setup() prima dell'uso"
-        );
+        panic!("machine_id non inizializzato — chiama init_machine_id() in setup() prima dell'uso");
     }
     #[cfg(not(debug_assertions))]
     {
@@ -274,9 +272,7 @@ pub(crate) fn get_local_encryption_key_legacy() -> Zeroizing<Vec<u8>> {
     // Debug-gated telemetry: a hit here means a stale V2 vault was found in
     // the wild. Useful when triaging "should we extend the sunset window?".
     #[cfg(debug_assertions)]
-    eprintln!(
-        "[V2-SUNSET] legacy V2 key derivation invoked — sunset target 2026-12-31"
-    );
+    eprintln!("[V2-SUNSET] legacy V2 key derivation invoked — sunset target 2026-12-31");
 
     let user = whoami::username();
     let host = whoami::fallible::hostname().unwrap_or_else(|_| "unknown".to_string());
@@ -410,9 +406,7 @@ pub(crate) fn init_android_device_id() -> Result<String, String> {
     // `dirs::data_dir()`. Doing it here would change this function's
     // signature and cascade into setup.rs, which is out of scope for the
     // file-local audit pass.
-    let candidate_dirs = [
-        dirs::data_dir().map(|d| d.join("com.pietrolongo.lexflow")),
-    ];
+    let candidate_dirs = [dirs::data_dir().map(|d| d.join("com.pietrolongo.lexflow"))];
     let mut first_writable: Option<std::path::PathBuf> = None;
     for candidate in candidate_dirs.iter().flatten() {
         let id_path = candidate.join(".device_id");

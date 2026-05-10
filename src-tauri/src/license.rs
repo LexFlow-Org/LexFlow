@@ -375,7 +375,10 @@ fn monotonic_clock_check(sec_dir: &std::path::Path) -> Result<(), String> {
     // the per-call sentinel and survives deletion of `.last-license-check`.
     if let Some(high_watermark) = read_clock_high_watermark(sec_dir) {
         if now_ms < high_watermark.saturating_sub(CLOCK_ROLLBACK_SLACK_MS) {
-            return Err("SECURITY: System clock appears to have been set backwards. License check refused.".into());
+            return Err(
+                "SECURITY: System clock appears to have been set backwards. License check refused."
+                    .into(),
+            );
         }
     }
 
@@ -473,10 +476,7 @@ fn compute_sentinel_blob_hmac(encrypted_key_id_hex: &str) -> Vec<u8> {
 /// Verify a sentinel blob HMAC against `stored_bytes` using the V2 sentinel
 /// sub-key first, falling back to the V1 master key. Returns true on a match
 /// against either keystream so legacy on-disk material keeps validating.
-fn verify_sentinel_blob_hmac_v2_v1(
-    encrypted_key_id_hex: &str,
-    stored_bytes: &[u8],
-) -> bool {
+fn verify_sentinel_blob_hmac_v2_v1(encrypted_key_id_hex: &str, stored_bytes: &[u8]) -> bool {
     let master = get_local_encryption_key();
     let v2 = sub_keys::sentinel_key(&master);
     let mut mac_v2 =
@@ -508,9 +508,7 @@ fn recover_sentinel_key_id(sentinel_path: &std::path::Path) -> Option<String> {
             // V2 (sentinel sub-key) first, V1 (master key) as fallback for legacy.
             if !verify_sentinel_blob_hmac_v2_v1(stored_key_id_enc, &stored_bytes) {
                 #[cfg(debug_assertions)]
-                eprintln!(
-                    "[SECURITY] sentinel blob HMAC mismatch — possible tampering"
-                );
+                eprintln!("[SECURITY] sentinel blob HMAC mismatch — possible tampering");
                 return None;
             }
         } else {
@@ -609,10 +607,7 @@ fn write_license_sentinel(
     // M-SENTINEL-5: blob-only HMAC, verifiable at read time without context.
     let blob_hmac = hex::encode(compute_sentinel_blob_hmac(&encrypted_key_id));
 
-    let sentinel_content = format!(
-        "{}\n{}\n{}",
-        sentinel_hmac, encrypted_key_id, blob_hmac
-    );
+    let sentinel_content = format!("{}\n{}\n{}", sentinel_hmac, encrypted_key_id, blob_hmac);
     let _ = atomic_write_with_sync(sentinel_path, sentinel_content.as_bytes());
 }
 
@@ -694,10 +689,7 @@ fn check_license_burned(
         .unwrap_or("");
     let expiry_ms = data.get("expiryMs").and_then(|v| v.as_u64()).unwrap_or(0);
     let grace_days = data.get("graceDays").and_then(|v| v.as_u64()).unwrap_or(0);
-    let key_id = data
-        .get("keyId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let key_id = data.get("keyId").and_then(|v| v.as_str()).unwrap_or("");
     let stored_fp = data
         .get("machineFingerprint")
         .and_then(|v| v.as_str())
@@ -804,7 +796,8 @@ fn check_license_legacy(
     let key_id = extract_key_id(license_key).unwrap_or_else(|| "legacy".to_string());
 
     let record_hmac_subkey = sub_keys::record_hmac_key(key);
-    let record_hmac_v2 = compute_record_hmac_v2(&*record_hmac_subkey, &key_id, expiry_ms, current_fp);
+    let record_hmac_v2 =
+        compute_record_hmac_v2(&*record_hmac_subkey, &key_id, expiry_ms, current_fp);
     let upgraded = json!({
         "tokenHmac": token_hmac,
         "recordHmacV2": record_hmac_v2,
@@ -882,7 +875,8 @@ fn perform_license_activation(
     // M-MR-2: also write a record-level HMAC that can be re-verified on read.
     // Keyed with the HKDF-derived record_hmac sub-key (V2 — domain-separated).
     let record_hmac_subkey = sub_keys::record_hmac_key(&enc_key);
-    let record_hmac_v2 = compute_record_hmac_v2(&*record_hmac_subkey, &key_id, expiry_ms, fingerprint);
+    let record_hmac_v2 =
+        compute_record_hmac_v2(&*record_hmac_subkey, &key_id, expiry_ms, fingerprint);
 
     let record = json!({
         "tokenHmac": token_hmac,
@@ -1374,10 +1368,7 @@ mod tests {
         let m1 = [0x01u8; 32];
         let m2 = [0x02u8; 32];
         // Different masters must produce different sub-keys for the same label.
-        assert_ne!(
-            &sub_keys::burn_key(&m1)[..],
-            &sub_keys::burn_key(&m2)[..]
-        );
+        assert_ne!(&sub_keys::burn_key(&m1)[..], &sub_keys::burn_key(&m2)[..]);
     }
 
     /// Burn-registry roundtrip: encrypt with the burn sub-key, decrypt with
@@ -1404,29 +1395,25 @@ mod tests {
         let subkey = sub_keys::sentinel_key(&master);
         let blob_hex = "0011223344556677";
 
-        let mut mac =
-            <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
         mac.update(b"SENTINEL-BLOB-V1:");
         mac.update(blob_hex.as_bytes());
         let stored = mac.finalize().into_bytes().to_vec();
 
         // Same key + same input verifies.
-        let mut mac2 =
-            <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
+        let mut mac2 = <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
         mac2.update(b"SENTINEL-BLOB-V1:");
         mac2.update(blob_hex.as_bytes());
         assert!(mac2.verify_slice(&stored).is_ok());
 
         // Master-keyed verify must fail for the sub-key HMAC (separation).
-        let mut mac_master =
-            <Hmac<Sha256> as Mac>::new_from_slice(&master).expect("hmac key");
+        let mut mac_master = <Hmac<Sha256> as Mac>::new_from_slice(&master).expect("hmac key");
         mac_master.update(b"SENTINEL-BLOB-V1:");
         mac_master.update(blob_hex.as_bytes());
         assert!(mac_master.verify_slice(&stored).is_err());
 
         // Tampered blob hex must fail.
-        let mut mac3 =
-            <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
+        let mut mac3 = <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
         mac3.update(b"SENTINEL-BLOB-V1:");
         mac3.update(b"0011223344556678"); // last hex char flipped
         assert!(mac3.verify_slice(&stored).is_err());
@@ -1439,22 +1426,19 @@ mod tests {
         let subkey = sub_keys::clock_check_key(&master);
         let ts = "1700000000000";
 
-        let mut mac =
-            <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
         mac.update(b"CLOCK-CHECK:");
         mac.update(ts.as_bytes());
         let stored = mac.finalize().into_bytes().to_vec();
 
         // Verify with sub-key.
-        let mut mac_ok =
-            <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
+        let mut mac_ok = <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("hmac key");
         mac_ok.update(b"CLOCK-CHECK:");
         mac_ok.update(ts.as_bytes());
         assert!(mac_ok.verify_slice(&stored).is_ok());
 
         // Master cannot verify.
-        let mut mac_master =
-            <Hmac<Sha256> as Mac>::new_from_slice(&master).expect("hmac key");
+        let mut mac_master = <Hmac<Sha256> as Mac>::new_from_slice(&master).expect("hmac key");
         mac_master.update(b"CLOCK-CHECK:");
         mac_master.update(ts.as_bytes());
         assert!(mac_master.verify_slice(&stored).is_err());

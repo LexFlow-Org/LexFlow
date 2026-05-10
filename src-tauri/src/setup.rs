@@ -243,10 +243,13 @@ pub(crate) fn verify_binary_integrity(app_handle: &AppHandle) {
         // TODO(audit:HIGH-1): make integrity violation BLOCKING in production with
         // user-confirmation modal. Refuse to proceed (or wipe DEK) unless the user
         // explicitly clicks "I understand the risk".
-        let _ = app_handle.emit("lf-integrity-warning", json!({
-            "kind": "integrity_mismatch",
-            // Hex values intentionally omitted from the FE event — see HIGH-1.
-        }));
+        let _ = app_handle.emit(
+            "lf-integrity-warning",
+            json!({
+                "kind": "integrity_mismatch",
+                // Hex values intentionally omitted from the FE event — see HIGH-1.
+            }),
+        );
     }
 }
 
@@ -499,10 +502,7 @@ fn check_tcc_location(app: &tauri::App) {
     let user_apps = dirs::home_dir().map(|h| h.join("Applications"));
     let path_p = std::path::Path::new(&path_str).canonicalize().ok();
     let in_applications = path_p.as_ref().is_some_and(|p| {
-        p.starts_with("/Applications")
-            || user_apps
-                .as_ref()
-                .is_some_and(|ua| p.starts_with(ua))
+        p.starts_with("/Applications") || user_apps.as_ref().is_some_and(|ua| p.starts_with(ua))
     });
 
     // Also reject DMG / Translocation paths

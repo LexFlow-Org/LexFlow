@@ -26,11 +26,15 @@ fn audit_hard_error_flag() -> &'static Mutex<bool> {
 }
 
 fn is_audit_locked() -> bool {
-    *audit_hard_error_flag().lock().unwrap_or_else(|e| e.into_inner())
+    *audit_hard_error_flag()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 fn set_audit_locked(v: bool) {
-    *audit_hard_error_flag().lock().unwrap_or_else(|e| e.into_inner()) = v;
+    *audit_hard_error_flag()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = v;
 }
 
 /// One-time warning latch for legacy (pre-chain) audit logs.
@@ -60,7 +64,9 @@ fn pending_audit_queue() -> &'static Mutex<Vec<Value>> {
 #[allow(dead_code)]
 pub(crate) fn flush_pending_audit_events(state: &State<AppState>) {
     let drained: Vec<Value> = {
-        let mut q = pending_audit_queue().lock().unwrap_or_else(|e| e.into_inner());
+        let mut q = pending_audit_queue()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::mem::take(&mut *q)
     };
     for ev in drained {
@@ -86,8 +92,7 @@ fn canonical_json(v: &Value) -> Result<Vec<u8>, String> {
 /// Compute HMAC-SHA256 over `prev_canonical || new_canonical`, keyed by the DEK.
 fn compute_chain_hmac(key: &[u8], prev_canonical: &[u8], new_canonical: &[u8]) -> [u8; 32] {
     use hmac::{Hmac, Mac};
-    let mut mac =
-        Hmac::<sha2::Sha256>::new_from_slice(key).expect("HMAC accepts any key length");
+    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(key).expect("HMAC accepts any key length");
     mac.update(prev_canonical);
     mac.update(new_canonical);
     let result = mac.finalize();
@@ -189,18 +194,22 @@ fn verify_chain(key: &[u8], logs: &[Value]) -> Result<(), String> {
                 offset
             ));
         }
-        let stored_prev_hash = entry
-            .get("prev_hash")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                format!("audit log chain broken at chain offset {}: missing prev_hash", offset)
-            })?;
-        let stored_seq = entry
-            .get("seq")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| {
-                format!("audit log chain broken at chain offset {}: missing seq", offset)
-            })?;
+        let stored_prev_hash =
+            entry
+                .get("prev_hash")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    format!(
+                        "audit log chain broken at chain offset {}: missing prev_hash",
+                        offset
+                    )
+                })?;
+        let stored_seq = entry.get("seq").and_then(|v| v.as_u64()).ok_or_else(|| {
+            format!(
+                "audit log chain broken at chain offset {}: missing seq",
+                offset
+            )
+        })?;
 
         if stored_seq != expected_seq {
             return Err(format!(
@@ -329,13 +338,16 @@ pub(crate) fn append_audit_log(state: &State<AppState>, event_name: &str) -> Res
             let mut k = chain_key;
             zeroize::Zeroize::zeroize(&mut k);
         }
-        return Err(format!("{} — quarantined; user must acknowledge", chain_err));
+        return Err(format!(
+            "{} — quarantined; user must acknowledge",
+            chain_err
+        ));
     }
     // Decide whether we still need to insert a chain genesis marker. We do iff
     // (a) at least one legacy (non-chained) entry exists AND (b) no chained
     // entry exists yet — i.e. this is the first append after the upgrade.
-    let needs_genesis_marker = logs.iter().any(|e| !entry_is_chained(e))
-        && !logs.iter().any(entry_is_chained);
+    let needs_genesis_marker =
+        logs.iter().any(|e| !entry_is_chained(e)) && !logs.iter().any(entry_is_chained);
     // Also handle the pristine case: a brand-new file with no entries at all
     // does NOT need a genesis marker — the first appended event becomes the
     // genesis itself (seq=0, prev_hash=GENESIS_PREV_HASH) via the normal path.

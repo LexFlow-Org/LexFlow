@@ -265,7 +265,14 @@ pub async fn pdf_info(app: tauri::AppHandle, path: String) -> Result<PdfInfo, St
             let encrypted = doc.is_encrypted();
             let title = extract_info_string(&doc, b"Title");
             let author = extract_info_string(&doc, b"Author");
-            Ok(PdfInfo { pages, encrypted, file_size, file_size_label: format_size(file_size), title, author })
+            Ok(PdfInfo {
+                pages,
+                encrypted,
+                file_size,
+                file_size_label: format_size(file_size),
+                title,
+                author,
+            })
         }
         Err(_) => {
             // lopdf can't parse this PDF — use qpdf for page count
@@ -297,7 +304,11 @@ pub async fn pdf_info(app: tauri::AppHandle, path: String) -> Result<PdfInfo, St
 #[tauri::command]
 pub fn merge_pdfs(input_paths: Vec<String>, output_path: String) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::merge_pdfs] {} files → {}", input_paths.len(), output_path);
+    eprintln!(
+        "[doc_tools::merge_pdfs] {} files → {}",
+        input_paths.len(),
+        output_path
+    );
     for p in &input_paths {
         if let Err(e) = validate_input_path(p) {
             return err_result(&e);
@@ -496,7 +507,10 @@ pub async fn remove_pages(
     pages_to_remove: Vec<u32>,
 ) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::remove_pages] {} → {}, removing {:?}", input_path, output_path, pages_to_remove);
+    eprintln!(
+        "[doc_tools::remove_pages] {} → {}, removing {:?}",
+        input_path, output_path, pages_to_remove
+    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -517,7 +531,10 @@ pub async fn remove_pages(
     };
 
     if pages_to_remove.iter().any(|&p| p < 1 || p > total) {
-        return err_result(&format!("Numeri pagina non validi. Il PDF ha {} pagine.", total));
+        return err_result(&format!(
+            "Numeri pagina non validi. Il PDF ha {} pagine.",
+            total
+        ));
     }
     if pages_to_remove.len() as u32 >= total {
         return err_result("Non puoi rimuovere tutte le pagine.");
@@ -538,14 +555,25 @@ pub async fn remove_pages(
 
     let args = vec![
         "--empty",
-        "--pages", input_path.as_str(), &page_spec, "--",
-        "--", output_path.as_str(),
+        "--pages",
+        input_path.as_str(),
+        &page_spec,
+        "--",
+        "--",
+        output_path.as_str(),
     ];
 
     let cmd = sidecar.args(args);
     let removed = pages_to_remove.len();
     match cmd.output().await {
-        Ok(out) if out.status.success() => ok_result(&output_path, &format!("{} pagine rimosse. Rimangono {} pagine.", removed, total - removed as u32)),
+        Ok(out) if out.status.success() => ok_result(
+            &output_path,
+            &format!(
+                "{} pagine rimosse. Rimangono {} pagine.",
+                removed,
+                total - removed as u32
+            ),
+        ),
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             #[cfg(debug_assertions)]
@@ -570,7 +598,10 @@ pub async fn extract_pages(
     pages_to_extract: Vec<u32>,
 ) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::extract_pages] {} → {}, extracting {:?}", input_path, output_path, pages_to_extract);
+    eprintln!(
+        "[doc_tools::extract_pages] {} → {}, extracting {:?}",
+        input_path, output_path, pages_to_extract
+    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -585,7 +616,11 @@ pub async fn extract_pages(
     }
 
     // qpdf --pages input.pdf 1,3,5 -- -- output.pdf
-    let page_spec = pages_to_extract.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(",");
+    let page_spec = pages_to_extract
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
 
     use tauri_plugin_shell::ShellExt;
     let sidecar = match app.shell().sidecar("qpdf") {
@@ -595,13 +630,20 @@ pub async fn extract_pages(
 
     let args = vec![
         "--empty",
-        "--pages", input_path.as_str(), &page_spec, "--",
-        "--", output_path.as_str(),
+        "--pages",
+        input_path.as_str(),
+        &page_spec,
+        "--",
+        "--",
+        output_path.as_str(),
     ];
 
     let cmd = sidecar.args(args);
     match cmd.output().await {
-        Ok(out) if out.status.success() => ok_result(&output_path, &format!("{} pagine estratte.", pages_to_extract.len())),
+        Ok(out) if out.status.success() => ok_result(
+            &output_path,
+            &format!("{} pagine estratte.", pages_to_extract.len()),
+        ),
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             #[cfg(debug_assertions)]
@@ -658,13 +700,27 @@ pub async fn compress_pdf(
             doc.renumber_objects();
             return match doc.save(&output_path) {
                 Ok(_) => {
-                    let new_size = std::fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
+                    let new_size = std::fs::metadata(&output_path)
+                        .map(|m| m.len())
+                        .unwrap_or(0);
                     let saved = original_size.saturating_sub(new_size);
-                    let pct = if original_size > 0 { (saved as f64 / original_size as f64 * 100.0) as u32 } else { 0 };
+                    let pct = if original_size > 0 {
+                        (saved as f64 / original_size as f64 * 100.0) as u32
+                    } else {
+                        0
+                    };
                     DocToolResult {
-                        success: true, output_path: Some(output_path),
-                        message: format!("Compresso: {} → {} (risparmiato {}%)", format_size(original_size), format_size(new_size), pct),
-                        details: Some(serde_json::json!({"original_size": original_size, "compressed_size": new_size, "saved_bytes": saved, "saved_percent": pct})),
+                        success: true,
+                        output_path: Some(output_path),
+                        message: format!(
+                            "Compresso: {} → {} (risparmiato {}%)",
+                            format_size(original_size),
+                            format_size(new_size),
+                            pct
+                        ),
+                        details: Some(
+                            serde_json::json!({"original_size": original_size, "compressed_size": new_size, "saved_bytes": saved, "saved_percent": pct}),
+                        ),
                     }
                 }
                 Err(e) => err_result(&format!("Errore nel salvataggio: {}", e)),
@@ -686,13 +742,27 @@ pub async fn compress_pdf(
     match cmd.output().await {
         Ok(out) => {
             if out.status.success() {
-                let new_size = std::fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
+                let new_size = std::fs::metadata(&output_path)
+                    .map(|m| m.len())
+                    .unwrap_or(0);
                 let saved = original_size.saturating_sub(new_size);
-                let pct = if original_size > 0 { (saved as f64 / original_size as f64 * 100.0) as u32 } else { 0 };
+                let pct = if original_size > 0 {
+                    (saved as f64 / original_size as f64 * 100.0) as u32
+                } else {
+                    0
+                };
                 DocToolResult {
-                    success: true, output_path: Some(output_path),
-                    message: format!("Compresso: {} → {} (risparmiato {}%)", format_size(original_size), format_size(new_size), pct),
-                    details: Some(serde_json::json!({"original_size": original_size, "compressed_size": new_size, "saved_bytes": saved, "saved_percent": pct})),
+                    success: true,
+                    output_path: Some(output_path),
+                    message: format!(
+                        "Compresso: {} → {} (risparmiato {}%)",
+                        format_size(original_size),
+                        format_size(new_size),
+                        pct
+                    ),
+                    details: Some(
+                        serde_json::json!({"original_size": original_size, "compressed_size": new_size, "saved_bytes": saved, "saved_percent": pct}),
+                    ),
                 }
             } else {
                 let stderr = String::from_utf8_lossy(&out.stderr);
@@ -721,7 +791,10 @@ pub async fn add_watermark(
     font_size: Option<f64>,
 ) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::add_watermark] {} → {}, text='{}', opacity={:?}", input_path, output_path, text, opacity);
+    eprintln!(
+        "[doc_tools::add_watermark] {} → {}, text='{}', opacity={:?}",
+        input_path, output_path, text, opacity
+    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -771,7 +844,11 @@ pub async fn add_watermark(
         pages = (0..page_count)
             .map(|i| {
                 let pb = if i > 0 { "#pagebreak()\n" } else { "" };
-                format!("{pb}#place(center + horizon, rotate(-30deg, text[\"{text}\"]))", pb = pb, text = escaped)
+                format!(
+                    "{pb}#place(center + horizon, rotate(-30deg, text[\"{text}\"]))",
+                    pb = pb,
+                    text = escaped
+                )
             })
             .collect::<Vec<_>>()
             .join("\n"),
@@ -789,16 +866,26 @@ pub async fn add_watermark(
     // Step 1: Generate overlay PDF with typst
     let typst_sidecar = match app.shell().sidecar("typst") {
         Ok(s) => s,
-        Err(e) => { let _ = std::fs::remove_file(&tmp_typ); return err_result(&format!("typst non trovato: {}", e)); }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_typ);
+            return err_result(&format!("typst non trovato: {}", e));
+        }
     };
-    let typst_cmd = typst_sidecar.args(["compile", &tmp_typ.to_string_lossy(), &tmp_overlay.to_string_lossy()]);
+    let typst_cmd = typst_sidecar.args([
+        "compile",
+        &tmp_typ.to_string_lossy(),
+        &tmp_overlay.to_string_lossy(),
+    ]);
     match typst_cmd.output().await {
         Ok(out) if !out.status.success() => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             let _ = std::fs::remove_file(&tmp_typ);
             return err_result(&format!("Errore generazione watermark: {}", stderr));
         }
-        Err(e) => { let _ = std::fs::remove_file(&tmp_typ); return err_result(&format!("Errore typst: {}", e)); }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_typ);
+            return err_result(&format!("Errore typst: {}", e));
+        }
         _ => {}
     }
     let _ = crate::security::secure_delete_file(&tmp_typ);
@@ -806,13 +893,24 @@ pub async fn add_watermark(
     // Step 2: Overlay watermark onto input PDF with qpdf
     let qpdf_sidecar = match app.shell().sidecar("qpdf") {
         Ok(s) => s,
-        Err(_) => { let _ = std::fs::remove_file(&tmp_overlay); return err_result("qpdf non trovato — necessario per watermark."); }
+        Err(_) => {
+            let _ = std::fs::remove_file(&tmp_overlay);
+            return err_result("qpdf non trovato — necessario per watermark.");
+        }
     };
     let qpdf_cmd = qpdf_sidecar.args([
-        input_path.as_str(), "--overlay", &tmp_overlay.to_string_lossy(), "--", "--", output_path.as_str(),
+        input_path.as_str(),
+        "--overlay",
+        &tmp_overlay.to_string_lossy(),
+        "--",
+        "--",
+        output_path.as_str(),
     ]);
     let result = match qpdf_cmd.output().await {
-        Ok(out) if out.status.success() => ok_result(&output_path, &format!("Watermark \"{}\" aggiunto a {} pagine.", text, page_count)),
+        Ok(out) if out.status.success() => ok_result(
+            &output_path,
+            &format!("Watermark \"{}\" aggiunto a {} pagine.", text, page_count),
+        ),
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             #[cfg(debug_assertions)]
@@ -840,7 +938,10 @@ pub async fn rotate_pdf(
     pages_to_rotate: Option<Vec<u32>>,
 ) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::rotate_pdf] {} → {}, rotation={}°, pages={:?}", input_path, output_path, rotation, pages_to_rotate);
+    eprintln!(
+        "[doc_tools::rotate_pdf] {} → {}, rotation={}°, pages={:?}",
+        input_path, output_path, rotation, pages_to_rotate
+    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -866,20 +967,34 @@ pub async fn rotate_pdf(
                 Err(e) => return err_result(&format!("Errore nell'apertura: {}", e)),
             };
             let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
-            let target = pages_to_rotate.clone().unwrap_or_else(|| pages.iter().map(|(n, _)| *n).collect());
+            let target = pages_to_rotate
+                .clone()
+                .unwrap_or_else(|| pages.iter().map(|(n, _)| *n).collect());
             let mut rotated = 0;
             for (pn, pid) in &pages {
-                if !target.contains(pn) { continue; }
+                if !target.contains(pn) {
+                    continue;
+                }
                 if let Ok(obj) = doc.get_object_mut(*pid) {
                     if let Ok(dict) = obj.as_dict_mut() {
-                        let cur = dict.get(b"Rotate").ok().and_then(|r| r.as_i64().ok()).unwrap_or(0) as i32;
-                        dict.set("Rotate", Object::Integer(((cur + rotation) % 360 + 360) as i64 % 360));
+                        let cur = dict
+                            .get(b"Rotate")
+                            .ok()
+                            .and_then(|r| r.as_i64().ok())
+                            .unwrap_or(0) as i32;
+                        dict.set(
+                            "Rotate",
+                            Object::Integer(((cur + rotation) % 360 + 360) as i64 % 360),
+                        );
                         rotated += 1;
                     }
                 }
             }
             return match doc.save(&output_path) {
-                Ok(_) => ok_result(&output_path, &format!("{} pagine ruotate di {}°.", rotated, rotation)),
+                Ok(_) => ok_result(
+                    &output_path,
+                    &format!("{} pagine ruotate di {}°.", rotated, rotation),
+                ),
                 Err(e) => err_result(&format!("Errore: {}", e)),
             };
         }
@@ -887,17 +1002,16 @@ pub async fn rotate_pdf(
 
     // qpdf --rotate=+90:1-z  (all pages) or --rotate=+90:1,3,5  (specific pages)
     let page_spec = match &pages_to_rotate {
-        Some(pages) if !pages.is_empty() => pages.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(","),
+        Some(pages) if !pages.is_empty() => pages
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
         _ => "1-z".to_string(),
     };
     let rotate_arg = format!("--rotate=+{}:{}", rotation, page_spec);
 
-    let args = vec![
-        input_path.as_str(),
-        &rotate_arg,
-        "--",
-        output_path.as_str(),
-    ];
+    let args = vec![input_path.as_str(), &rotate_arg, "--", output_path.as_str()];
 
     let cmd = sidecar.args(args);
     match cmd.output().await {
@@ -997,7 +1111,11 @@ pub async fn images_to_pdf(
     output_path: String,
 ) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::images_to_pdf] {} images → {}", image_paths.len(), output_path);
+    eprintln!(
+        "[doc_tools::images_to_pdf] {} images → {}",
+        image_paths.len(),
+        output_path
+    );
     for p in &image_paths {
         if let Err(e) = validate_input_path(p) {
             return err_result(&e);
@@ -1153,7 +1271,10 @@ pub fn reorder_pages(
     new_order: Vec<u32>,
 ) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::reorder_pages] {} → {}, order={:?}", input_path, output_path, new_order);
+    eprintln!(
+        "[doc_tools::reorder_pages] {} → {}, order={:?}",
+        input_path, output_path, new_order
+    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -1231,7 +1352,10 @@ pub async fn add_page_numbers(
     font_size: Option<f64>,
 ) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::add_page_numbers] {} → {}, pos={:?}, fmt={:?}, start={:?}", input_path, output_path, position, format_str, start_from);
+    eprintln!(
+        "[doc_tools::add_page_numbers] {} → {}, pos={:?}, fmt={:?}, start={:?}",
+        input_path, output_path, position, format_str, start_from
+    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -1259,7 +1383,9 @@ pub async fn add_page_numbers(
             }
         }
     };
-    if total == 0 { return err_result("Il PDF non contiene pagine."); }
+    if total == 0 {
+        return err_result("Il PDF non contiene pagine.");
+    }
 
     let pos = position.unwrap_or_else(|| "bottom-center".to_string());
     let fmt = format_str.unwrap_or_else(|| "{n}".to_string());
@@ -1268,12 +1394,12 @@ pub async fn add_page_numbers(
 
     // Typst alignment + offset from position (margin: 0pt like watermark, offset explicit)
     let (align, dx, dy) = match pos.as_str() {
-        "bottom-left"   => ("left + bottom",   "dx: 40pt, ",  "dy: -25pt, "),
-        "bottom-right"  => ("right + bottom",  "dx: -40pt, ", "dy: -25pt, "),
-        "top-left"      => ("left + top",      "dx: 40pt, ",  "dy: 25pt, "),
-        "top-right"     => ("right + top",     "dx: -40pt, ", "dy: 25pt, "),
-        "top-center"    => ("center + top",    "",             "dy: 25pt, "),
-        _               => ("center + bottom", "",             "dy: -25pt, "),
+        "bottom-left" => ("left + bottom", "dx: 40pt, ", "dy: -25pt, "),
+        "bottom-right" => ("right + bottom", "dx: -40pt, ", "dy: -25pt, "),
+        "top-left" => ("left + top", "dx: 40pt, ", "dy: 25pt, "),
+        "top-right" => ("right + top", "dx: -40pt, ", "dy: 25pt, "),
+        "top-center" => ("center + top", "", "dy: 25pt, "),
+        _ => ("center + bottom", "", "dy: -25pt, "),
     };
 
     // Generate overlay with page numbers using typst (margin: 0pt for correct qpdf overlay)
@@ -1284,9 +1410,13 @@ pub async fn add_page_numbers(
     );
 
     for i in 0..total {
-        if i > 0 { typst_content.push_str("#pagebreak()\n"); }
+        if i > 0 {
+            typst_content.push_str("#pagebreak()\n");
+        }
         let num = start + i;
-        let label = fmt.replace("{n}", &num.to_string()).replace("{total}", &(start + total - 1).to_string());
+        let label = fmt
+            .replace("{n}", &num.to_string())
+            .replace("{total}", &(start + total - 1).to_string());
         typst_content.push_str(&format!("#place({}, {}{}[{}])\n", align, dx, dy, label));
     }
 
@@ -1301,31 +1431,54 @@ pub async fn add_page_numbers(
     use tauri_plugin_shell::ShellExt;
     let typst_sidecar = match app.shell().sidecar("typst") {
         Ok(s) => s,
-        Err(e) => { let _ = std::fs::remove_file(&tmp_typ); return err_result(&format!("typst non trovato: {}", e)); }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_typ);
+            return err_result(&format!("typst non trovato: {}", e));
+        }
     };
-    let typst_cmd = typst_sidecar.args(["compile", &tmp_typ.to_string_lossy(), &tmp_overlay.to_string_lossy()]);
+    let typst_cmd = typst_sidecar.args([
+        "compile",
+        &tmp_typ.to_string_lossy(),
+        &tmp_overlay.to_string_lossy(),
+    ]);
     match typst_cmd.output().await {
         Ok(out) if !out.status.success() => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             let _ = std::fs::remove_file(&tmp_typ);
             return err_result(&format!("Errore generazione numeri: {}", stderr));
         }
-        Err(e) => { let _ = std::fs::remove_file(&tmp_typ); return err_result(&format!("Errore typst: {}", e)); }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_typ);
+            return err_result(&format!("Errore typst: {}", e));
+        }
         _ => {}
     }
     let _ = crate::security::secure_delete_file(&tmp_typ);
 
     let qpdf_sidecar = match app.shell().sidecar("qpdf") {
         Ok(s) => s,
-        Err(_) => { let _ = std::fs::remove_file(&tmp_overlay); return err_result("qpdf non trovato."); }
+        Err(_) => {
+            let _ = std::fs::remove_file(&tmp_overlay);
+            return err_result("qpdf non trovato.");
+        }
     };
     let qpdf_cmd = qpdf_sidecar.args([
-        input_path.as_str(), "--overlay", &tmp_overlay.to_string_lossy(), "--", "--", output_path.as_str(),
+        input_path.as_str(),
+        "--overlay",
+        &tmp_overlay.to_string_lossy(),
+        "--",
+        "--",
+        output_path.as_str(),
     ]);
     let result = match qpdf_cmd.output().await {
         Ok(out) if out.status.success() => ok_result(
             &output_path,
-            &format!("Numeri di pagina aggiunti a {} pagine (da {} a {}).", total, start, start + total - 1),
+            &format!(
+                "Numeri di pagina aggiunti a {} pagine (da {} a {}).",
+                total,
+                start,
+                start + total - 1
+            ),
         ),
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
@@ -1382,7 +1535,12 @@ pub async fn redact_pdf(
     redactions: Vec<RedactArea>,
 ) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::redact_pdf] {} → {}, {} redaction areas", input_path, output_path, redactions.len());
+    eprintln!(
+        "[doc_tools::redact_pdf] {} → {}, {} redaction areas",
+        input_path,
+        output_path,
+        redactions.len()
+    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -1460,10 +1618,8 @@ pub async fn redact_pdf(
             page_w, page_h
         ));
 
-        let page_areas: Vec<&RedactArea> = redactions
-            .iter()
-            .filter(|a| a.page == page_num)
-            .collect();
+        let page_areas: Vec<&RedactArea> =
+            redactions.iter().filter(|a| a.page == page_num).collect();
         for a in &page_areas {
             // PDF user-space coords have origin at bottom-left. Typst with
             // margin:0pt places from top-left. Y-flip = page_h - y - height.
@@ -1492,28 +1648,49 @@ pub async fn redact_pdf(
     // Step 3: Compile Typst → overlay PDF
     let typst_sidecar = match app.shell().sidecar("typst") {
         Ok(s) => s,
-        Err(e) => { let _ = std::fs::remove_file(&tmp_typ); return err_result(&format!("typst non trovato: {}", e)); }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_typ);
+            return err_result(&format!("typst non trovato: {}", e));
+        }
     };
-    let typst_cmd = typst_sidecar.args(["compile", &tmp_typ.to_string_lossy(), &tmp_overlay.to_string_lossy()]);
+    let typst_cmd = typst_sidecar.args([
+        "compile",
+        &tmp_typ.to_string_lossy(),
+        &tmp_overlay.to_string_lossy(),
+    ]);
     match typst_cmd.output().await {
         Ok(out) if !out.status.success() => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             let _ = std::fs::remove_file(&tmp_typ);
             return err_result(&format!("Errore generazione overlay censura: {}", stderr));
         }
-        Err(e) => { let _ = std::fs::remove_file(&tmp_typ); return err_result(&format!("Errore typst: {}", e)); }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_typ);
+            return err_result(&format!("Errore typst: {}", e));
+        }
         _ => {}
     }
     let _ = crate::security::secure_delete_file(&tmp_typ);
 
     // Step 4: qpdf overlay (black rects on top of original PDF)
-    let tmp_overlaid = tmp_dir.join(format!("lexflow_app_redact_overlaid_{}.pdf", rand::random::<u64>()));
+    let tmp_overlaid = tmp_dir.join(format!(
+        "lexflow_app_redact_overlaid_{}.pdf",
+        rand::random::<u64>()
+    ));
     let qpdf_sidecar = match app.shell().sidecar("qpdf") {
         Ok(s) => s,
-        Err(_) => { let _ = std::fs::remove_file(&tmp_overlay); return err_result("qpdf non trovato."); }
+        Err(_) => {
+            let _ = std::fs::remove_file(&tmp_overlay);
+            return err_result("qpdf non trovato.");
+        }
     };
     let overlay_cmd = qpdf_sidecar.args([
-        input_path.as_str(), "--overlay", &tmp_overlay.to_string_lossy(), "--", "--", &tmp_overlaid.to_string_lossy(),
+        input_path.as_str(),
+        "--overlay",
+        &tmp_overlay.to_string_lossy(),
+        "--",
+        "--",
+        &tmp_overlaid.to_string_lossy(),
     ]);
     match overlay_cmd.output().await {
         Ok(out) if !out.status.success() => {
@@ -1521,7 +1698,10 @@ pub async fn redact_pdf(
             let _ = std::fs::remove_file(&tmp_overlay);
             return err_result(&format!("qpdf overlay fallito: {}", stderr));
         }
-        Err(e) => { let _ = std::fs::remove_file(&tmp_overlay); return err_result(&format!("Errore qpdf: {}", e)); }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_overlay);
+            return err_result(&format!("Errore qpdf: {}", e));
+        }
         _ => {}
     }
     let _ = crate::security::secure_delete_file(&tmp_overlay);
@@ -1534,20 +1714,18 @@ pub async fn redact_pdf(
     // the redacted region) but guarantees zero text leakage on those pages.
     let pages_with_redactions: std::collections::BTreeSet<u32> =
         redactions.iter().map(|a| a.page).collect();
-    let destructive_ok = match strip_text_on_pages(
-        &tmp_overlaid.to_string_lossy(),
-        &pages_with_redactions,
-    ) {
-        Ok(_) => true,
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!(
-                "[doc_tools::redact_pdf] destructive content-stream pass failed: {}",
-                _e
-            );
-            false
-        }
-    };
+    let destructive_ok =
+        match strip_text_on_pages(&tmp_overlaid.to_string_lossy(), &pages_with_redactions) {
+            Ok(_) => true,
+            Err(_e) => {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "[doc_tools::redact_pdf] destructive content-stream pass failed: {}",
+                    _e
+                );
+                false
+            }
+        };
     if !destructive_ok {
         // CRIT-1: do NOT silently rename the unprotected overlay as success.
         let _ = crate::security::secure_delete_file(&tmp_overlaid);
@@ -1693,10 +1871,8 @@ fn strip_text_on_pages(
                 "\"" => {
                     // " takes (aw ac string) — replace string with empty.
                     if op.operands.len() >= 3 {
-                        op.operands[2] = lopdf::Object::String(
-                            Vec::new(),
-                            lopdf::StringFormat::Literal,
-                        );
+                        op.operands[2] =
+                            lopdf::Object::String(Vec::new(), lopdf::StringFormat::Literal);
                     } else {
                         op.operands = vec![lopdf::Object::String(
                             Vec::new(),
@@ -1812,7 +1988,8 @@ pub async fn secure_pdf(
                 wm_text.clone(),
                 Some(0.15),
                 Some(48.0),
-            ).await;
+            )
+            .await;
             if !wm_result.success {
                 let _ = std::fs::remove_file(&tmp_wm);
                 return err_result(&format!("Errore watermark: {}", wm_result.message));
@@ -1957,7 +2134,12 @@ pub async fn unsecure_pdf(
     password: Option<String>,
 ) -> DocToolResult {
     #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::unsecure_pdf] {} → {}, has_password={}", input_path, output_path, password.is_some());
+    eprintln!(
+        "[doc_tools::unsecure_pdf] {} → {}, has_password={}",
+        input_path,
+        output_path,
+        password.is_some()
+    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }

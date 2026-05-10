@@ -1382,9 +1382,7 @@ pub fn read_split_vault(data_dir: &std::path::Path, dek: &[u8]) -> Result<VaultD
             })
             .unwrap_or(false);
         if has_records {
-            return Err(
-                "vault index missing but records found — possible tampering".to_string(),
-            );
+            return Err("vault index missing but records found — possible tampering".to_string());
         }
         // INTENTIONAL: For new vaults or vaults migrated from monolithic format,
         // the index file may not exist yet. An empty EncryptedBlock signals
@@ -1494,10 +1492,7 @@ pub fn read_split_vault(data_dir: &std::path::Path, dek: &[u8]) -> Result<VaultD
     if manifest_active {
         for id in v6_index.record_manifest.keys() {
             if !on_disk_ids.contains(id) {
-                return Err(format!(
-                    "record file {} missing (manifest expected it)",
-                    id
-                ));
+                return Err(format!("record file {} missing (manifest expected it)", id));
             }
         }
     }
@@ -1638,7 +1633,10 @@ mod tests {
         let bytes = serde_json::to_vec(&v6).unwrap();
         let parsed: V6Index = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(parsed.manifest_version, CURRENT_MANIFEST_VERSION);
-        assert_eq!(parsed.record_manifest.get("rec1").map(|s| s.as_str()), Some("deadbeef"));
+        assert_eq!(
+            parsed.record_manifest.get("rec1").map(|s| s.as_str()),
+            Some("deadbeef")
+        );
     }
 
     /// BE-5-HIGH-2: legacy V6 vaults (manifest_version == 0) deserialize via

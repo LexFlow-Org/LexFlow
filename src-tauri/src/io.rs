@@ -9,9 +9,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// Uses u64 random for tmp name (larger namespace) + cleanup on rename failure.
 pub(crate) fn atomic_write_with_sync(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     // FIX: u64 for larger collision-resistant namespace (was u32)
-    let file_name = path.file_name().ok_or_else(|| {
-        "Path has no filename component — cannot create temp file".to_string()
-    })?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "Path has no filename component — cannot create temp file".to_string())?;
     let tmp_name = format!(
         ".{}.tmp.{}",
         file_name.to_string_lossy(),
@@ -120,13 +120,10 @@ fn apply_user_only_acl_windows(path: &std::path::Path) {
     // backslash (DOMAIN\user), and space. Reject anything else outright.
     let safe = !username.is_empty()
         && username.chars().all(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(c, '.' | '_' | '-' | '@' | '$' | '\\' | ' ')
+            c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '@' | '$' | '\\' | ' ')
         });
     if !safe {
-        eprintln!(
-            "[LexFlow] WARNING: icacls skipped — username failed safe-charset validation"
-        );
+        eprintln!("[LexFlow] WARNING: icacls skipped — username failed safe-charset validation");
         return;
     }
     let grant = format!("{}:F", username);

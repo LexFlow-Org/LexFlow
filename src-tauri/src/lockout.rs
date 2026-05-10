@@ -178,10 +178,7 @@ pub(crate) fn check_lockout(
 ) -> Result<(), Value> {
     let (disk_attempts, disk_locked_until) = lockout_load(sec_dir);
     {
-        let mut att = state
-            .failed_attempts
-            .lock()
-            .unwrap_or_else(|e| {
+        let mut att = state.failed_attempts.lock().unwrap_or_else(|e| {
             eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
             e.into_inner()
         });
@@ -234,13 +231,10 @@ pub(crate) fn check_lockout(
                     .map(|d| d.as_secs())
                     .unwrap_or(0)
             };
-            let att = *state
-                .failed_attempts
-                .lock()
-                .unwrap_or_else(|e| {
-            eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
-            e.into_inner()
-        });
+            let att = *state.failed_attempts.lock().unwrap_or_else(|e| {
+                eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
+                e.into_inner()
+            });
             return Err(json!({
                 "success": false, "valid": false, "locked": true,
                 "remaining": remaining,
@@ -251,17 +245,14 @@ pub(crate) fn check_lockout(
     }
     // Check in-memory lockout (Instant-based, within-session)
     if let Some(until) = *state.locked_until.lock().unwrap_or_else(|e| {
-            eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
-            e.into_inner()
-        }) {
+        eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
+        e.into_inner()
+    }) {
         if Instant::now() < until {
-            let att = *state
-                .failed_attempts
-                .lock()
-                .unwrap_or_else(|e| {
-            eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
-            e.into_inner()
-        });
+            let att = *state.failed_attempts.lock().unwrap_or_else(|e| {
+                eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
+                e.into_inner()
+            });
             return Err(json!({
                 "success": false, "valid": false, "locked": true,
                 "remaining": until.checked_duration_since(Instant::now()).unwrap_or(Duration::ZERO).as_secs(),
@@ -274,13 +265,10 @@ pub(crate) fn check_lockout(
 }
 
 pub(crate) fn record_failed_attempt(state: &State<AppState>, sec_dir: &std::path::Path) {
-    let mut att = state
-        .failed_attempts
-        .lock()
-        .unwrap_or_else(|e| {
-            eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
-            e.into_inner()
-        });
+    let mut att = state.failed_attempts.lock().unwrap_or_else(|e| {
+        eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
+        e.into_inner()
+    });
     *att += 1;
 
     // Compute exponential backoff
@@ -289,7 +277,10 @@ pub(crate) fn record_failed_attempt(state: &State<AppState>, sec_dir: &std::path
     // clear `state.locked_until` so we don't leak a stale Instant from a prior attempt.
     if lockout_secs.is_none() {
         *state.locked_until.lock().unwrap_or_else(|e| {
-            eprintln!("[lockout] WARN: locked_until mutex poisoned, recovering: {}", e);
+            eprintln!(
+                "[lockout] WARN: locked_until mutex poisoned, recovering: {}",
+                e
+            );
             e.into_inner()
         }) = None;
     }
@@ -315,7 +306,10 @@ pub(crate) fn record_failed_attempt(state: &State<AppState>, sec_dir: &std::path
     });
 
     if let Err(e) = lockout_save(sec_dir, *att, locked_sys) {
-        eprintln!("[SECURITY] record_failed_attempt: lockout persist failed: {}", e);
+        eprintln!(
+            "[SECURITY] record_failed_attempt: lockout persist failed: {}",
+            e
+        );
     }
 
     eprintln!(
@@ -385,17 +379,14 @@ fn wipe_dek_from_keystore() {
 }
 
 pub(crate) fn clear_lockout(state: &State<AppState>, sec_dir: &std::path::Path) {
-    *state
-        .failed_attempts
-        .lock()
-        .unwrap_or_else(|e| {
-            eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
-            e.into_inner()
-        }) = 0;
+    *state.failed_attempts.lock().unwrap_or_else(|e| {
+        eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
+        e.into_inner()
+    }) = 0;
     *state.locked_until.lock().unwrap_or_else(|e| {
-            eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
-            e.into_inner()
-        }) = None;
+        eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
+        e.into_inner()
+    }) = None;
     lockout_clear(sec_dir);
 }
 

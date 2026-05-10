@@ -88,7 +88,10 @@ pub(crate) fn open_path(app: AppHandle, path: String) {
 // ─── File/folder selection dialogs ──────────────────────────
 
 #[tauri::command]
-pub(crate) async fn select_file(app: AppHandle, extensions: Option<Vec<String>>) -> Result<Option<Value>, String> {
+pub(crate) async fn select_file(
+    app: AppHandle,
+    extensions: Option<Vec<String>>,
+) -> Result<Option<Value>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
     let exts = extensions.unwrap_or_else(|| vec!["pdf".into(), "docx".into(), "doc".into()]);
@@ -179,8 +182,8 @@ pub(crate) fn read_file_base64(app: AppHandle, path: String) -> Result<String, S
         .map_err(|_| "path non valido o file inesistente".to_string())?;
 
     // Re-check after canonicalization in case of TOCTOU.
-    let canon_meta = std::fs::symlink_metadata(&canonical)
-        .map_err(|_| "path non valido".to_string())?;
+    let canon_meta =
+        std::fs::symlink_metadata(&canonical).map_err(|_| "path non valido".to_string())?;
     if canon_meta.file_type().is_symlink() {
         return Err("symlink rifiutati".into());
     }
@@ -232,12 +235,9 @@ pub(crate) async fn select_files(
         .unwrap_or_default()
         .into_iter()
         .filter_map(|f| {
-            f.into_path().ok().map(|p| {
-                p.canonicalize()
-                    .unwrap_or(p)
-                    .to_string_lossy()
-                    .to_string()
-            })
+            f.into_path()
+                .ok()
+                .map(|p| p.canonicalize().unwrap_or(p).to_string_lossy().to_string())
         })
         .collect())
 }
@@ -257,12 +257,9 @@ pub(crate) async fn select_folder(app: AppHandle) -> Result<Option<String>, Stri
     let folder = rx.await.map_err(|e| format!("Dialog error: {}", e))?;
     // FIX-S5: canonicalize the folder path before returning.
     Ok(folder.and_then(|f| {
-        f.into_path().ok().map(|p| {
-            p.canonicalize()
-                .unwrap_or(p)
-                .to_string_lossy()
-                .to_string()
-        })
+        f.into_path()
+            .ok()
+            .map(|p| p.canonicalize().unwrap_or(p).to_string_lossy().to_string())
     }))
 }
 
@@ -368,9 +365,7 @@ pub(crate) async fn write_pdf_to_path(
     if let Ok(lex_dir) = app.path().app_data_dir() {
         if let Ok(c_lex) = lex_dir.canonicalize() {
             if canonical_parent.starts_with(&c_lex) {
-                return Err(
-                    "Scrittura nella directory dati di LexFlow non consentita".into(),
-                );
+                return Err("Scrittura nella directory dati di LexFlow non consentita".into());
             }
         }
     }
@@ -558,8 +553,7 @@ fn escape_typst(input: &str) -> String {
     let mut out = String::with_capacity(input.len() + 16);
     for ch in input.chars() {
         match ch {
-            '#' | '$' | '*' | '@' | '[' | ']' | '\\' | '_' | '~' | '<' | '>' | '{' | '}'
-            | '"' => {
+            '#' | '$' | '*' | '@' | '[' | ']' | '\\' | '_' | '~' | '<' | '>' | '{' | '}' | '"' => {
                 out.push('\\');
                 out.push(ch);
             }
@@ -706,8 +700,9 @@ pub(crate) async fn generate_typst_pdf(
     let type_label_safe = escape_typst(&cap_typst_field(&data.type_label));
     let status_label_safe = escape_typst(&cap_typst_field(&data.status_label));
     let object_safe = escape_typst(&cap_typst_field(data.object.as_deref().unwrap_or("—")));
-    let counterparty_safe =
-        escape_typst(&cap_typst_field(data.counterparty.as_deref().unwrap_or("—")));
+    let counterparty_safe = escape_typst(&cap_typst_field(
+        data.counterparty.as_deref().unwrap_or("—"),
+    ));
     let court_safe = escape_typst(&cap_typst_field(data.court.as_deref().unwrap_or("—")));
     let code_safe = escape_typst(&cap_typst_field(data.code.as_deref().unwrap_or("—")));
     let description_safe =
@@ -715,10 +710,8 @@ pub(crate) async fn generate_typst_pdf(
     let counterparty_label_safe = escape_typst(&cap_typst_field(&data.counterparty_label));
     let court_label_safe = escape_typst(&cap_typst_field(&data.court_label));
     let code_label_safe = escape_typst(&cap_typst_field(&data.code_label));
-    let studio_safe =
-        escape_typst(&cap_typst_field(data.studio_name.as_deref().unwrap_or("")));
-    let lawyer_safe =
-        escape_typst(&cap_typst_field(data.lawyer_name.as_deref().unwrap_or("")));
+    let studio_safe = escape_typst(&cap_typst_field(data.studio_name.as_deref().unwrap_or("")));
+    let lawyer_safe = escape_typst(&cap_typst_field(data.lawyer_name.as_deref().unwrap_or("")));
     let lawyer_title_safe = escape_typst(&cap_typst_field(
         data.lawyer_title.as_deref().unwrap_or("Avv."),
     ));

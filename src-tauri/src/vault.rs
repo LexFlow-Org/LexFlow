@@ -222,7 +222,8 @@ fn write_vault_engine(state: &State<AppState>, data: &Value) -> Result<(), Strin
                 // V7: serialize with MessagePack (30-40% smaller than JSON).
                 // Wrap in Zeroizing so the plaintext bytes are scrubbed on drop
                 // (BE-5-L-5 / audit:BE-5-L-5).
-                let item_bytes = Zeroizing::new(rmp_serde::to_vec(item).map_err(|e| e.to_string())?);
+                let item_bytes =
+                    Zeroizing::new(rmp_serde::to_vec(item).map_err(|e| e.to_string())?);
 
                 // Check if record exists and data changed
                 let mut entry = if let Some(existing) = vault.records.remove(&record_key) {
@@ -307,7 +308,9 @@ fn validate_password_strength(password: &str) -> Result<(), Value> {
         let normalized = password.to_ascii_lowercase();
         // Reject all-zero hash (degenerate/test input).
         if normalized == "0".repeat(64) {
-            return Err(json!({"success": false, "error": "Password troppo debole. Scegline una più sicura."}));
+            return Err(
+                json!({"success": false, "error": "Password troppo debole. Scegline una più sicura."}),
+            );
         }
         const WEAK_HASHES: &[&str] = &[
             // sha256("password")
@@ -332,7 +335,9 @@ fn validate_password_strength(password: &str) -> Result<(), Value> {
             "bcb15f821479b4d5772bd0ca866c00ad5f926e3580720659cc80d39c9d09802a",
         ];
         if WEAK_HASHES.iter().any(|h| *h == normalized) {
-            return Err(json!({"success": false, "error": "Password tra le più comuni e insicure. Scegline una diversa."}));
+            return Err(
+                json!({"success": false, "error": "Password tra le più comuni e insicure. Scegline una diversa."}),
+            );
         }
         return Ok(()); // Frontend validated strength before hashing
     }
@@ -385,7 +390,9 @@ fn init_new_vault_engine(
             .vault_version
             .write()
             .unwrap_or_else(|e| e.into_inner()) = 0;
-        return Err(json!({"success": false, "error": format!("Impossibile salvare il database. Verifica lo spazio su disco.")}));
+        return Err(
+            json!({"success": false, "error": format!("Impossibile salvare il database. Verifica lo spazio su disco.")}),
+        );
     }
 
     Ok(())

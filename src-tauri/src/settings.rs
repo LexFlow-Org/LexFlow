@@ -78,9 +78,7 @@ pub(crate) fn get_settings(state: State<AppState>, app: AppHandle) -> Value {
                 Ok(bytes) => {
                     if let Ok(re_enc) = encrypt_data(&key, &bytes) {
                         let _ = atomic_write_with_sync(&path, &re_enc);
-                        eprintln!(
-                            "[LexFlow] Migrazione settings plaintext -> cifrato completata."
-                        );
+                        eprintln!("[LexFlow] Migrazione settings plaintext -> cifrato completata.");
                     }
                 }
                 Err(e) => {

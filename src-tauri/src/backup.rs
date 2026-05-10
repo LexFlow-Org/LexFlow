@@ -102,8 +102,12 @@ pub(crate) fn create_backup(data_dir: &std::path::Path) -> Result<String, String
     // HIGH (audit BE-8): write the backup with secure_write (0600) instead of plain copy
     // so it lands with owner-only permissions from the start. atomic_write_with_sync
     // is preserved for the data plane (already does fsync), and we then chmod 0600.
-    atomic_write_with_sync(&bak_path, &vault_data)
-        .map_err(|e| format!("Impossibile salvare il backup ({}). Verifica lo spazio su disco.", e))?;
+    atomic_write_with_sync(&bak_path, &vault_data).map_err(|e| {
+        format!(
+            "Impossibile salvare il backup ({}). Verifica lo spazio su disco.",
+            e
+        )
+    })?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -176,11 +180,7 @@ fn rotate_backups(bak_dir: &std::path::Path) -> Result<(), String> {
                 let _ = fs::remove_file(&sidecar);
             }
             Err(e) => {
-                eprintln!(
-                    "[backup] failed to rotate {}: {}",
-                    path.display(),
-                    e
-                );
+                eprintln!("[backup] failed to rotate {}: {}", path.display(), e);
                 return Err(format!("backup rotation failed: {}", e));
             }
         }
@@ -205,7 +205,10 @@ pub(crate) fn trigger_backup(state: State<AppState>) -> Result<String, String> {
 /// would slip through the `.lex.bak` suffix check.
 fn is_valid_backup_filename(name: &str) -> bool {
     // Accept: vault_YYYYMMDD_HHMMSS.lex.bak  OR  vault_YYYYMMDD_HHMMSS_NNN.lex.bak
-    let stripped = match name.strip_prefix("vault_").and_then(|s| s.strip_suffix(".lex.bak")) {
+    let stripped = match name
+        .strip_prefix("vault_")
+        .and_then(|s| s.strip_suffix(".lex.bak"))
+    {
         Some(s) => s,
         None => return false,
     };
@@ -287,7 +290,9 @@ mod tests {
     #[test]
     fn test_is_valid_backup_filename_accepts_canonical() {
         assert!(is_valid_backup_filename("vault_20260507_120000.lex.bak"));
-        assert!(is_valid_backup_filename("vault_20260507_120000_001.lex.bak"));
+        assert!(is_valid_backup_filename(
+            "vault_20260507_120000_001.lex.bak"
+        ));
     }
 
     #[test]

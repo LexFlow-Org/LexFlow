@@ -111,7 +111,9 @@ pub(crate) fn validate_path(s: &str) -> Result<(), String> {
 /// but rejects scalars/arrays as the document root.
 #[allow(dead_code)]
 pub(crate) fn validate_settings_value(v: &Value) -> Result<(), String> {
-    let obj = v.as_object().ok_or("settings deve essere un oggetto JSON")?;
+    let obj = v
+        .as_object()
+        .ok_or("settings deve essere un oggetto JSON")?;
     if let Some(am) = obj.get("autolockMinutes") {
         let n = am.as_u64().ok_or("autolockMinutes deve essere un numero")?;
         if n == 0 || n > 1440 {
@@ -134,16 +136,18 @@ pub(crate) fn validate_settings_value(v: &Value) -> Result<(), String> {
 /// SEC-VAL-1: validate a notification schedule payload coming from the FE.
 #[allow(dead_code)]
 pub(crate) fn validate_notification_schedule(v: &Value) -> Result<(), String> {
-    let obj = v.as_object().ok_or("schedule deve essere un oggetto JSON")?;
+    let obj = v
+        .as_object()
+        .ok_or("schedule deve essere un oggetto JSON")?;
     if let Some(bt) = obj.get("briefingTimes") {
-        let arr = bt
-            .as_array()
-            .ok_or("briefingTimes deve essere un array")?;
+        let arr = bt.as_array().ok_or("briefingTimes deve essere un array")?;
         if arr.len() > 32 {
             return Err("briefingTimes troppo lungo (max 32)".into());
         }
         for t in arr {
-            let s = t.as_str().ok_or("briefingTimes contiene un valore non stringa")?;
+            let s = t
+                .as_str()
+                .ok_or("briefingTimes contiene un valore non stringa")?;
             if s.len() != 5 || s.as_bytes().get(2) != Some(&b':') {
                 return Err(format!("briefingTimes: formato non valido '{}'", s));
             }

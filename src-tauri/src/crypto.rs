@@ -230,10 +230,7 @@ mod tests {
         let mut data = vec![0u8; VAULT_MAGIC.len() + NONCE_LEN + 32];
         data[0..5].copy_from_slice(b"WRONG");
         // FIX-5: error message is uniform ("decryption failed") to avoid oracle leaks
-        assert_eq!(
-            decrypt_data(&key, &data).unwrap_err(),
-            "decryption failed"
-        );
+        assert_eq!(decrypt_data(&key, &data).unwrap_err(), "decryption failed");
     }
 
     #[test]

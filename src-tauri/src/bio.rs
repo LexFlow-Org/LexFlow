@@ -250,10 +250,7 @@ mod macos_keychain {
                     kSecReturnData as CFTypeRef,
                     cf_true.as_concrete_TypeRef() as CFTypeRef,
                 ),
-                (
-                    kSecMatchLimit as CFTypeRef,
-                    kSecMatchLimitOne as CFTypeRef,
-                ),
+                (kSecMatchLimit as CFTypeRef, kSecMatchLimitOne as CFTypeRef),
             ];
             let query = make_query(&pairs);
             if query.is_null() {
@@ -388,9 +385,7 @@ mod macos_keychain {
                 eprintln!(
                     "[bio]       The entry will NOT have kSecAccessControlBiometryCurrentSet."
                 );
-                eprintln!(
-                    "[bio]       Other Apple-signed apps trusted by the user may read it."
-                );
+                eprintln!("[bio]       Other Apple-signed apps trusted by the user may read it.");
                 let entry = keyring::Entry::new(service, account).map_err(|e| e.to_string())?;
                 entry.set_password(password).map_err(|e| e.to_string())?;
                 Ok(())
@@ -712,15 +707,10 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub(crate) fn bio_login(
-    _state: State<AppState>,
-    window: tauri::Window,
-) -> Result<Value, String> {
+pub(crate) fn bio_login(_state: State<AppState>, window: tauri::Window) -> Result<Value, String> {
     // Prevent Touch ID from appearing over other apps when LexFlow is not focused
     if !window.is_focused().unwrap_or(false) {
-        return Ok(
-            serde_json::json!({"success": false, "error": "Window not focused"}),
-        );
+        return Ok(serde_json::json!({"success": false, "error": "Window not focused"}));
     }
 
     #[cfg(not(target_os = "android"))]
