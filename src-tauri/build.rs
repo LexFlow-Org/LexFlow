@@ -11,7 +11,7 @@ fn main() {
     seed.extend_from_slice(b"LEXFLOW_V2_SECURE"); // VAULT_MAGIC
     seed.extend_from_slice(&(32u64).to_le_bytes()); // AES_KEY_LEN
     seed.extend_from_slice(&(12u64).to_le_bytes()); // NONCE_LEN
-    seed.extend_from_slice(&(16384u32).to_le_bytes()); // ARGON2_M_COST
+    seed.extend_from_slice(&(65536u32).to_le_bytes()); // ARGON2_M_COST (OWASP stronger profile)
     seed.extend_from_slice(&(3u32).to_le_bytes()); // ARGON2_T_COST
     seed.extend_from_slice(&(1u32).to_le_bytes()); // ARGON2_P_COST
                                                    // PUBLIC_KEY_BYTES (must match license.rs exactly)
