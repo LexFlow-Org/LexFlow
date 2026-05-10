@@ -182,7 +182,7 @@ pub(crate) fn verify_binary_integrity(app_handle: &AppHandle) {
     integrity_seed.extend_from_slice(&ARGON2_M_COST.to_le_bytes());
     integrity_seed.extend_from_slice(&ARGON2_T_COST.to_le_bytes());
     integrity_seed.extend_from_slice(&ARGON2_P_COST.to_le_bytes());
-    integrity_seed.extend_from_slice(&*PUBLIC_KEY_BYTES);
+    integrity_seed.extend_from_slice(&PUBLIC_KEY_BYTES);
     integrity_seed.extend_from_slice(&crate::lockout::DEK_WIPE_THRESHOLD.to_le_bytes());
 
     // Self-referential HMAC: key = SHA-256(seed), msg = seed

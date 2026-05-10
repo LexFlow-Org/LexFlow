@@ -91,65 +91,31 @@ mod sub_keys {
     }
 }
 
-// ─── Public-key obfuscation ─────────────────────────────────
+// ─── Public-key bytes (literal const, must match build.rs) ──
 //
-// SECURITY NOTE: this is *obfuscation, not security*. A determined attacker
-// with debugger access can recover the public key by stepping `ed25519_public_key()`.
-// The split + XOR layout merely raises the cost of trivial static-string scanning
-// (e.g. `strings`, `grep` over the binary) compared to a single contiguous array.
-//
-// TODO(audit:HIGH-CRYPTO): add server-side recheck or hardware attestation
-// for true tamper-resistance against the embedded public key.
+// SECURITY NOTE (audit:HIGH-CRYPTO): the public key is embedded as a literal
+// const so build.rs and CI's integrity check can verify byte-for-byte
+// equality between this file and the seed used to derive the binary HMAC.
+// A previous attempt (v1.0.0 audit pass) split the key into XOR-masked
+// fragments to defeat trivial `strings` scans, but that defeats the build-
+// time literal-byte equality check the CI workflow runs. The audit itself
+// flagged the obfuscation as "not security" — a determined attacker with
+// debugger access recovers the key either way. We therefore keep the
+// literal here and rely on:
+//   1. Build-time HMAC over the constants seeded with this public key.
+//   2. OS code-signing chain (notarization on macOS, Authenticode on Win).
+//   3. (Future) server-side recheck for high-value SKUs.
 //
 // ROTATED 2026-04-11: key pair regenerated (v5.0) — pre-release audit.
-// Original public key bytes:
-//   [68, 17, 204, 75, 33, 178, 142, 35, 80, 225, 11, 121, 146, 211, 252, 220,
-//    179, 206, 88, 129, 82, 148, 38, 103, 113, 3, 106, 4, 9, 239, 47, 150]
+// CI invariant: `grep -A4 'PUBLIC_KEY_BYTES.*must match' license.rs` must
+// extract the same `Nu8` literals as the analogous block in `build.rs`.
 
-const PK_PART_A: [u8; 16] = [
-    0x55u8, 0x0Eu8, 0xC0u8, 0x4Du8, 0x37u8, 0xA1u8, 0x9Du8, 0x29u8, 0x42u8, 0xF6u8, 0x1Cu8, 0x77u8,
-    0x83u8, 0xC4u8, 0xEEu8, 0xCFu8,
+// PUBLIC_KEY_BYTES (must match build.rs exactly)
+pub(crate) const PUBLIC_KEY_BYTES: [u8; 32] = [
+    68u8, 17u8, 204u8, 75u8, 33u8, 178u8, 142u8, 35u8, 80u8, 225u8, 11u8, 121u8, 146u8, 211u8,
+    252u8, 220u8, 179u8, 206u8, 88u8, 129u8, 82u8, 148u8, 38u8, 103u8, 113u8, 3u8, 106u8, 4u8, 9u8,
+    239u8, 47u8, 150u8,
 ];
-
-const PK_PART_B: [u8; 16] = [
-    0xA1u8, 0xDDu8, 0x4Bu8, 0x9Eu8, 0x40u8, 0x87u8, 0x35u8, 0x77u8, 0x60u8, 0x10u8, 0x79u8, 0x17u8,
-    0x1Au8, 0xFCu8, 0x3Cu8, 0x85u8,
-];
-
-const PK_XOR_MASK: [u8; 32] = [
-    0x11u8, 0x1Fu8, 0x0Cu8, 0x06u8, 0x16u8, 0x13u8, 0x13u8, 0x0Au8, 0x12u8, 0x17u8, 0x17u8, 0x0Eu8,
-    0x11u8, 0x17u8, 0x12u8, 0x13u8, 0x12u8, 0x13u8, 0x13u8, 0x1Fu8, 0x12u8, 0x13u8, 0x13u8, 0x10u8,
-    0x11u8, 0x13u8, 0x13u8, 0x13u8, 0x13u8, 0x13u8, 0x13u8, 0x13u8,
-];
-
-#[inline(never)]
-fn ed25519_public_key() -> [u8; 32] {
-    let mut out = [0u8; 32];
-    out[..16].copy_from_slice(&PK_PART_A);
-    out[16..].copy_from_slice(&PK_PART_B);
-    for i in 0..32 {
-        out[i] ^= PK_XOR_MASK[i];
-    }
-    out
-}
-
-/// Public-key bytes used by the integrity HMAC computed in build.rs.
-/// Recovered on first access via `ed25519_public_key()` (split + XOR).
-/// Cached in a `OnceLock` to avoid recomputing on every license verify
-/// while staying compatible with the project's MSRV (1.77, pre-LazyLock).
-static PUBLIC_KEY_BYTES_CACHE: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
-
-pub(crate) struct PublicKeyBytesAccess;
-
-impl std::ops::Deref for PublicKeyBytesAccess {
-    type Target = [u8; 32];
-    fn deref(&self) -> &Self::Target {
-        PUBLIC_KEY_BYTES_CACHE.get_or_init(ed25519_public_key)
-    }
-}
-
-#[allow(non_upper_case_globals)]
-pub(crate) const PUBLIC_KEY_BYTES: PublicKeyBytesAccess = PublicKeyBytesAccess;
 
 // ─── Burned-key registry ────────────────────────────────────
 
@@ -1263,7 +1229,7 @@ mod tests {
         );
 
         // 4. Verify the embedded public key is valid
-        let pub_key = VerifyingKey::from_bytes(&*PUBLIC_KEY_BYTES);
+        let pub_key = VerifyingKey::from_bytes(&PUBLIC_KEY_BYTES);
         assert!(
             pub_key.is_ok(),
             "Embedded PUBLIC_KEY_BYTES must be a valid Ed25519 key"
@@ -1298,7 +1264,7 @@ mod tests {
         seed.extend_from_slice(&crate::constants::ARGON2_M_COST.to_le_bytes());
         seed.extend_from_slice(&crate::constants::ARGON2_T_COST.to_le_bytes());
         seed.extend_from_slice(&crate::constants::ARGON2_P_COST.to_le_bytes());
-        seed.extend_from_slice(&*PUBLIC_KEY_BYTES);
+        seed.extend_from_slice(&PUBLIC_KEY_BYTES);
         seed.extend_from_slice(&crate::lockout::DEK_WIPE_THRESHOLD.to_le_bytes());
 
         let hmac_key = Sha256::digest(&seed);
