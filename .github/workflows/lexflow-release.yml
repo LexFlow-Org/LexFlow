@@ -162,8 +162,10 @@ jobs:
       - name: Quality Gate -- PUBLIC_KEY_BYTES coherence (build.rs vs license.rs)
         working-directory: src-tauri
         run: |
-          BUILD_KEY=$(grep -A4 'PUBLIC_KEY_BYTES.*must match' build.rs | grep -o '[0-9]\+u8' | tr '\n' ',')
-          LICENSE_KEY=$(grep -A4 'pub(crate) const PUBLIC_KEY_BYTES' src/license.rs | grep -o '[0-9]\+u8' | tr '\n' ',')
+          # -A8 covers any cargo fmt layout (14+14+4, 16+16, 8 per line, etc.)
+          # — captures from the marker line up to and through the closing `]` line.
+          BUILD_KEY=$(grep -A8 'PUBLIC_KEY_BYTES.*must match' build.rs | grep -o '[0-9]\+u8' | tr '\n' ',')
+          LICENSE_KEY=$(grep -A8 'pub(crate) const PUBLIC_KEY_BYTES' src/license.rs | grep -o '[0-9]\+u8' | tr '\n' ',')
           if [ "$BUILD_KEY" != "$LICENSE_KEY" ]; then
             echo "::error::PUBLIC_KEY_BYTES mismatch between build.rs and license.rs!"
             echo "build.rs:   $BUILD_KEY"
