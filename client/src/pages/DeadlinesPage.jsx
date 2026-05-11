@@ -38,6 +38,7 @@ const DeadlineRow = memo(function DeadlineRow({ d, onSelectPractice, onNavigate 
 
   // FIX-21: flip popover above the row when it would overflow viewport bottom
   useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!showPopover) { setPopoverFlipUp(false); return; }
     const el = popoverContentRef.current;
     if (!el) return;
@@ -158,14 +159,12 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
   const [briefingDirty, setBriefingDirty] = useState(false);
 
   // Sync local state when settings prop changes (from parent/backend)
-  /* eslint-disable react-hooks/set-state-in-effect -- intentional sync from parent prop */
   useEffect(() => {
     setBriefingMattina(settings?.briefingMattina || '08:30');
     setBriefingPomeriggio(settings?.briefingPomeriggio || '14:30');
     setBriefingSera(settings?.briefingSera || '19:30');
     setBriefingDirty(false);
   }, [settings]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // FIX-19: when notifications get disabled mid-edit, clear the dirty flag
   // so the "Salva" button doesn't reappear with stale state on re-enable.

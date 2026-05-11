@@ -4,7 +4,6 @@ import * as api from '../tauri-api';
 
 const logWarn = (label, err) => {
   if (!import.meta.env.PROD) {
-    // eslint-disable-next-line no-console
     console.warn(`[WindowControls] ${label}:`, err);
   }
 };

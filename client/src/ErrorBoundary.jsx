@@ -31,7 +31,6 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     // Console output is sanitized too — never echo raw secrets to devtools
-    // eslint-disable-next-line no-console
     console.error('Uncaught error:', sanitizeError(error), errorInfo?.componentStack || '');
     // TODO: forward sanitized error to a Tauri-side persistent log channel
     //       (cross-cutting — implement once a logger command is wired in src-tauri)

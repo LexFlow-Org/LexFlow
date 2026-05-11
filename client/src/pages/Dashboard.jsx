@@ -185,6 +185,7 @@ export default function Dashboard({ practices, agendaEvents, onNavigate, onSelec
       icon: <Coffee size={100} strokeWidth={1} />,
     };
     // tick triggers re-evaluation as hour rolls over
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
   // ── Calcoli statistiche (più informative) ──

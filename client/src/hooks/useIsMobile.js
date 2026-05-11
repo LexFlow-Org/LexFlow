@@ -16,6 +16,7 @@ export function useIsMobile(breakpoint = 1024) {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const mql = window.matchMedia(`(max-width: ${breakpoint}px)`);
     // Sync once in case breakpoint changed
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMobile(mql.matches);
     const onChange = (e) => setIsMobile(e.matches);
     // Safari < 14 used the deprecated `addListener`; modern browsers expose

@@ -80,7 +80,6 @@ export default function TimeTrackingPage({ practices }) {
           // FIX-4 Stale-timer hydration sanity check
           const elapsedMin = (Date.now() - parsed.startedAt) / 60000;
           if (elapsedMin > MAX_TIMER_HOURS * 60) {
-            // eslint-disable-next-line no-alert
             const discard = window.confirm(
               `Hai un timer attivo da oltre ${MAX_TIMER_HOURS} ore. Scartarlo?`
             );

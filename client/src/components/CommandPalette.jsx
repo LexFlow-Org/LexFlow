@@ -92,7 +92,6 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
       setResults(res || []);
       setSelectedIndex(0);
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.warn('[CommandPalette] search error:', e);
       setResults([]);
     } finally {

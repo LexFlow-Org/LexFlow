@@ -24,6 +24,7 @@ export default function ExportWarningModal({ isOpen, onClose, onConfirm }) {
 
   useEffect(() => {
     if (!isOpen) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDontShowAgain(false);
     const id = setTimeout(() => cancelRef.current?.focus(), 0);
     return () => clearTimeout(id);

@@ -741,6 +741,7 @@ function TodayView({ events, onToggle, onEdit, onAdd, onSave, activeFilters }) {
   const todayEvts = useMemo(() => {
     const allToday = events.filter(e => e.date === todayStr).sort((a, b) => a.timeStart.localeCompare(b.timeStart));
     return activeFilters.length > 0 ? allToday.filter(e => activeFilters.includes(e.category)) : allToday;
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [events, todayStr, activeFilters]);
 
   // Memoized overlap layout — column assignment for overlapping events
@@ -924,6 +925,7 @@ function WeekView({ events, onEdit, onAdd, onSave, activeFilters, focusDate, onC
   const [weekOffset, setWeekOffset] = useState(initialOffset);
   // Sync weekOffset when focusDate changes externally
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (focusDate) { setWeekOffset(initialOffset); if (onClearFocusDate) onClearFocusDate(); }
   }, [focusDate, initialOffset, onClearFocusDate]);
   const scrollRef = useRef(null);
@@ -1284,6 +1286,8 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
   const [showStats, setShowStats] = useState(false);
   // Jump-to-date: when navigated with ?date=YYYY-MM-DD, focus that day
   const [focusDate, setFocusDate] = useState(null);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- events recomputed each render is fine
   const events = agendaEvents || [];
 
   // Handle ?date= and ?time= query parameters — switch to appropriate view & scroll
