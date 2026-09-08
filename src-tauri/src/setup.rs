@@ -312,8 +312,7 @@ pub(crate) fn autolock_loop(ah: AppHandle) {
         if elapsed >= threshold {
             // Lock now
             let state2 = ah.state::<AppState>();
-            *state2.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
-            *state2.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            state2.lock_vault();
             let _ = ah.emit("lf-vault-locked", ());
             continue;
         }
@@ -392,6 +391,34 @@ pub(crate) fn migrate_old_identifier(data_dir: &std::path::Path, security_dir: &
     copy_security_files_if_missing(&old_base, security_dir);
 }
 
+/// Copy durably before removing the original. A failed write or comparison must
+/// preserve the only original activation/burn/lockout record for the next start.
+fn migrate_security_file(
+    old_path: &std::path::Path,
+    new_path: &std::path::Path,
+) -> Result<bool, String> {
+    match fs::symlink_metadata(new_path) {
+        Ok(_) => return Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.to_string()),
+    }
+    match fs::symlink_metadata(old_path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.to_string()),
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            return Err("File di migrazione non regolare.".into())
+        }
+        _ => {}
+    }
+    let original = crate::io::safe_bounded_read(old_path, MAX_SETTINGS_FILE_SIZE)?;
+    atomic_write_with_sync(new_path, &original)?;
+    if crate::io::safe_bounded_read(new_path, MAX_SETTINGS_FILE_SIZE)? != original {
+        return Err("Verifica della copia di sicurezza non riuscita; originale conservato.".into());
+    }
+    fs::remove_file(old_path).map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
 /// Migrate security files from vault dir to security_dir (post v2.6.1).
 pub(crate) fn migrate_security_files(data_dir: &std::path::Path, security_dir: &std::path::Path) {
     for sec_file in &[
@@ -400,12 +427,54 @@ pub(crate) fn migrate_security_files(data_dir: &std::path::Path, security_dir: &
         BURNED_KEYS_FILE,
         LOCKOUT_FILE,
     ] {
-        let old_path = data_dir.join(sec_file);
-        let new_path = security_dir.join(sec_file);
-        if old_path.exists() && !new_path.exists() {
-            let _ = fs::copy(&old_path, &new_path);
-            let _ = fs::remove_file(&old_path);
+        if let Err(error) =
+            migrate_security_file(&data_dir.join(sec_file), &security_dir.join(sec_file))
+        {
+            eprintln!(
+                "[LexFlow] Migrazione sicurezza incompleta; originale conservato: {}",
+                error
+            );
         }
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+    #[test]
+    fn failed_security_migration_keeps_only_original() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("license.json");
+        fs::write(&original, b"synthetic-original").unwrap();
+        let missing_parent = dir.path().join("missing/license.json");
+        assert!(migrate_security_file(&original, &missing_parent).is_err());
+        assert_eq!(fs::read(&original).unwrap(), b"synthetic-original");
+        assert!(!missing_parent.exists());
+    }
+    #[test]
+    fn security_migration_preserves_existing_and_retries_safely() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("old");
+        let target = dir.path().join("new");
+        fs::write(&original, b"original").unwrap();
+        fs::write(&target, b"existing").unwrap();
+        assert!(!migrate_security_file(&original, &target).unwrap());
+        assert_eq!(fs::read(&target).unwrap(), b"existing");
+        fs::remove_file(&target).unwrap();
+        assert!(migrate_security_file(&original, &target).unwrap());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert!(!migrate_security_file(&original, &target).unwrap());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn security_migration_refuses_source_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("victim");
+        fs::write(&victim, b"unchanged").unwrap();
+        let original = dir.path().join("old");
+        std::os::unix::fs::symlink(&victim, &original).unwrap();
+        assert!(migrate_security_file(&original, &dir.path().join("new")).is_err());
+        assert_eq!(fs::read(&victim).unwrap(), b"unchanged");
     }
 }
 
@@ -549,7 +618,9 @@ fn clear_webview_cache_on_upgrade(app_version: &str, app_data_dir: &std::path::P
     let marker_file = app_data_dir.join(".webview-version");
 
     // Check if version changed
-    if let Ok(saved) = std::fs::read_to_string(&marker_file) {
+    if let Ok(saved) = crate::io::safe_bounded_read(&marker_file, 256)
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|error| error.to_string()))
+    {
         if saved.trim() == app_version {
             return; // Same version — no cache wipe needed
         }
@@ -1006,7 +1077,9 @@ pub(crate) fn setup_desktop(
                 let state_file = state_dir.join("ls_cleanup_state.txt");
                 let current_signature = format!("{}|{}", path_str, app_version);
 
-                if let Ok(saved) = std::fs::read_to_string(&state_file) {
+                if let Ok(saved) = crate::io::safe_bounded_read(&state_file, 4096)
+                    .and_then(|bytes| String::from_utf8(bytes).map_err(|error| error.to_string()))
+                {
                     if saved.trim() == current_signature {
                         eprintln!(
                             "[LexFlow] LaunchServices: already optimised for {} — skip",
@@ -1081,8 +1154,7 @@ pub(crate) fn setup_window_events(app: &tauri::App) {
                 // and cannot process the lf-lock event.
                 {
                     let state = app_handle.state::<AppState>();
-                    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                    *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    state.lock_vault();
                 }
                 // Trigger autolock before hiding — vault locks when user closes window
                 let _ = w_clone.emit("lf-lock", ());
@@ -1127,8 +1199,7 @@ pub(crate) fn setup_system_tray(app: &mut tauri::App) -> Result<(), Box<dyn std:
             }
             "quit" => {
                 let state = app.state::<AppState>();
-                *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                state.lock_vault();
                 app.exit(0);
             }
             _ => {}

@@ -1,0 +1,24 @@
+{
+  "machine": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "architecture": "arm64",
+    "logical_cpus": 10
+  },
+  "source_sha256": {
+    "src-tauri/src/constants.rs": "39823d3e070671a3a79834fc9381b579abe196d6cbdeb43c58044c4fd48c482d",
+    "src-tauri/src/io.rs": "d3ce43bfa3d780c4b97a43a5ef8d61259123a484c99dd9e049b9451e6561e85a",
+    "src-tauri/src/crypto.rs": "ca9d0b09937c53373abc348611da6af6ec5d723e15dbdcd8b643789abcabd42a",
+    "src-tauri/src/security.rs": "26a742ba34b83583782e6e24a7ad10ebc8411a6594e02781222189d722e89358",
+    "src-tauri/src/vault_engine.rs": "951ce91bdf440491664292339cfbabbd13478db285e1f4fc89258ee309642b8c",
+    "src-tauri/src/vault.rs": "84bcb089959d4b16fc3e9fd28d1cbd3ee0bd8b5daa22ffb124970550fdf6aca4",
+    "src-tauri/src/search.rs": "ff5f362a9f257ffb2ce6fa2182d097d20592ed5afb7c7a6678fefa64dca31ce5",
+    "src-tauri/src/backup.rs": "d09c313bf19946d3614767e5098c506b38ffa22e245d9d6be8c548fd56f5fab1"
+  },
+  "cases": [],
+  "fidelity": "Production core source; search/backup bodies exclude IPC wrappers. Backup OS identity uses explicit synthetic fixtures. No app/installer integration.",
+  "unit_tests": {
+    "exit_code": 0,
+    "summary": "test result: ok. 78 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s"
+  }
+}

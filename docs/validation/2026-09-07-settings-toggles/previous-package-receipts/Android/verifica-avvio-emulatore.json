@@ -1,0 +1,52 @@
+{
+  "apk_sha256": "06236e091912d55e0d4d9a6d5c9f90ea8f7eb33f4825ef5d7ea76fb57c7e73d6",
+  "physical_device": false,
+  "sdk": "35",
+  "runs": [
+    {
+      "run": 1,
+      "am_start": "Starting: Intent { cmp=com.pietrolongo.lexflow/.MainActivity }\nStatus: ok\nLaunchState: COLD\nActivity: com.pietrolongo.lexflow/.MainActivity\nTotalTime: 898\nWaitTime: 901\nComplete\n",
+      "pid": "2009",
+      "pid_after_ui": "2009",
+      "alive": true,
+      "visible_text": [],
+      "password_fields": 0,
+      "webview_debug_socket_present": true
+    },
+    {
+      "run": 2,
+      "am_start": "Starting: Intent { cmp=com.pietrolongo.lexflow/.MainActivity }\nStatus: ok\nLaunchState: COLD\nActivity: com.pietrolongo.lexflow/.MainActivity\nTotalTime: 183\nWaitTime: 184\nComplete\n",
+      "pid": "2150",
+      "pid_after_ui": "2150",
+      "alive": true,
+      "visible_text": [],
+      "password_fields": 0,
+      "webview_debug_socket_present": true
+    },
+    {
+      "run": 3,
+      "am_start": "Starting: Intent { cmp=com.pietrolongo.lexflow/.MainActivity }\nStatus: ok\nLaunchState: COLD\nActivity: com.pietrolongo.lexflow/.MainActivity\nTotalTime: 426\nWaitTime: 464\nComplete\n",
+      "pid": "2273",
+      "pid_after_ui": "2273",
+      "alive": true,
+      "visible_text": [],
+      "password_fields": 0,
+      "webview_debug_socket_present": true
+    },
+    {
+      "run": 4,
+      "am_start": "Starting: Intent { cmp=com.pietrolongo.lexflow/.MainActivity }\nStatus: ok\nLaunchState: COLD\nActivity: com.pietrolongo.lexflow/.MainActivity\nTotalTime: 375\nWaitTime: 442\nComplete\n",
+      "pid": "2396",
+      "pid_after_ui": "2396",
+      "alive": true,
+      "visible_text": [],
+      "password_fields": 0,
+      "webview_debug_socket_present": true
+    }
+  ],
+  "installation": "Performing Push Install\nSuccess",
+  "airplane_mode": "1",
+  "crash_buffer": "",
+  "all_four_alive": true,
+  "all_four_show_password_form": false
+}

@@ -1,0 +1,13 @@
+{
+  "updated_at": "2026-09-07T23:10:16.944486+02:00",
+  "path": "/Applications/LexFlow.app",
+  "version": "1.0.1",
+  "old_main_sha256": "1c35f895d721c7d83f59852f902c7d7e2c11a99ba9ecbbc4048bc27f11b317f7",
+  "new_main_sha256": "84d3937fda76e98490ee51f7e0a86395490b01d9d3c10604fc2901ce3f6f5c80",
+  "source_dmg_sha256": "376369c34358d8069ac10f03497c51d89e90fc94f317aed48fa745c8a7692222",
+  "codesign_strict_verified": true,
+  "signature": "ad hoc",
+  "user_profile_modified": false,
+  "license_registry_modified": false,
+  "application_launched": false
+}

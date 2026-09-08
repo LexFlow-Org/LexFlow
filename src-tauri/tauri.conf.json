@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "LexFlow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "com.pietrolongo.lexflow",
   "build": {
     "frontendDist": "../client/dist",
@@ -12,7 +12,7 @@
   "app": {
     "withGlobalTauri": false,
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'"
     },
     "macOSPrivateApi": false,
     "windows": [
@@ -21,8 +21,8 @@
         "title": "LexFlow",
         "width": 1400,
         "height": 900,
-        "minWidth": 1100,
-        "minHeight": 700,
+        "minWidth": 360,
+        "minHeight": 540,
         "decorations": true,
         "resizable": true,
         "fullscreen": false,
@@ -35,10 +35,14 @@
   },
   "bundle": {
     "active": true,
-    "externalBin": ["binaries/typst", "binaries/qpdf"],
+    "externalBin": [
+      "binaries/typst",
+      "binaries/qpdf"
+    ],
     "resources": [
       "templates/*",
-      "fonts/*"
+      "fonts/*",
+      "licenses/**/*"
     ],
     "targets": [
       "dmg",
@@ -53,13 +57,13 @@
     "category": "Business",
     "macOS": {
       "frameworks": [],
-      "minimumSystemVersion": "10.15",
+      "minimumSystemVersion": "11.0",
       "infoPlist": "Info.plist",
       "entitlements": "./entitlements.mac.plist"
     },
     "android": {
       "minSdkVersion": 24,
-      "versionCode": 250
+      "versionCode": 253
     },
     "windows": {
       "webviewInstallMode": {

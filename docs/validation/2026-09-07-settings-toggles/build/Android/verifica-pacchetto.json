@@ -1,0 +1,42 @@
+{
+  "apk": "LexFlow-1.0.1-Android-arm64.apk",
+  "app_version": "1.0.1",
+  "android_version_code": 253,
+  "apk_bytes": 13019705,
+  "apk_sha256": "cc9d24a85cb40a5716a0fe45cea31d855092217b077a43538b769ab2736c2445",
+  "certificate_sha256": "bab0ab7ef4395793afb278b688233d177c4545c4c49748a0a10409447544eaf5",
+  "min_sdk": 24,
+  "target_sdk": 36,
+  "native_libraries": [
+    "arm64-v8a/libapp_lib.so"
+  ],
+  "minimum_webview_chromium_version": 111,
+  "elf_page_alignment": 16384,
+  "zip_page_alignment": 16384,
+  "signature_verified": true,
+  "offline_manifest_verified": true,
+  "debuggable_manifest_false": true,
+  "all_licenses_included": true,
+  "new_license_public_key_found_in_apk": true,
+  "physical_device_tested": false,
+  "candidate_runtime_tested": false,
+  "source_fingerprint_sha256": "492e707912113aa41ed910333182f49f9da9f6e1705426736a60875070f7a52a",
+  "source_changes": [
+    "settings toggle geometry",
+    "biometric availability diagnostic command"
+  ],
+  "android_professional_runtime_validated": false,
+  "prior_252_crash_and_rendering_limitations_remain_unresolved": true,
+  "runtime_limitations": [
+    "APK253 not executed in an emulator or physical device",
+    "Previous APK252 reproduced Wry0.54.4 startup Timeout panic during SwiftShader boot with SystemUI ANR",
+    "Previous APK252 auto GPU display showed white bands; rendering issue attribution unresolved",
+    "Android vault CRUD and SAF backup/restore not completed",
+    "Physical device and16KB kernel execution not tested"
+  ],
+  "packaged_native_library_matches_build_output": true,
+  "native_library_sha256": "e4d558d5c346d47e7b011f5272f72ae5cd325d3167341493b21bb07effe3364a",
+  "main_activity_debug_disable_bytecode_verified": true,
+  "main_activity_dex_sha256": "925349dbb16c849864dae10feced44c4c57721129b723ea424b46b32b244eb35",
+  "native_hardening_tests_passed": 10
+}

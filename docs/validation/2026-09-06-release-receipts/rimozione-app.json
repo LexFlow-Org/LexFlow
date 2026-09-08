@@ -1,0 +1,70 @@
+{
+  "app_1_0_0_removed": true,
+  "app_data_removed": true,
+  "removed_paths": [
+    "/Applications/LexFlow.app",
+    "/Users/pielongo/Library/Application Support/com.pietrolongo.lexflow",
+    "/Users/pielongo/Library/Logs/com.pietrolongo.lexflow",
+    "/Users/pielongo/Library/Preferences/com.pietrolongo.lexflow.plist",
+    "/private/var/folders/67/mt2r21r971g6j8j6x9zx4ysc0000gn/T/com.pietrolongo.lexflow-server-addr",
+    "/private/var/folders/67/mt2r21r971g6j8j6x9zx4ysc0000gn/T/com.pietrolongo.lexflow",
+    "/private/var/folders/67/mt2r21r971g6j8j6x9zx4ysc0000gn/C/com.pietrolongo.lexflow",
+    "/private/var/folders/67/mt2r21r971g6j8j6x9zx4ysc0000gn/T/lexflow-baseline-locks-zkcto15q",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/LexFlow",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/LexFlow-v1.0.0-android.apk",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/.env.keys",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/client/dist",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/client/node_modules/.vite",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/client/node_modules/.vite-temp",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/scripts/.lexflow-license-manager.lock"
+  ],
+  "generator_registry_preserved": true,
+  "license_private_key_preserved": true,
+  "android_signing_key_preserved": true,
+  "installers_preserved": 4,
+  "recent_document_files": [
+    {
+      "file": "com.pietrolongo.lexflow.sfl",
+      "status": "absent"
+    },
+    {
+      "file": "com.pietrolongo.lexflow.sfl2",
+      "status": "absent"
+    },
+    {
+      "file": "com.pietrolongo.lexflow.sfl3",
+      "status": "absent"
+    },
+    {
+      "file": "com.technojaw.lexflow.sfl",
+      "status": "absent"
+    },
+    {
+      "file": "com.technojaw.lexflow.sfl2",
+      "status": "absent"
+    },
+    {
+      "file": "com.technojaw.lexflow.sfl3",
+      "status": "absent"
+    }
+  ],
+  "keychain": [
+    {
+      "service": "LexFlow_Bio",
+      "removed": 1,
+      "exit_code": 44,
+      "remaining": false,
+      "message": "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain."
+    },
+    {
+      "service": "LexFlow.Burned",
+      "removed": 1,
+      "exit_code": 44,
+      "remaining": false,
+      "message": "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain."
+    }
+  ],
+  "obsolete_worktree_removed": true,
+  "private_key_mode": "0600",
+  "four_final_hashes_verified": true
+}

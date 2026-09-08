@@ -12,10 +12,7 @@ pub(crate) fn set_content_protection(app: AppHandle, enabled: bool) -> bool {
     #[cfg(not(target_os = "android"))]
     {
         if let Some(w) = app.get_webview_window("main") {
-            if let Err(e) = w.set_content_protected(enabled) {
-                eprintln!("[window] WARN: set_content_protected failed: {}", e);
-            }
-            true
+            w.set_content_protected(enabled).is_ok()
         } else {
             false
         }

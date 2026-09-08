@@ -1,0 +1,22 @@
+{
+  "bundle": {
+    "resources": {
+      "templates/*": "templates/",
+      "fonts/*": "fonts/",
+      "binaries/windows-qpdf/*.dll": "",
+      "binaries/windows-webview2": "binaries/windows-webview2",
+      "licenses/": "licenses/"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "fixedRuntime",
+        "path": "binaries/windows-webview2"
+      },
+      "nsis": {
+        "languages": ["Italian"],
+        "displayLanguageSelector": false,
+        "installerHooks": "windows/installer-hooks.nsh"
+      }
+    }
+  }
+}

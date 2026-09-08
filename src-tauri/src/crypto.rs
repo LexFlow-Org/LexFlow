@@ -177,6 +177,7 @@ fn decrypt_legacy_aes_gcm(
         })
 }
 
+#[allow(dead_code)] // Retained legacy password verifier for compatibility tests.
 pub(crate) fn verify_hash_matches(key: &[u8], stored: &[u8]) -> bool {
     let mut hmac = match <Hmac<Sha256> as Mac>::new_from_slice(key) {
         Ok(h) => h,

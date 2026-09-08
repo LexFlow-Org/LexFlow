@@ -2,30 +2,6 @@
 //  SECURITY — Leak prevention, core dump disable, mlock
 // ═══════════════════════════════════════════════════════════
 
-/// Wrapper that prevents accidental logging of sensitive data.
-/// Debug/Display always prints "[REDACTED]". Access value via .0
-///
-/// LOW SEC-SE-7 (audit): Rust's `Drop` impls cannot carry stricter trait bounds
-/// than the struct itself, so we cannot conditionally `Zeroize` on drop here
-/// without locking the wrapper to `T: Zeroize` (which would bar
-/// `Sensitive<&str>` / `Sensitive<i32>`). Callers that need real wipe-on-drop
-/// must use `zeroize::Zeroizing<T>` directly. See `state::SecureKey` for the
-/// canonical secret-bearing wrapper.
-#[allow(dead_code)]
-pub(crate) struct Sensitive<T>(pub T);
-
-impl<T> std::fmt::Debug for Sensitive<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "[REDACTED]")
-    }
-}
-
-impl<T> std::fmt::Display for Sensitive<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "[REDACTED]")
-    }
-}
-
 /// Disable core dumps at process level.
 /// Prevents DEK/plaintext from being written to disk on crash.
 ///
@@ -94,10 +70,7 @@ unsafe fn winapi_stub_set_error_mode() {
 // stay below the working-set minimum — for the small DEK/KEK buffers (32-64
 // bytes) we lock here, the second condition holds on default Windows installs.
 //
-// MEDIUM SEC-SE-5 (audit): the buffer-based variants take `&[u8]` so the
-// caller cannot pass a wrong (ptr, len) pair.  The legacy `*const u8` versions
-// remain for state.rs callers that operate on raw pointers (e.g. when the
-// buffer lives inside a struct that does not lend itself to a slice borrow).
+// Slice borrows ensure pointer/length pairs refer to live allocations.
 
 #[cfg(target_os = "windows")]
 extern "system" {
@@ -111,7 +84,6 @@ extern "system" {
 /// LOW SEC-SE-6 (audit): `#[must_use]` so callers cannot silently ignore a
 /// failed lock attempt.
 #[must_use]
-#[allow(dead_code)]
 pub(crate) fn mlock_buffer_slice(buf: &[u8]) -> bool {
     #[cfg(unix)]
     unsafe {
@@ -128,7 +100,6 @@ pub(crate) fn mlock_buffer_slice(buf: &[u8]) -> bool {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn munlock_buffer_slice(buf: &[u8]) {
     #[cfg(unix)]
     unsafe {
@@ -144,76 +115,9 @@ pub(crate) fn munlock_buffer_slice(buf: &[u8]) {
     }
 }
 
-/// Legacy raw-pointer mlock wrapper, kept for state.rs callers that hand us
-/// `(ptr, len)` from a `Zeroizing<Vec<u8>>`. The signature is intentionally
-/// `safe fn` even though the body performs unsafe FFI, because (a) state.rs
-/// already owns the buffer for the entire call duration and (b) flipping
-/// this to `unsafe fn` would be a cross-file refactor outside this audit's
-/// blast radius.
-///
-/// TODO(audit:SEC-SE-5): migrate state.rs callers to `mlock_buffer_slice(&[u8])`
-/// (which is safe because the slice borrow proves liveness) and then convert
-/// this wrapper to `unsafe fn` or delete it.
-///
-/// LOW SEC-SE-6 (audit): `#[must_use]` to surface unchecked mlock failures.
-#[must_use]
-#[allow(dead_code)]
-pub(crate) fn mlock_buffer(ptr: *const u8, len: usize) -> bool {
-    #[cfg(unix)]
-    unsafe {
-        libc::mlock(ptr as *const libc::c_void, len) == 0
-    }
-    #[cfg(target_os = "windows")]
-    unsafe {
-        VirtualLock(ptr as *const std::ffi::c_void, len) != 0
-    }
-    #[cfg(not(any(unix, target_os = "windows")))]
-    {
-        let _ = (ptr, len);
-        false
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) fn munlock_buffer(ptr: *const u8, len: usize) {
-    #[cfg(unix)]
-    unsafe {
-        libc::munlock(ptr as *const libc::c_void, len);
-    }
-    #[cfg(target_os = "windows")]
-    unsafe {
-        VirtualUnlock(ptr as *const std::ffi::c_void, len);
-    }
-    #[cfg(not(any(unix, target_os = "windows")))]
-    {
-        let _ = (ptr, len);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_sensitive_debug_redacted() {
-        let s = Sensitive("my_secret_key_12345");
-        let debug = format!("{:?}", s);
-        assert_eq!(debug, "[REDACTED]");
-        assert!(!debug.contains("secret"));
-    }
-
-    #[test]
-    fn test_sensitive_display_redacted() {
-        let s = Sensitive(vec![0xDE_u8, 0xAD, 0xBE, 0xEF]);
-        let display = format!("{}", s);
-        assert_eq!(display, "[REDACTED]");
-    }
-
-    #[test]
-    fn test_sensitive_inner_accessible() {
-        let s = Sensitive(42_i32);
-        assert_eq!(s.0, 42);
-    }
 
     #[test]
     fn test_secure_delete_nonexistent() {

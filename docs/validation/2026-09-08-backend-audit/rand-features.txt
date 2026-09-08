@@ -1,0 +1,143 @@
+rand v0.7.3
+├── rand feature "alloc"
+│   └── rand feature "std"
+│       └── rand feature "default"
+│           └── phf_generator v0.8.0
+│               └── phf_generator feature "default"
+│                   └── phf_codegen v0.8.0
+│                       └── phf_codegen feature "default"
+│                           [build-dependencies]
+│                           └── selectors v0.24.0
+│                               └── selectors feature "default"
+│                                   └── kuchikiki v0.8.8-speedreader
+│                                       └── kuchikiki feature "default"
+│                                           └── tauri-utils v2.8.3
+│                                               ├── tauri-utils feature "brotli"
+│                                               │   └── tauri-utils feature "compression"
+│                                               │       ├── tauri feature "compression"
+│                                               │       │   └── tauri feature "default"
+│                                               │       │       └── lexflow v1.0.1 (/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri)
+│                                               │       │           ├── lexflow feature "default" (command-line)
+│                                               │       │           └── lexflow feature "desktop"
+│                                               │       │               └── lexflow feature "default" (command-line)
+│                                               │       └── tauri-codegen feature "compression"
+│                                               │           └── tauri-macros feature "compression"
+│                                               │               └── tauri feature "compression" (*)
+│                                               ├── tauri-utils feature "build"
+│                                               │   ├── tauri-build v2.5.6
+│                                               │   │   [build-dependencies]
+│                                               │   │   └── tauri v2.10.3
+│                                               │   │       ├── tauri-plugin-dialog v2.6.0
+│                                               │   │       │   ├── tauri-plugin-dialog feature "default"
+│                                               │   │       │   │   └── lexflow v1.0.1 (/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri) (*)
+│                                               │   │       │   └── tauri-plugin-dialog feature "gtk3"
+│                                               │   │       │       └── tauri-plugin-dialog feature "default" (*)
+│                                               │   │       ├── tauri-plugin-fs v2.4.5
+│                                               │   │       │   └── tauri-plugin-fs feature "default"
+│                                               │   │       │       └── tauri-plugin-dialog v2.6.0 (*)
+│                                               │   │       ├── tauri-plugin-log v2.8.0
+│                                               │   │       │   └── tauri-plugin-log feature "default"
+│                                               │   │       │       └── lexflow v1.0.1 (/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri) (*)
+│                                               │   │       ├── tauri-plugin-notification v2.3.3
+│                                               │   │       │   └── tauri-plugin-notification feature "default"
+│                                               │   │       │       └── lexflow v1.0.1 (/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri) (*)
+│                                               │   │       ├── tauri-plugin-opener v2.5.3
+│                                               │   │       │   └── tauri-plugin-opener feature "default"
+│                                               │   │       │       └── lexflow v1.0.1 (/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri) (*)
+│                                               │   │       ├── tauri-plugin-shell v2.3.5
+│                                               │   │       │   └── tauri-plugin-shell feature "default"
+│                                               │   │       │       └── lexflow v1.0.1 (/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri) (*)
+│                                               │   │       └── tauri-plugin-window-state v2.4.1
+│                                               │   │           └── tauri-plugin-window-state feature "default"
+│                                               │   │               └── lexflow v1.0.1 (/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri) (*)
+│                                               │   │       ├── tauri feature "common-controls-v6"
+│                                               │   │       │   └── tauri feature "default" (*)
+│                                               │   │       ├── tauri feature "compression" (*)
+│                                               │   │       ├── tauri feature "default" (*)
+│                                               │   │       ├── tauri feature "dynamic-acl"
+│                                               │   │       │   └── tauri feature "default" (*)
+│                                               │   │       ├── tauri feature "tauri-runtime-wry"
+│                                               │   │       │   └── tauri feature "wry"
+│                                               │   │       │       └── tauri feature "default" (*)
+│                                               │   │       ├── tauri feature "tray-icon"
+│                                               │   │       │   └── lexflow feature "desktop" (*)
+│                                               │   │       ├── tauri feature "webkit2gtk"
+│                                               │   │       │   └── tauri feature "wry" (*)
+│                                               │   │       ├── tauri feature "webview2-com"
+│                                               │   │       │   └── tauri feature "wry" (*)
+│                                               │   │       ├── tauri feature "wry" (*)
+│                                               │   │       └── tauri feature "x11"
+│                                               │   │           └── tauri feature "default" (*)
+│                                               │   │   ├── tauri-build feature "config-json"
+│                                               │   │   │   └── tauri-build feature "default"
+│                                               │   │   │       [build-dependencies]
+│                                               │   │   │       └── lexflow v1.0.1 (/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri) (*)
+│                                               │   │   └── tauri-build feature "default" (*)
+│                                               │   ├── tauri-codegen v2.5.5
+│                                               │   │   └── tauri-macros v2.5.5 (proc-macro)
+│                                               │   │       ├── tauri-macros feature "compression" (*)
+│                                               │   │       └── tauri-macros feature "default"
+│                                               │   │           └── tauri v2.10.3 (*)
+│                                               │   │   ├── tauri-codegen feature "brotli"
+│                                               │   │   │   └── tauri-codegen feature "compression" (*)
+│                                               │   │   └── tauri-codegen feature "compression" (*)
+│                                               │   └── tauri-plugin v2.5.4
+│                                               │       ├── tauri-plugin feature "build"
+│                                               │       │   [build-dependencies]
+│                                               │       │   ├── tauri-plugin-dialog v2.6.0 (*)
+│                                               │       │   ├── tauri-plugin-fs v2.4.5 (*)
+│                                               │       │   ├── tauri-plugin-log v2.8.0 (*)
+│                                               │       │   ├── tauri-plugin-notification v2.3.3 (*)
+│                                               │       │   ├── tauri-plugin-opener v2.5.3 (*)
+│                                               │       │   ├── tauri-plugin-shell v2.3.5 (*)
+│                                               │       │   └── tauri-plugin-window-state v2.4.1 (*)
+│                                               │       └── tauri-plugin feature "default"
+│                                               │           [build-dependencies]
+│                                               │           ├── tauri-plugin-dialog v2.6.0 (*)
+│                                               │           ├── tauri-plugin-fs v2.4.5 (*)
+│                                               │           ├── tauri-plugin-log v2.8.0 (*)
+│                                               │           ├── tauri-plugin-notification v2.3.3 (*)
+│                                               │           ├── tauri-plugin-opener v2.5.3 (*)
+│                                               │           ├── tauri-plugin-shell v2.3.5 (*)
+│                                               │           └── tauri-plugin-window-state v2.4.1 (*)
+│                                               │   [build-dependencies]
+│                                               │   ├── tauri v2.10.3 (*)
+│                                               │   └── tauri-plugin-fs v2.4.5 (*)
+│                                               ├── tauri-utils feature "cargo_metadata"
+│                                               │   └── tauri-utils feature "build" (*)
+│                                               ├── tauri-utils feature "compression" (*)
+│                                               ├── tauri-utils feature "default"
+│                                               │   ├── tauri-build v2.5.6 (*)
+│                                               │   ├── tauri-codegen v2.5.5 (*)
+│                                               │   └── tauri-macros v2.5.5 (proc-macro) (*)
+│                                               │   [build-dependencies]
+│                                               │   ├── tauri v2.10.3 (*)
+│                                               │   └── tauri-plugin-fs v2.4.5 (*)
+│                                               ├── tauri-utils feature "html-manipulation"
+│                                               │   └── tauri-utils feature "build" (*)
+│                                               ├── tauri-utils feature "proc-macro2"
+│                                               │   └── tauri-utils feature "build" (*)
+│                                               ├── tauri-utils feature "quote"
+│                                               │   └── tauri-utils feature "build" (*)
+│                                               ├── tauri-utils feature "resources"
+│                                               │   └── tauri-build v2.5.6 (*)
+│                                               ├── tauri-utils feature "schema"
+│                                               │   └── tauri-utils feature "build" (*)
+│                                               ├── tauri-utils feature "schemars"
+│                                               │   └── tauri-utils feature "schema" (*)
+│                                               ├── tauri-utils feature "swift-rs"
+│                                               │   └── tauri-utils feature "build" (*)
+│                                               └── tauri-utils feature "walkdir"
+│                                                   └── tauri-utils feature "resources" (*)
+├── rand feature "default" (*)
+├── rand feature "getrandom"
+│   └── rand feature "std" (*)
+├── rand feature "getrandom_package"
+│   └── rand feature "getrandom" (*)
+├── rand feature "libc"
+│   └── rand feature "std" (*)
+├── rand feature "rand_pcg"
+│   └── rand feature "small_rng"
+│       └── phf_generator v0.8.0 (*)
+├── rand feature "small_rng" (*)
+└── rand feature "std" (*)

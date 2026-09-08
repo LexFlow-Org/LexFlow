@@ -77,7 +77,6 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   // Reset modal cooldown — gates the destructive action behind a 5s delay
   useEffect(() => {
     if (!showResetModal) return;
-    setResetCooldown(5);
     const id = setInterval(() => {
       setResetCooldown(c => Math.max(0, c - 1));
     }, 1000);
@@ -197,7 +196,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   };
 
   // Keep the ref up-to-date so effects always call the latest version
-  handleBioLoginRef.current = handleBioLogin;
+  useEffect(() => { handleBioLoginRef.current = handleBioLogin; });
 
   /** Initialize biometric state after vault existence is confirmed */
   const initBiometrics = async () => {
@@ -428,21 +427,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         return;
       }
 
-      // Auto-enroll biometrics on EVERY successful manual password unlock
-      // (not just new vaults) — ensures bio is configured after update/reinstall
-      try {
-        const bioNowAvailable = await api.checkBio();
-        const bioAlreadySaved = await api.hasBioSaved();
-        if (bioNowAvailable && !bioAlreadySaved) {
-          await api.saveBio(providedPwd);
-          setBioAvailable(true);
-          setBioSaved(true);
-          devLog('[LoginScreen] Biometrics auto-enrolled on manual unlock ✓');
-        }
-      } catch (e) {
-        devWarn('[LoginScreen] Biometrics auto-enroll failed (non-critical):', e);
-      }
-
+      // Enrollment is a separate, explicit choice in onboarding or Settings.
       onUnlock(isNew);
     } catch (err) {
       devError(err);
@@ -464,7 +449,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
 
   // Loading Iniziale
   if (isNew === null) return (
-    <div className="flex items-center justify-center min-h-screen bg-background">
+    <div className="flex items-center justify-center min-h-dvh bg-background">
       <div className="animate-pulse flex flex-col items-center gap-4">
         <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
           <ShieldCheck className="text-primary animate-spin-slow" size={24} />
@@ -477,7 +462,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
   const strength = getStrength(password);
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background relative drag-region overflow-hidden">
+    <div className="flex items-center justify-center min-h-dvh bg-background relative drag-region overflow-hidden">
       
       {/* Login / Setup Card */}
       <div className="glass-card p-10 w-full max-w-[440px] mx-4 relative z-10 no-drag animate-slide-up shadow-2xl border-border/50">
@@ -661,6 +646,7 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
                   setResetConfirmText('');
                   setResetError('');
                   setShowResetPwd(false);
+                  setResetCooldown(5);
                   setShowResetModal(true);
                 }}
                 className="text-text-dim hover:text-danger text-2xs font-bold uppercase tracking-widest transition-colors"
@@ -867,7 +853,6 @@ export default function LoginScreen({ onUnlock, autoLocked = false }) {
         </div>
       )}
 
-      {/* Consenso Biometria — ora auto-attivato alla prima creazione vault */}
     </div>
   );
 }

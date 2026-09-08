@@ -1,0 +1,46 @@
+--------- beginning of crash
+09-07 10:24:28.449  1132  1688 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 1688 (rolongo.lexflow), pid 1132 (rolongo.lexflow)
+09-07 10:24:28.778  1843  1843 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+09-07 10:24:28.778  1843  1843 F DEBUG   : Build fingerprint: 'Android/sdk_phone64_arm64/emu64a:15/AE3A.240806.019/12368160:userdebug/test-keys'
+09-07 10:24:28.778  1843  1843 F DEBUG   : Revision: '0'
+09-07 10:24:28.778  1843  1843 F DEBUG   : ABI: 'arm64'
+09-07 10:24:28.778  1843  1843 F DEBUG   : Timestamp: 2026-09-07 10:24:28.504179482+0200
+09-07 10:24:28.778  1843  1843 F DEBUG   : Process uptime: 21s
+09-07 10:24:28.778  1843  1843 F DEBUG   : Cmdline: com.pietrolongo.lexflow
+09-07 10:24:28.778  1843  1843 F DEBUG   : pid: 1132, tid: 1688, name: rolongo.lexflow  >>> com.pietrolongo.lexflow <<<
+09-07 10:24:28.778  1843  1843 F DEBUG   : uid: 10148
+09-07 10:24:28.778  1843  1843 F DEBUG   : tagged_addr_ctrl: 0000000000000001 (PR_TAGGED_ADDR_ENABLE)
+09-07 10:24:28.778  1843  1843 F DEBUG   : pac_enabled_keys: 000000000000000f (PR_PAC_APIAKEY, PR_PAC_APIBKEY, PR_PAC_APDAKEY, PR_PAC_APDBKEY)
+09-07 10:24:28.778  1843  1843 F DEBUG   : signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------
+09-07 10:24:28.778  1843  1843 F DEBUG   : Abort message: 'called `Result::unwrap()` on an `Err` value: Timeout'
+09-07 10:24:28.778  1843  1843 F DEBUG   :     x0  0000000000000000  x1  0000000000000698  x2  0000000000000006  x3  00000079c4a32460
+09-07 10:24:28.778  1843  1843 F DEBUG   :     x4  1f6d601f6d6e1f5f  x5  1f6d601f6d6e1f5f  x6  1f6d601f6d6e1f5f  x7  7f7f7f7f7f7f7f7f
+09-07 10:24:28.778  1843  1843 F DEBUG   :     x8  00000000000000f0  x9  0000007d2b4a3468  x10 ffffff80fffffb9f  x11 0000000000000000
+09-07 10:24:28.778  1843  1843 F DEBUG   :     x12 0000000000000000  x13 0000007d2b488d58  x14 0000000000000018  x15 00000079c4a3213b
+09-07 10:24:28.778  1843  1843 F DEBUG   :     x16 0000007d2b552ff8  x17 0000007d2b53d1c0  x18 00000079c4170000  x19 000000000000046c
+09-07 10:24:28.778  1843  1843 F DEBUG   :     x20 0000000000000698  x21 00000000ffffffff  x22 00000079c4a32620  x23 00000079f0b4dfb0
+09-07 10:24:28.778  1843  1843 F DEBUG   :     x24 b400007c3aef42f0  x25 b400007b2af42c00  x26 b400007aaaf0e210  x27 b400007b2af43aa0
+09-07 10:24:28.778  1843  1843 F DEBUG   :     x28 b400007b2af43020  x29 00000079c4a324e0
+09-07 10:24:28.778  1843  1843 F DEBUG   :     lr  0000007d2b4db6a4  sp  00000079c4a32440  pc  0000007d2b4db6d4  pst 0000000000000000
+09-07 10:24:28.778  1843  1843 F DEBUG   : 20 total frames
+09-07 10:24:28.778  1843  1843 F DEBUG   : backtrace:
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #00 pc 000000000005b6d4  /apex/com.android.runtime/lib64/bionic/libc.so (abort+168) (BuildId: 1b9fecf834d610f77e641f026ca7269b)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #01 pc 000000000083d204  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #02 pc 0000000000838f94  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #03 pc 0000000000824424  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #04 pc 00000000004a1c60  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #05 pc 0000000000824388  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #06 pc 0000000000839434  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #07 pc 0000000000823448  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #08 pc 00000000008199b8  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #09 pc 00000000008244f4  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #10 pc 0000000000858a64  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #11 pc 0000000000858890  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #12 pc 00000000006a9390  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #13 pc 000000000040473c  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #14 pc 00000000003e9e30  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #15 pc 00000000006f0acc  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #16 pc 00000000006f40ec  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #17 pc 000000000083f56c  /data/app/~~t_CRcd9gbryGI9YGJfa_hw==/com.pietrolongo.lexflow-gryv9IXzupV07WNYwYblnQ==/base.apk (offset 0xf0000)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #18 pc 000000000006c354  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+196) (BuildId: 1b9fecf834d610f77e641f026ca7269b)
+09-07 10:24:28.778  1843  1843 F DEBUG   :       #19 pc 000000000005efc4  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64) (BuildId: 1b9fecf834d610f77e641f026ca7269b)

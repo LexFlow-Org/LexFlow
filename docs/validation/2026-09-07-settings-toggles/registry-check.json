@@ -1,0 +1,14 @@
+{
+  "registry_sha256_unchanged": "bd183bb6bc19e626113610473c14814bcc0f9b6470b0b6d88015e29ac303b0c4",
+  "format": "encrypted V3",
+  "owner_only_permissions": "0600",
+  "real_records_decrypted": false,
+  "real_count_verified": false,
+  "issuer_changed": false,
+  "synthetic_generator_tests": {
+    "passed": 19,
+    "seconds": 11.914,
+    "exit_code": 0,
+    "source": "tool session89978; stdout only, no original log file"
+  }
+}

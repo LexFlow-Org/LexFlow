@@ -81,24 +81,35 @@ pub(crate) fn init_machine_id() -> Result<String, String> {
         )
     })?;
     let id_path = security_dir.join(MACHINE_ID_FILE);
-    // FIX: bounded read — machine-id should be exactly 64 hex chars
-    if let Ok(bytes) = crate::io::safe_bounded_read(&id_path, 1024) {
-        let existing = String::from_utf8_lossy(&bytes).trim().to_string();
-        if existing.len() == 64 && existing.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Ok(existing);
+    load_or_create_machine_id_at(&id_path)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn load_or_create_machine_id_at(id_path: &std::path::Path) -> Result<String, String> {
+    match fs::symlink_metadata(id_path) {
+        Ok(_) => {
+            let bytes = safe_bounded_read(id_path, 1024).map_err(|_| "Machine-id esistente non leggibile. Nessun dato è stato modificato; ripristina il file originale.".to_string())?;
+            let existing = std::str::from_utf8(&bytes)
+                .map_err(|_| "Machine-id corrotto; file originale conservato.".to_string())?
+                .trim();
+            if existing.len() != 64 || !existing.bytes().all(|value| value.is_ascii_hexdigit()) {
+                return Err("Machine-id corrotto; file originale conservato. Non verrà generata una chiave diversa.".into());
+            }
+            return Ok(existing.to_string());
         }
-        if !existing.is_empty() {
-            eprintln!(
-                "[SECURITY] WARNING: machine_id file has invalid format ({} chars, expected 64 hex). Regenerating.",
-                existing.len()
-            );
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "Impossibile leggere il machine-id esistente: {}",
+                error
+            ))
         }
     }
     let mut id_bytes = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut id_bytes);
     let machine_id = hex::encode(id_bytes);
     // FIX: propagate write error — if this fails, local encrypted files won't survive restart
-    secure_write(&id_path, machine_id.as_bytes()).map_err(|e| {
+    secure_write(id_path, machine_id.as_bytes()).map_err(|e| {
         format!(
             "CRITICAL: impossibile salvare machine-id su {:?}: {}. \
             Tutti i file cifrati locali saranno inaccessibili al prossimo avvio.",
@@ -391,38 +402,36 @@ pub(crate) fn get_local_encryption_key() -> Zeroizing<Vec<u8>> {
 pub(crate) static ANDROID_DEVICE_ID_CACHE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 #[cfg(target_os = "android")]
-pub(crate) fn init_android_device_id() -> Result<String, String> {
+pub(crate) fn init_android_device_id(app: &tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
     // FIX: env var override restricted to debug builds only
     #[cfg(debug_assertions)]
     if let Ok(id) = std::env::var("LEXFLOW_DEVICE_ID") {
         eprintln!("[LexFlow] DEBUG: using LEXFLOW_DEVICE_ID env override");
         return Ok(id);
     }
-    // FIX-S22: only consider app-private storage; the temp_dir().parent()
-    // fallback was dropped because it could point anywhere on the device
-    // (including world-readable locations on some Android variants).
-    // TODO(audit:S22): wire `tauri::AppHandle` into setup() so we can prefer
-    // `app.path().app_local_data_dir()` over the platform-default
-    // `dirs::data_dir()`. Doing it here would change this function's
-    // signature and cascade into setup.rs, which is out of scope for the
-    // file-local audit pass.
-    let candidate_dirs = [dirs::data_dir().map(|d| d.join("com.pietrolongo.lexflow"))];
-    let mut first_writable: Option<std::path::PathBuf> = None;
-    for candidate in candidate_dirs.iter().flatten() {
-        let id_path = candidate.join(".device_id");
-        if let Some(id) = read_trimmed_file(&id_path) {
-            return Ok(id);
-        }
-        if first_writable.is_none() {
-            first_writable = Some(id_path);
+    let private_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "Impossibile risolvere l'archivio privato Android.".to_string())?;
+    let id_path = private_dir.join(".device_id");
+    if let Some(id) = read_trimmed_file(&id_path)? {
+        return Ok(id);
+    }
+    // Preserve an existing key seed from older versions before changing its path.
+    if let Some(legacy_dir) = dirs::data_dir() {
+        let legacy_path = legacy_dir.join("com.pietrolongo.lexflow/.device_id");
+        if legacy_path != id_path {
+            if let Some(id) = read_trimmed_file(&legacy_path)? {
+                fs::create_dir_all(&private_dir).map_err(|e| e.to_string())?;
+                crate::io::secure_write(&id_path, id.as_bytes()).map_err(|e| e.to_string())?;
+                return Ok(id);
+            }
         }
     }
     let mut id_bytes = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut id_bytes);
     let id_hex = hex::encode(id_bytes);
-    let id_path = first_writable.ok_or_else(|| {
-        "Nessun percorso scrivibile trovato su Android per persistere la master key.".to_string()
-    })?;
     if let Some(parent) = id_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Impossibile creare la directory per device_id: {}", e))?;
@@ -444,12 +453,33 @@ pub(crate) fn get_android_device_id() -> String {
 }
 
 #[cfg(target_os = "android")]
-fn read_trimmed_file(path: &std::path::Path) -> Option<String> {
-    // Use bounded read to prevent unbounded memory allocation from malicious files
-    crate::io::safe_bounded_read(path, 1024)
-        .ok()
-        .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
-        .filter(|s| !s.is_empty())
+fn read_trimmed_file(path: &std::path::Path) -> Result<Option<String>, String> {
+    read_existing_device_seed(path)
+}
+
+#[cfg(any(target_os = "android", test))]
+fn read_existing_device_seed(path: &std::path::Path) -> Result<Option<String>, String> {
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => {
+            return Err("Identificativo Android non leggibile; file originale conservato.".into())
+        }
+        Ok(_) => {}
+    }
+    let bytes = safe_bounded_read(path, 1024).map_err(|_| {
+        "Identificativo Android non leggibile; nessuna nuova chiave è stata generata."
+    })?;
+    let value = std::str::from_utf8(&bytes)
+        .map_err(|_| "Identificativo Android corrotto; file originale conservato.")?
+        .trim();
+    // Preserve historical non-empty identifiers as well as current 64-hex seeds.
+    // Their exact bytes determine existing local encryption keys.
+    if value.is_empty() || value.chars().any(char::is_control) {
+        return Err(
+            "Identificativo Android corrotto; nessuna nuova chiave è stata generata.".into(),
+        );
+    }
+    Ok(Some(value.to_string()))
 }
 
 // ─── Hardware fingerprint ──────────────────────────────────
@@ -493,6 +523,49 @@ pub(crate) fn compute_machine_fingerprint() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn android_device_seed_missing_differs_from_corrupt_existing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("device-id");
+        assert_eq!(read_existing_device_seed(&path).unwrap(), None);
+        for value in [Vec::new(), b" \n".to_vec(), vec![255], vec![b'a'; 1025]] {
+            fs::write(&path, &value).unwrap();
+            assert!(read_existing_device_seed(&path).is_err());
+            assert_eq!(fs::read(&path).unwrap(), value);
+        }
+        fs::write(&path, "legacy-device-id").unwrap();
+        assert_eq!(
+            read_existing_device_seed(&path).unwrap().as_deref(),
+            Some("legacy-device-id")
+        );
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn machine_id_corruption_is_preserved_instead_of_rotating_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("machine-id");
+        for value in [b"".as_slice(), b"truncated", &[255, 254]] {
+            fs::write(&path, value).unwrap();
+            assert!(load_or_create_machine_id_at(&path).is_err());
+            assert_eq!(fs::read(&path).unwrap(), value);
+        }
+        fs::remove_file(&path).unwrap();
+        let created = load_or_create_machine_id_at(&path).unwrap();
+        assert_eq!(created.len(), 64);
+        assert_eq!(load_or_create_machine_id_at(&path).unwrap(), created);
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn machine_id_symlink_is_rejected_without_touching_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        fs::write(&target, "a".repeat(64)).unwrap();
+        let path = dir.path().join("machine-id");
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        assert!(load_or_create_machine_id_at(&path).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "a".repeat(64));
+    }
 
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     fn ensure_machine_id() {

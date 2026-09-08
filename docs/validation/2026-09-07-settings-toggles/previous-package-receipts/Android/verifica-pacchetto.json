@@ -1,0 +1,51 @@
+{
+  "apk": "LexFlow-1.0.1-Android-arm64.apk",
+  "app_version": "1.0.1",
+  "android_version_code": 252,
+  "apk_bytes": 13019705,
+  "apk_sha256": "06236e091912d55e0d4d9a6d5c9f90ea8f7eb33f4825ef5d7ea76fb57c7e73d6",
+  "certificate_sha256": "bab0ab7ef4395793afb278b688233d177c4545c4c49748a0a10409447544eaf5",
+  "min_sdk": 24,
+  "target_sdk": 36,
+  "native_libraries": [
+    "arm64-v8a/libapp_lib.so"
+  ],
+  "minimum_webview_chromium_version": 111,
+  "elf_page_alignment": 16384,
+  "zip_page_alignment": 16384,
+  "signature_verified": true,
+  "offline_manifest_verified": true,
+  "debuggable_manifest_false": true,
+  "all_licenses_included": true,
+  "new_license_public_key_found_in_apk": true,
+  "physical_device_tested": false,
+  "candidate_runtime_tested": true,
+  "source_fingerprint_sha256": "b6fa29cadbc2348e1ca7fd95d3b12c14152e7d85dd1ee39c5d90d0552ce81a69",
+  "source_changes": [
+    "mobile login visibility",
+    "external critical CSS for CSP",
+    "explicit Android release WebView debug disable"
+  ],
+  "full_functional_suite_completed": false,
+  "four_offline_activity_restarts_passed": true,
+  "login_form_visible_in_emulator_capture": true,
+  "emulator_sdk": 35,
+  "emulator_webview": "124.0.6367.219",
+  "emulator_page_bytes": 4096,
+  "main_activity_debug_disable_bytecode_verified": true,
+  "main_activity_dex_sha256": "925349dbb16c849864dae10feced44c4c57721129b723ea424b46b32b244eb35",
+  "debug_socket_present_on_aosp_userdebug": true,
+  "wry_crash_reproduced_in_four_restarts": false,
+  "earlier_wry_crash_cause_resolved": false,
+  "network_packet_capture_analyzed": false,
+  "software_renderer_startup_crash_reproduced": true,
+  "software_renderer": "swiftshader",
+  "software_renderer_system_ui_anr_observed": true,
+  "android_professional_runtime_validated": false,
+  "runtime_limitations": [
+    "Wry0.54.4 startup Timeout panic reproduced during SwiftShader boot with SystemUI ANR",
+    "Auto GPU display shows white bands; rendering issue attribution unresolved",
+    "Vault CRUD and SAF backup/restore not completed",
+    "Physical device and16KB kernel execution not tested"
+  ]
+}

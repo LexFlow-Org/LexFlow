@@ -9,14 +9,6 @@
     <key>LSUIElement</key>
     <false/>
 
-    <!-- Calendar access — EventKit permission prompt -->
-    <key>NSCalendarsUsageDescription</key>
-    <string>LexFlow sincronizza udienze e scadenze con il Calendario di sistema per mantenerti sempre aggiornato.</string>
-
-    <!-- Full calendar access (macOS 14+ Sonoma) -->
-    <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>LexFlow necessita dell'accesso completo al Calendario per creare e aggiornare automaticamente gli eventi legali.</string>
-
     <!-- Alert-style notifications (not banners) — persist on screen -->
     <key>NSUserNotificationAlertStyle</key>
     <string>alert</string>

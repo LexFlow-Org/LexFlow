@@ -56,8 +56,11 @@ fn secure_write_create_new(path: &std::path::Path, data: &[u8]) -> std::io::Resu
         opts.mode(0o600);
     }
     let mut f = opts.open(path)?;
-    f.write_all(data)?;
-    f.sync_all()?;
+    if let Err(error) = f.write_all(data).and_then(|_| f.sync_all()) {
+        drop(f);
+        let _ = std::fs::remove_file(path);
+        return Err(error);
+    }
     #[cfg(target_os = "windows")]
     {
         set_hidden_on_windows(path);
@@ -96,9 +99,14 @@ pub(crate) fn secure_write(path: &std::path::Path, data: &[u8]) -> std::io::Resu
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
+        opts.mode(0o600).custom_flags(libc::O_NOFOLLOW);
     }
     let mut f = opts.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
     f.write_all(data)?;
     f.sync_all()?;
     #[cfg(target_os = "windows")]
@@ -153,7 +161,21 @@ fn apply_user_only_acl_windows(path: &std::path::Path) {
 
 /// Safe bounded read — anti-TOCTOU + anti-OOM. Single metadata call.
 pub(crate) fn safe_bounded_read(path: &std::path::Path, max_bytes: u64) -> Result<Vec<u8>, String> {
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // O_NONBLOCK ensures a FIFO cannot hang before the descriptor type check.
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // Open the reparse point itself; metadata below rejects non-regular files.
+        options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
+    }
+    let file = options.open(path).map_err(|e| e.to_string())?;
     // FIX: single metadata call, reuse result
     let meta = file.metadata().map_err(|e| e.to_string())?;
     // FIX-V9: refuse anything that's not a regular file (no /dev/zero,
@@ -173,9 +195,12 @@ pub(crate) fn safe_bounded_read(path: &std::path::Path, max_bytes: u64) -> Resul
     const INITIAL_CAP: u64 = 64 * 1024;
     let initial = file_len.min(max_bytes).min(INITIAL_CAP) as usize;
     let mut buffer = Vec::with_capacity(initial);
-    file.take(max_bytes)
+    file.take(max_bytes.saturating_add(1))
         .read_to_end(&mut buffer)
         .map_err(|e| e.to_string())?;
+    if buffer.len() as u64 > max_bytes {
+        return Err("File troppo grande — OOM limit superato durante la lettura".into());
+    }
     Ok(buffer)
 }
 
@@ -271,6 +296,26 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn secure_write_hardens_existing_permissions_and_rejects_symlinks() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let dir = test_dir();
+        let path = dir.join("existing");
+        std::fs::write(&path, b"old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        secure_write(&path, b"new secret").unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let link = dir.join("link");
+        symlink(&path, &link).unwrap();
+        assert!(secure_write(&link, b"overwrite").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"new secret");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn test_safe_bounded_read_within_limit() {
         let dir = test_dir();
@@ -333,5 +378,32 @@ mod tests {
         let t1 = safe_now_ms();
         let t2 = safe_now_ms();
         assert!(t2 >= t1, "Timestamps must be monotonically non-decreasing");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod bounded_file_tests {
+    use super::*;
+    use std::os::unix::{ffi::OsStrExt, fs::symlink};
+
+    #[test]
+    fn bounded_read_rejects_symbolic_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("link");
+        std::fs::write(&target, b"private").unwrap();
+        symlink(&target, &link).unwrap();
+        assert!(safe_bounded_read(&link, 100).is_err());
+        assert_eq!(safe_bounded_read(&target, 100).unwrap(), b"private");
+    }
+
+    #[test]
+    fn bounded_read_rejects_fifo_without_waiting_for_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("fifo");
+        let c_path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        // SAFETY: the NUL-terminated pathname is valid for this call.
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+        assert!(safe_bounded_read(&fifo, 100).is_err());
     }
 }

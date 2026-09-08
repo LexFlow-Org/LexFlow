@@ -1,0 +1,11 @@
+{
+  "build": {
+    "beforeBuildCommand": "",
+    "frontendDist": "../client/dist"
+  },
+  "bundle": {
+    "targets": [
+      "nsis"
+    ]
+  }
+}

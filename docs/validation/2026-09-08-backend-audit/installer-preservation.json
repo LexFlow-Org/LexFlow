@@ -1,0 +1,22 @@
+[
+  {
+    "file": "macOS/LexFlow-1.0.1-macOS-Apple-Silicon.dmg",
+    "sha256": "376369c34358d8069ac10f03497c51d89e90fc94f317aed48fa745c8a7692222",
+    "matches_published": true
+  },
+  {
+    "file": "macOS/LexFlow-1.0.1-macOS-Intel.dmg",
+    "sha256": "b45686c13f73813d01646c09283e20d1607aaa9cc9b5948fd56ad6e8d051110e",
+    "matches_published": true
+  },
+  {
+    "file": "Windows/LexFlow_1.0.1_x64-setup.exe",
+    "sha256": "e01d3ec44017e88808eafcfccf89b3df129444d6c519ea0c112a4bd604733405",
+    "matches_published": true
+  },
+  {
+    "file": "Android/LexFlow-1.0.1-Android-arm64.apk",
+    "sha256": "cc9d24a85cb40a5716a0fe45cea31d855092217b077a43538b769ab2736c2445",
+    "matches_published": true
+  }
+]

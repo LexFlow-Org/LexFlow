@@ -1,0 +1,15 @@
+{
+  "src-tauri/src/bio.rs": "5996740d13fae24105e49fccdff985dca98149f637b5b80e405928a2eca4b849",
+  "src-tauri/src/vault.rs": "cb600cf23227c9d78fc32b0986373c45bb528519fdafec0c47791e72eff77b76",
+  "src-tauri/src/lib.rs": "fab54ea127433b90451e91d73ac13b5d8f62fbd71edd86074cabec1a8cfa951a",
+  "src-tauri/src/macos_biometry.m": "6c1218d73563a7e413f0b782c9b25ebb03977dc07cd44ad233f18963947b94ed",
+  "src-tauri/Cargo.toml": "767c85bb5ca8354c1356e1717d8f8fb2d810f894b87ff9ba407dec7327c8dac9",
+  "src-tauri/Cargo.lock": "3145cc254b5cb6de29bf2e63d0fdb483f4b8164264c66911407eaa2ebb27f170",
+  "src-tauri/build.rs": "dc0d11550a33abbf14efa834d744cfe40293df6ee9068aa073b15fa9062d48b7",
+  "src-tauri/tauri.conf.json": "cc1fcd48ef8a477ed2fe64fd624a8a4ec12bae740a0aa4e91154f8372b91f733",
+  "src-tauri/tauri.windows.conf.json": "e52c6c7bd9319c4e1ec168f6e78baab24bbe306b2443d16e153b718427a19255",
+  "client/src/pages/SettingsPage.jsx": "2c5f8d4eadcbeb640d17fa2f30f75d2873ddb4eba5849fa8708ddea1bf04945b",
+  "client/src/__tests__/biometric-consent.test.jsx": "53591b2fa2a925c1bf37822882b87c1786a131dc5c91c8b38232a5db3350f619",
+  "client/package.json": "bdae0c888392f82397a0b31f2338bddf6d4be5b97f022a46ab9716b4fc7bea1f",
+  "client/package-lock.json": "a7a9665a2e9c7331a2fc70e350d6f4a1c6697b2235ba7ceba72e74941d18461a"
+}

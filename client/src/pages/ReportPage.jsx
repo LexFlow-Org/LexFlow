@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { BarChart3, TrendingUp, Clock, FileText, RefreshCw, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
+import { getSessionGeneration } from '../utils/sessionData';
 
 // Italian labels for practice types (FIX-27)
 const TYPE_LABELS_IT = {
@@ -40,26 +41,23 @@ export default function ReportPage({ practices = [], loading: practicesLoading }
   const [timeLogs, setTimeLogs] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const sessionGeneration = useRef(getSessionGeneration());
   const [showAllActivity, setShowAllActivity] = useState(false);
 
   // FIX-24 throttle window-focus reload (only if last load > 5s ago)
   const lastLoadRef = useRef(0);
 
-  const loadActivity = useCallback(async () => {
-    setActivityLoading(true);
-    try {
-      const data = await api.getAuditLog();
-      setActivityLog(Array.isArray(data) ? [...data].reverse() : []);
-    } catch { setActivityLog([]); }
-    finally { setActivityLoading(false); }
-  }, []);
+  const loadActivity = useCallback(() => api.getAuditLog().then(data => {
+    if (sessionGeneration.current !== getSessionGeneration()) return;
+    setActivityLog(Array.isArray(data) ? [...data].reverse() : []);
+  }).catch(() => setActivityLog([])).finally(() => setActivityLoading(false)), []);
 
   // FIX-21 defensive finally on loadTimeLogs
   const loadLogs = useCallback(() => {
     return Promise.resolve(api.loadTimeLogs?.())
-      .then(t => setTimeLogs(t || []))
-      .catch(e => console.error(e))
+      .then(t => { if (sessionGeneration.current === getSessionGeneration()) setTimeLogs(t || []); })
+      .catch(() => { /* leave the previous report visible */ })
       .finally(() => setLoading(false));
   }, []);
 
@@ -243,7 +241,7 @@ export default function ReportPage({ practices = [], loading: practicesLoading }
             Attività Recenti
           </h3>
           <button
-            onClick={loadActivity}
+            onClick={() => { setActivityLoading(true); void loadActivity(); }}
             className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-dim)]"
             aria-label="Aggiorna registro attività"
           >

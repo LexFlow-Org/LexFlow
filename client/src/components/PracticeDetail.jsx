@@ -165,8 +165,8 @@ export default function PracticeDetail({ practice, onBack, onUpdate, agendaEvent
   // più che una vera ottimizzazione. saveNow ritorna una Promise reale e non
   // catturare uno stato stale, perché parte sempre dall'oggetto `practice` corrente.
   const saveNow = useCallback(async (changes) => {
-    return Promise.resolve(onUpdate({ ...practice, ...changes }));
-  }, [onUpdate, practice]);
+    return Promise.resolve(onUpdate(changes));
+  }, [onUpdate]);
 
   const handleBioUnlock = useCallback(() => setBiometricVerified(true), []);
 

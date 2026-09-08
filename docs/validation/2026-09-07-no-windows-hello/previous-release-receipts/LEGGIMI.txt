@@ -1,0 +1,56 @@
+LexFlow 1.0.1 — pacchetti aggiornati il 7 settembre 2026
+
+Quattro installer distinti:
+- macOS Apple Silicon: Mac con chip M1/M2/M3/M4/M5 e successivi compatibili.
+- macOS Intel: Mac con processore Intel x86_64.
+- Windows: installer x64 con WebView2 Fixed incluso, per uso offline.
+- Android: APK ARM64, versione interna 253, stesso certificato precedente.
+
+Questi pacchetti sostituiscono quelli del 6 settembre e le precedenti compilazioni
+del 7 settembre. La versione visibile resta 1.0.1 come richiesto. Comprendono la
+correzione degli interruttori e la diagnosi dei requisiti Touch ID. L’app in
+/Applications/LexFlow.app su questo Mac è stata aggiornata dal DMG Apple Silicon
+verificato, senza modificare dati e licenze.
+
+Licenza: usa il generatore «Crea licenza LexFlow.command» nel progetto.
+La chiave privata già generata e il certificato Android sono invariati e
+restano fuori dal progetto. Non inviare le chiavi private insieme agli installer.
+Le licenze già emesse con la chiave privata attuale restano valide: non occorre
+generarne altre per questa correzione. Per Windows invia il nuovo installer EXE
+e installalo sopra la copia precedente. L’aggiornamento su Windows reale resta
+da collaudare. Il conteggio delle licenze nel registro cifrato richiede la
+password locale del registro e non è stato verificato.
+Le licenze del precedente emittente revocato non sono accettate; vecchi binari
+offline già distribuiti non possono essere revocati a distanza.
+
+Mac: macOS 11+ e Safari/WebKit 16.4+. Firma locale ad hoc, senza notarizzazione.
+Touch ID non è disponibile con questa firma: si usa la Master Password.
+Il sensore del Mac può essere presente; mancano firma ed entitlement Apple
+autorizzati per il Portachiavi biometrico protetto. Nessuna credenziale salvata
+in modo meno protetto per aggirare questo requisito.
+Windows: installer e applicazione non hanno firma Authenticode.
+Android: Android 7+ con WebView Chromium111+, hardware ARM64. Leggi anche
+Android/INSTALLAZIONE.md. Biometria Android non disponibile.
+
+Collaudo: 428 test Rust completi prima dell’ultima diagnosi biometrica, poi
+8 test mirati di biometria; 58 test frontend, 120 misure geometriche,
+24 configurazioni di interazione e controlli statici dei quattro pacchetti
+superati. La nuova esportazione Mac con password distinta è stata
+provata dalla UI; backup decifrato e verificato con 10.000 fascicoli sintetici.
+
+Limiti: nessun test su PC Windows, Mac Intel o telefono Android fisico.
+Il precedente APK252 emulato ha effettuato quattro riaperture offline; in una successiva
+prova del renderer software è ricomparso un arresto Wry per timeout. La causa
+non è stata corretta. Sono state osservate anche anomalie grafiche.
+Il nuovo APK253 non è stato avviato nell’emulatore o su telefono.
+L'APK non è quindi dichiarato validato per uso professionale; occorre completare
+il collaudo reale di archivio, backup e ripristino prima di usarlo con dati legali.
+
+La misura di rete riguarda il precedente binario Mac in finestre limitate:
+non è una certificazione assoluta dell'assenza di traffico dei nuovi pacchetti.
+Rapporti: docs/COLLAUDO-2026-09-07.md e
+docs/CORREZIONE-IMPOSTAZIONI-2026-09-07.md nel progetto.
+
+Conserva una copia completa dell'archivio, a programma chiuso, prima dell'aggiornamento.
+Il backup portatile non comprende automaticamente tutti gli allegati esterni.
+Per mantenere locali allegati ed esportazioni scegli cartelle fuori dai servizi cloud.

@@ -1,0 +1,8 @@
+LexFlow 1.0.1 — Windows x64 — ricompilazione 7 settembre 2026
+
+Installer NSIS con Typst0.15.1, qpdf12.4.1 e nove DLL, WebView2 Fixed152.0.4191.62 offline.
+Include le correzioni finali documentate nel collaudo del 7 settembre: rubrica virtualizzata, biometria esplicita, credenziali backup distinte e controlli di sessione/integrità.
+
+Verifica pacchetto: archivio estratto senza errori, 573 file confrontati SHA256, inclusi548 fileWebView2; eseguibile PE x64 versione1.0.1.0.
+Firma Authenticode LexFlow assente. App Windows e installer non eseguiti su Windows: questo Mac ha prodotto il pacchetto tramite cross-compilazione. Nessun MSI.
+Dettagli e manifest nella ricevuta BUILD-VERIFICATION.json.

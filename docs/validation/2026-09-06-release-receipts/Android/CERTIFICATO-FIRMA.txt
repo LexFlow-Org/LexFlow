@@ -1,0 +1,5 @@
+Firma locale di distribuzione LexFlow 1.0.1
+Algoritmo chiave: RSA4096
+Certificato SHA-256: bab0ab7ef4395793afb278b688233d177c4545c4c49748a0a10409447544eaf5
+
+Stesso certificato APK della versione 1.0.0. Questa firma è distinta dalla nuova chiave Ed25519 per le licenze. La chiave privata non è inclusa.

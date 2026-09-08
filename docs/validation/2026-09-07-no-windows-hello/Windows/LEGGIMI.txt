@@ -1,0 +1,10 @@
+LexFlow 1.0.1 — Windows x64, rimozione Windows Hello
+Compilazione conclusa il 2026-09-08 (ora italiana) dalla snapshot finale.
+
+Il pacchetto contiene l’accesso Windows con Master Password e la rimozione della vecchia credenziale biometrica all’avvio; non legge né registra nuove credenziali per Windows Hello. Gli archivi cifrati e le licenze esistenti restano compatibili. La firma delle licenze usa la stessa chiave pubblica attiva.
+
+Verifiche effettuate: compilazione release con lockfile, test 7z, estrazione di 578 file, confronto SHA-256 di 573 risorse applicative incluse 548 del WebView2 locale, 9 DLL qpdf, architetture PE x64, versione 1.0.1.0, assenza nel PE dei token API specifici del vecchio Windows Hello, confronto della snapshot con il progetto finale.
+
+Limiti: compilazione incrociata su Mac; installer ed eseguibile LexFlow non firmati Authenticode. Nessuna esecuzione su Windows reale, né prova nativa della migrazione del Gestore credenziali o misura del traffico Windows. I 13 test Rust biometria/rimozione sono stati eseguiti su Mac e i 60 test frontend nel runtime di test. La scansione delle stringhe è una verifica aggiuntiva del pacchetto, non sostituisce i test di comportamento.
+
+BUILD-VERIFICATION.json documenta il pacchetto; SOURCE-SHA256.json e frontend-source-sha256.json documentano i sorgenti congelati. Il log di compilazione contiene solo gli avvisi standard della compilazione incrociata e della firma non disponibile.

@@ -1,116 +1,82 @@
 # LexFlow
 
-> Gestionale per Studi Legali con Crittografia Zero-Knowledge
+Gestionale per studi legali con archivio locale cifrato, realizzato con Tauri, React e Rust.
 
-**Versione:** 2.0.5
-**Piattaforme:** macOS (Universal) · Windows 10/11 · Android 7+
-**Tecnologia:** Tauri v2 · React 19 · Rust
-**Bundle ID:** `com.pietrolongo.lexflow`
+**Versione configurata: 1.0.1.** I [quattro installer aggiornati](releases/2026-09-07/LEGGIMI.txt) includono le correzioni del 7 settembre per Impostazioni, backup e prestazioni; Android ha codice interno 253. Il [collaudo](docs/COLLAUDO-2026-09-07.md) e la [verifica di interruttori, licenze e Touch ID](docs/CORREZIONE-IMPOSTAZIONI-2026-09-07.md) distinguono risultati e limiti. Restano il collaudo completo sui dispositivi di destinazione, il crash Android emulato irrisolto e la firma Apple necessaria per Touch ID.
 
----
+Dal successivo aggiornamento Windows dell’8 settembre è stato rimosso Windows Hello: accesso con Master Password, cancellazione della vecchia credenziale biometrica e licenze invariate. [Dettagli e conseguenze dell’aggiornamento](docs/RIMOZIONE-WINDOWS-HELLO-2026-09-08.md).
 
-## Panoramica
+**Sorgenti successivi agli installer:** il nuovo [audit backend dell’8 settembre](docs/AUDIT-BACKEND-2026-09-08.md) corregge licenze, reset, concorrenza, registro attività, backup, ricerca e notifiche. Queste modifiche devono ancora essere distribuite nella 1.0.2. Le vecchie attivazioni richiederanno una conferma con il codice originale sul dispositivo già attivato; l'emittente resta invariato.
 
-LexFlow è un gestionale completo per studi legali con crittografia di livello bancario. Tutti i dati — fascicoli, agenda, contatti, time tracking — sono cifrati localmente con AES-256-GCM-SIV e non transitano mai su server esterni.
+## Funzioni e confini di sicurezza
 
-### Funzionalità Principali
+LexFlow gestisce fascicoli, agenda, scadenze, contatti, ore e fatturazione senza un servizio cloud applicativo. I dati del vault sono cifrati con AES-256-GCM-SIV; Argon2id deriva la chiave dalla password. Il formato V8 conserva header, indice e record in uno snapshot atomico con manifest autenticato.
 
-| Modulo | Descrizione |
-|--------|-------------|
-| **Fascicoli** | Gestione pratiche con ricerca fuzzy, esportazione PDF professionale |
-| **Agenda** | Calendario giorno/settimana/mese con notifiche native |
-| **Scadenzario** | Deadline processuali con briefing giornalieri configurabili |
-| **Contatti** | Rubrica professionale con verifica conflitti di interesse |
-| **Gestione Ore** | Time tracking con timer live e griglia settimanale |
-| **Ricerca** | Trigram index con BM25 ranking — ricerca parziale, fuzzy, typo-tolerant |
+Gli allegati esterni restano file separati: il vault ne conserva i percorsi. PDF e CSV esportati, appunti, notifiche e servizi del sistema operativo richiedono protezioni proprie. L'assenza di traffico di rete dell'intero processo deve essere verificata sui pacchetti nativi; l'audit dei sorgenti non equivale a una certificazione di isolamento.
 
-### Sicurezza
+La redazione PDF è sospesa perché la precedente implementazione non garantiva la rimozione irreversibile dei contenuti. Le restrizioni PDF su copia e stampa non sostituiscono la cifratura per impedire l'apertura del documento.
 
-| Feature | Dettaglio |
-|---------|-----------|
-| **Cifratura** | AES-256-GCM-SIV (nonce-misuse resistant) |
-| **Derivazione chiave** | Argon2id con parametri adattivi (benchmark ~300-500ms) |
-| **Architettura** | Envelope encryption KEK/DEK — cambio password O(1) |
-| **Per-record** | Ogni fascicolo cifrato individualmente con compressione zstd |
-| **Biometria** | Touch ID (macOS) / Windows Hello / Impronta (Android) |
-| **Recovery** | Chiave di emergenza base32 (XXXX-XXXX-XXXX-XXXX) |
-| **Anti brute-force** | Backoff esponenziale: 5s → 15s → 30s → 60s → 5min → 15min |
-| **Licenze** | Firma digitale Ed25519 offline, chiavi monouso (burn-hash) |
-| **Test** | 111 test di sicurezza (penetration, APT, timing oracle, fuzzing) |
+I target previsti sono **macOS, Windows e Android**. Sono stati preparati binari PDF autonomi per desktop; restano prove complete su dispositivi da completare. **iOS non è disponibile**. Lo sblocco dei formati precedenti tramite password migra al V8; consultare l'audit prima di intervenire su un archivio esistente o su una chiave di recupero legacy.
 
----
+Il pacchetto macOS richiede macOS 11+ con Safari/WebKit 16.4+; Android richiede ARM64, Android 7+ e WebView Chromium 111+. Il solo numero di versione del sistema non garantisce un motore WebView abbastanza recente: [compatibilità Tailwind 4](https://tailwindcss.com/docs/compatibility#browser-support). Android usa la password; i componenti PDF qpdf/Typst sono disponibili soltanto su desktop.
 
-## Stack Tecnologico
+## Sviluppo e verifica
 
-| Layer | Tecnologia |
-|-------|------------|
-| Frontend | React 19 + Vite 7 + Tailwind CSS 4 |
-| Backend | Rust (Tauri v2.10) — 22 moduli |
-| Vault | Formato v4 — envelope encryption + per-record + HMAC header |
-| Crypto | aes-gcm-siv + argon2 + hmac-sha2 + ed25519-dalek (RustCrypto) |
-| Search | Trigram index cifrato + BM25 ranking |
-| PDF | Typst (sidecar nativo) |
-| Notifiche | AOT scheduling (Android) + cron async (desktop) |
+Sono necessari Node.js/npm, Rust e i prerequisiti Tauri del sistema di destinazione. Le versioni usate nelle verifiche sono riportate nell'audit. Installare le dipendenze del progetto e del frontend:
 
-## Architettura Backend (Rust)
-
-```
-src-tauri/src/
-├── lib.rs              ← Entry point + Tauri command registration
-├── constants.rs        ← Crypto constants, file names, platform detection
-├── crypto.rs           ← AES-256-GCM-SIV encrypt/decrypt, Argon2id derive
-├── vault_v4.rs         ← Vault engine: KEK/DEK, envelope, per-record, HMAC
-├── vault.rs            ← Tauri commands: unlock, lock, load, save, change_password
-├── state.rs            ← AppState: SecureKey, DEK, mutex, mlock
-├── security.rs         ← Sensitive<T>, disable_core_dumps, mlock, secure_delete
-├── lockout.rs          ← Exponential backoff, HMAC-protected counter
-├── search.rs           ← Trigram index, BM25, Italian stop words
-├── license.rs          ← Ed25519 verification, burn registry, sentinel
-├── bio.rs              ← Biometric auth (Touch ID, Windows Hello, Android)
-├── audit.rs            ← Encrypted audit log
-├── settings.rs         ← Encrypted settings with migration
-├── import_export.rs    ← Vault export/import (.lex backup files)
-├── backup.rs            ← Auto-backup with rotation (keep last 3)
-├── csv_export.rs        ← CSV export for time logs and invoices
-├── error.rs             ← LexFlowError structured error types
-├── validation.rs        ← Backend data validation (required fields, limits)
-├── notifications.rs    ← Desktop cron + mobile AOT scheduling
-├── platform.rs         ← Machine fingerprint, local encryption key
-├── io.rs               ← Atomic write, secure_write, safe_bounded_read
-├── files.rs            ← File picker, PDF generation, typst sidecar
-├── window.rs           ← Window controls, minimize, maximize, tray
-├── setup.rs            ← App initialization, tray, autolock, integrity check
-└── vault_v4_tests.rs   ← 111 security tests
+```sh
+npm ci
+npm --prefix client ci
+npm run dev
 ```
 
-## Sviluppo
+I comandi principali di verifica sono:
 
-```bash
-# Dev
-npm run dev              # Avvia dev (Tauri + Vite)
-
-# Build
-npm run build            # Build macOS Universal
-npm run build:me         # Build + deploy in /Applications
-
-# Test
-cd src-tauri && cargo test --lib   # 111 test di sicurezza
-
-# Lint
-cd src-tauri && cargo fmt && cargo clippy -- -W clippy::all -D warnings
+```sh
+npm --prefix client test
+npm --prefix client run lint
+npm --prefix client run build
+cargo test --locked --lib --manifest-path src-tauri/Cargo.toml -- --test-threads=1
+cargo clippy --locked --lib --manifest-path src-tauri/Cargo.toml -- -D warnings
+npm run test:native-hardening
 ```
 
-## Documentazione
+Per generare un pacchetto sul sistema e con gli strumenti appropriati:
 
-| Documento | Percorso |
-|-----------|----------|
-| Security Whitepaper | [`docs/security-whitepaper.typ`](docs/security-whitepaper.typ) |
-| Guida Utente | [`docs/guida-utente.typ`](docs/guida-utente.typ) |
-| Release Notes v2.0 | [`docs/release-notes-v2.typ`](docs/release-notes-v2.typ) |
-| Security Testing CI | [`ci/README-security-testing.md`](ci/README-security-testing.md) |
-| Changelog | [`CHANGELOG.md`](CHANGELOG.md) |
+| Destinazione | Comando |
+|---|---|
+| macOS Apple Silicon e Intel, due DMG separati | `npm run build:mac` |
+| macOS Apple Silicon | `npm run build:mac-arm` |
+| macOS Intel | `npm run build:mac-intel` |
+| Windows NSIS, da Developer PowerShell su Windows x64 | `npm run build:win` |
+| Android, inizializzazione | `npm run android:init` |
+| Android APK | `npm run android:build` |
+| Android AAB | `npm run android:build-aab` |
+
+Per Windows il runner prepara Typst, qpdf con DLL e WebView2 Fixed a versioni e SHA256 fissati. Per la firma locale macOS, anche da un progetto in iCloud, usare il flusso `package-macos-local.sh` documentato in [scripts/README.md](scripts/README.md); `build:me` ora compila senza cancellare o installare app.
+
+Questi comandi non attestano che il relativo pacchetto sia pronto alla distribuzione. I controlli sui sidecar PDF, la firma e il collaudo della release sono descritti nelle [note sulle piattaforme](docs/platform-audit-notes.md).
+
+Su macOS il controllo Touch ID è compilato nell'app: chi la usa non deve installare Swift, Xcode o Command Line Tools. L'attivazione richiede però hardware configurato e firma/entitlement compatibili con il Portachiavi Data Protection. Nei pacchetti locali con firma ad hoc e senza tali entitlement la biometria risulta indisponibile e si usa la Master Password. Le credenziali biometriche legacy non protette vanno riconfigurate dopo un accesso con password; non vengono lette come ripiego. Dettagli e limiti del collaudo sono nel [rapporto backend](docs/COLLAUDO-2026-09-07-backend.md).
+
+## Generazione delle licenze
+
+Gli strumenti di emissione delle licenze sono separati dall'app distribuita. Su Mac puoi fare doppio clic su `Crea licenza LexFlow.command`, nella radice del progetto. Da Terminale su macOS/Linux usare `scripts/generate-license.sh`; su Windows eseguire `python scripts/generate_license_v2.py`. Opzioni, requisiti e gestione del registro sono descritti in [scripts/README.md](scripts/README.md). Chiavi private e registri delle licenze devono restare fuori dal controllo versione e dai pacchetti per gli utenti.
+
+## Documentazione corrente
+
+| Documento | Contenuto |
+|---|---|
+| [Rapporto di audit](docs/AUDIT-SICUREZZA-2026-09-06.md) | Risultati complessivi, prestazioni e verifiche prima della consegna |
+| [Vault](docs/vault-audit-notes.md) | Cifratura, migrazione, persistenza, recupero e limiti antiregressione |
+| [Piattaforme](docs/platform-audit-notes.md) | Offline, sidecar, firme e supporto effettivo dei dispositivi |
+| [Dipendenze](docs/dependency-audit-notes.md) | Metodo dell'audit, vulnerabilità, avvisi residui e impronte dei lockfile |
+| [Strumenti](scripts/README.md) | Licenze, preparazione e verifiche della distribuzione |
+| [Changelog](CHANGELOG.md) | Modifiche correnti e cronologia delle versioni precedenti |
+
+Le vecchie copie Typst del README, delle release notes, della guida e del whitepaper V4 sono state rimosse perché duplicate o superate. Per le affermazioni sul comportamento attuale fanno riferimento i rapporti sopra elencati.
 
 ## Licenza
 
 Software proprietario. Tutti i diritti riservati.
-© 2024-2026 Pietro Longo
+© 2024–2026 Pietro Longo

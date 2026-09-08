@@ -1287,7 +1287,6 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
   // Jump-to-date: when navigated with ?date=YYYY-MM-DD, focus that day
   const [focusDate, setFocusDate] = useState(null);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- events recomputed each render is fine
   const events = agendaEvents || [];
 
   // Handle ?date= and ?time= query parameters — switch to appropriate view & scroll
@@ -1324,13 +1323,13 @@ export default function AgendaPage({ agendaEvents, onSaveAgenda, practices, onSe
     prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
   ), []);
 
-  const handleSave = useCallback((ev) => {
-    const updated = events.some(e => e.id === ev.id) ? events.map(e => e.id === ev.id ? ev : e) : [...events, ev];
-    onSaveAgenda(updated); setModalEvent(null);
-  }, [events, onSaveAgenda]);
+  const handleSave = useCallback(async (ev) => {
+    const updated = current => current.some(e => e.id === ev.id) ? current.map(e => e.id === ev.id ? ev : e) : [...current, ev];
+    if (await onSaveAgenda(updated)) setModalEvent(null);
+  }, [onSaveAgenda]);
 
-  const handleDelete = useCallback((id) => { onSaveAgenda(events.filter(e => e.id !== id)); setModalEvent(null); }, [events, onSaveAgenda]);
-  const handleToggle = useCallback((id) => onSaveAgenda(events.map(e => e.id === id ? {...e, completed: !e.completed} : e)), [events, onSaveAgenda]);
+  const handleDelete = useCallback(async (id) => { if (await onSaveAgenda(current => current.filter(e => e.id !== id))) setModalEvent(null); }, [onSaveAgenda]);
+  const handleToggle = useCallback((id) => onSaveAgenda(current => current.map(e => e.id === id ? {...e, completed: !e.completed} : e)), [onSaveAgenda]);
   const openAdd = useCallback((date, tS, tE) => {
     // Ora attuale arrotondata ai prossimi 30 min
     const n = new Date();

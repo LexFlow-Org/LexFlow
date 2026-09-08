@@ -574,6 +574,7 @@ mod tests {
         let kek = derive_kek("OldPassword123!", &vault.kdf).unwrap();
         vault.header_mac = compute_header_mac(&kek, &vault);
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let serialized = serialize_vault(&vault).unwrap();
 
         // Old password MUST still work
@@ -1200,6 +1201,7 @@ mod tests {
         let kek = derive_kek("BackupTest123!", &vault.kdf).unwrap();
         vault.header_mac = compute_header_mac(&kek, &vault);
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let bytes = serialize_vault(&vault).unwrap();
 
         // Deserialize on "another device"
@@ -2157,6 +2159,9 @@ mod tests {
         let kek = derive_kek(password, &vault.kdf).unwrap();
         vault.header_mac = compute_header_mac(&kek, &vault);
 
+        // Seal the trusted record/index changes as a V8 snapshot.
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
+
         // Serialize
         let bytes = serialize_vault(&vault).unwrap();
 
@@ -2788,6 +2793,8 @@ mod dynamic_tests {
         append_record_version(&mut entry, &dek1, &data).unwrap();
         vault.records.insert("test_rec".into(), entry);
 
+        seal_snapshot_manifest(&mut vault, &dek1).unwrap();
+
         // Serialize with old password
         let old_bytes = serialize_vault(&vault).unwrap();
 
@@ -3050,6 +3057,8 @@ mod exhaustive_tests {
             );
         }
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
+
         // Serialize (simulates export)
         let exported = serialize_vault(&vault).unwrap();
         assert!(exported.len() > 1000);
@@ -3127,6 +3136,7 @@ mod exhaustive_tests {
         vault.mac_version = Some(CURRENT_MAC_VERSION);
         vault.header_mac = compute_header_mac(&kek_new, &vault);
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let bytes = serialize_vault(&vault).unwrap();
 
         // New password works
@@ -3154,6 +3164,7 @@ mod exhaustive_tests {
         let display_key = generate_recovery_key(&mut vault, &dek).unwrap();
         assert!(vault.wrapped_dek_recovery.is_some());
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let bytes = serialize_vault(&vault).unwrap();
 
         // Unlock with recovery key
@@ -3752,6 +3763,8 @@ mod full_coverage_tests {
 
         assert_eq!(vault.records.len(), 20);
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
+
         // Serialize → open → verify all 20 records
         let bytes = serialize_vault(&vault).unwrap();
         let (opened, dek2) = open_vault(pwd, &bytes).unwrap();
@@ -4061,12 +4074,14 @@ mod full_coverage_tests {
         vault
             .records
             .insert("r1".into(), enc(&dek, &json!({"data": "test"})));
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let bytes = serialize_vault(&vault).unwrap();
         let (mut opened, _) = open_vault(pwd, &bytes).unwrap();
         assert_eq!(opened.records.len(), 1);
 
         // Remove it
         opened.records.remove("r1");
+        seal_snapshot_manifest(&mut opened, &dek).unwrap();
         let bytes2 = serialize_vault(&opened).unwrap();
         let (final_vault, _) = open_vault(pwd, &bytes2).unwrap();
         assert_eq!(final_vault.records.len(), 0);
@@ -4099,6 +4114,7 @@ mod full_coverage_tests {
             .records
             .insert(long_key.clone(), enc(&dek, &json!({"data": "ok"})));
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let bytes = serialize_vault(&vault).unwrap();
         let (opened, dek2) = open_vault("LongKey_2024!", &bytes).unwrap();
         assert_eq!(
@@ -4126,6 +4142,7 @@ mod full_coverage_tests {
                 .insert(key.to_string(), enc(&dek, &json!({"key": key})));
         }
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let bytes = serialize_vault(&vault).unwrap();
         let (opened, dek2) = open_vault("SpecialKeys_2024!", &bytes).unwrap();
 
@@ -4232,6 +4249,7 @@ mod full_coverage_tests {
             .records
             .insert("r1".into(), enc(&dek, &json!({"test": true})));
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let bytes1 = serialize_vault(&vault).unwrap();
         let (opened, _) = open_vault(pwd, &bytes1).unwrap();
         let bytes2 = serialize_vault(&opened).unwrap();
@@ -4501,6 +4519,8 @@ mod full_coverage_tests {
         vault.index = encrypt_index(&dek, &index).unwrap();
         vault.rotation.writes += 1;
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
+
         // === Save vault to "disk" ===
         let saved = serialize_vault(&vault).unwrap();
 
@@ -4625,6 +4645,7 @@ mod full_coverage_tests {
             "Recovery key should be formatted XXXX-XXXX-..."
         );
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let serialized = serialize_vault(&vault).unwrap();
 
         // Forget password — unlock with recovery key
@@ -4867,10 +4888,12 @@ mod full_coverage_tests {
         append_record_version(&mut e1, &dek, &bytes).unwrap();
         vault.records.insert("practices_p1".into(), e1);
         vault.rotation.writes = 5;
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let snapshot_old = serialize_vault(&vault).unwrap();
 
         // Write 2: more writes
         vault.rotation.writes = 10;
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
         let snapshot_new = serialize_vault(&vault).unwrap();
 
         // Both open fine
@@ -5037,6 +5060,8 @@ mod full_coverage_tests {
         vault.index = encrypt_index(&dek, &index_entries).unwrap();
         vault.rotation.writes = 100;
 
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
+
         // Serialize and reopen
         let serialized = serialize_vault(&vault).unwrap();
         let (vault2, dek2) = open_vault(password, &serialized).unwrap();
@@ -5200,6 +5225,8 @@ mod extreme_tests {
 
         vault.index = encrypt_index(&dek, &index_entries).unwrap();
         vault.rotation.writes = 1000;
+
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
 
         // Serialize (questo produce un blob enorme)
         let serialized = serialize_vault(&vault).unwrap();
@@ -5468,7 +5495,22 @@ mod extreme_tests {
     #[test]
     fn corruption_record_encrypted_with_wrong_key() {
         let password = "WrongKey_2026!X";
-        let (mut vault, _dek) = create_vault(password).unwrap();
+        let (mut vault, dek) = create_vault(password).unwrap();
+
+        // Establish a valid committed snapshot before replacing its record.
+        let mut original = RecordEntry {
+            versions: vec![],
+            current: 0,
+        };
+        append_record_version(
+            &mut original,
+            &dek,
+            &rmp_serde::to_vec(&json!({"id": "p1", "data": "original"})).unwrap(),
+        )
+        .unwrap();
+        vault.records.insert("practices_p1".into(), original);
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
+        assert!(open_vault(password, &serialize_vault(&vault).unwrap()).is_ok());
 
         // Cifra un record con una DEK diversa (simulando corruzione selettiva)
         let foreign_dek = make_dek();
@@ -5490,13 +5532,14 @@ mod extreme_tests {
         };
         vault.records.insert("practices_p1".into(), entry);
 
+        // The attacker cannot authenticate the replacement in the manifest.
         let serialized = serialize_vault(&vault).unwrap();
-        let (vault2, dek2) = open_vault(password, &serialized).unwrap();
-
-        // Il vault si apre (header OK) ma il record specifico non si decifra
-        let entry = vault2.records.get("practices_p1").unwrap();
         assert!(
-            read_current_version(entry, &dek2).is_err(),
+            open_vault(password, &serialized).is_err(),
+            "A foreign-key record must invalidate the snapshot before opening"
+        );
+        assert!(
+            read_current_version(vault.records.get("practices_p1").unwrap(), &dek).is_err(),
             "Record encrypted with foreign DEK must fail decryption"
         );
     }
@@ -5522,6 +5565,7 @@ mod extreme_tests {
         append_record_version(&mut e, &dek_v1, &bytes).unwrap();
         let mut vault_v1 = vault_v1;
         vault_v1.records.insert("practices_p1".into(), e);
+        seal_snapshot_manifest(&mut vault_v1, &dek_v1).unwrap();
         let snapshot_v1 = serialize_vault(&vault_v1).unwrap();
 
         // Attaccante salva snapshot_v1
@@ -5540,7 +5584,10 @@ mod extreme_tests {
         vault_v2.mac_version = Some(CURRENT_MAC_VERSION);
         vault_v2.header_mac = compute_header_mac(&new_kek, &vault_v2);
         vault_v2.rotation.writes += 1;
-        let _snapshot_v2 = serialize_vault(&vault_v2).unwrap();
+        seal_snapshot_manifest(&mut vault_v2, &dek_v1).unwrap();
+        let snapshot_v2 = serialize_vault(&vault_v2).unwrap();
+        assert!(open_vault(new_pwd, &snapshot_v2).is_ok());
+        assert!(open_vault(old_pwd, &snapshot_v2).is_err());
 
         // Attaccante rimpiazza con snapshot_v1 → vecchia password funziona ancora!
         // MA: in produzione il write counter rileva il rollback.
@@ -5576,6 +5623,23 @@ mod extreme_tests {
         append_record_version(&mut e, &dek, &bytes).unwrap();
         vault.records.insert("practices_p1".into(), e);
 
+        let real_index = vec![IndexEntry {
+            id: "practices_p1".into(),
+            field: "practices".into(),
+            title: "Real".into(),
+            tags: vec![],
+            updated_at: "".into(),
+            summary: None,
+        }];
+        vault.index = encrypt_index(&dek, &real_index).unwrap();
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
+        let baseline = serialize_vault(&vault).unwrap();
+        let (opened, opened_dek) = open_vault(password, &baseline).unwrap();
+        let plain =
+            read_current_version(opened.records.get("practices_p1").unwrap(), &opened_dek).unwrap();
+        let original: serde_json::Value = rmp_serde::from_slice(&plain).unwrap();
+        assert_eq!(original["client"], "Real");
+
         // Crea indice con voce fantasma
         let phantom_index = vec![
             IndexEntry {
@@ -5598,21 +5662,13 @@ mod extreme_tests {
         vault.index = encrypt_index(&dek, &phantom_index).unwrap();
         let serialized = serialize_vault(&vault).unwrap();
 
-        let (vault2, dek2) = open_vault(password, &serialized).unwrap();
-        let idx = decrypt_index(&dek2, &vault2.index).unwrap();
-        assert_eq!(idx.len(), 2); // Phantom è nell'indice
-
-        // Ma il record fantasma non esiste → nessun dato decifrabile
+        // Do not seal the attack: the injected legacy index lacks the mandatory
+        // V8 manifest, so the complete snapshot is rejected before exposing data.
         assert!(
-            vault2.records.get("practices_PHANTOM").is_none(),
-            "Phantom record must not exist in records map"
+            open_vault(password, &serialized).is_err(),
+            "An injected phantom index must invalidate the snapshot before opening"
         );
-
-        // Record reale è intatto
-        let entry = vault2.records.get("practices_p1").unwrap();
-        let plain = read_current_version(entry, &dek2).unwrap();
-        let val: serde_json::Value = rmp_serde::from_slice(&plain).unwrap();
-        assert_eq!(val["client"], "Real");
+        assert!(open_vault(password, &baseline).is_ok());
     }
 
     // ═══════════════════════════════════════════════════════════

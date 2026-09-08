@@ -1,5 +1,54 @@
 @import "tailwindcss";
 
+/* Fixed geometry keeps the thumb inside the track, independent of the
+   button's centered content or the root font size. The hit target stays 44px. */
+.toggle-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.toggle-track {
+  position: relative;
+  display: block;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background-color 160ms ease;
+}
+.toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px #0003;
+  pointer-events: none;
+  transform: translateX(0);
+  transition: transform 160ms ease;
+}
+.toggle-control[aria-checked="true"] .toggle-track {
+  background: var(--primary);
+}
+.toggle-control[aria-checked="true"] .toggle-thumb {
+  transform: translateX(20px);
+}
+
 /* ═══════════════════════════════════════════════════════════════
    ACCESSIBILITY — prefers-reduced-motion (WCAG 2.3.3)
    Riduce drasticamente le animazioni quando l'utente ha questa
@@ -8,6 +57,7 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
@@ -360,9 +410,7 @@
   a { color: var(--primary); text-decoration: none; }
 
   button, [role="button"], a, summary { cursor: pointer; }
-  input[type="checkbox"], input[type="radio"], input[type="range"],
-  input[type="color"], input[type="file"], input[type="submit"],
-  input[type="reset"], input[type="button"], select { cursor: pointer; }
+  input[type="checkbox"], input[type="radio"], input[type="range"], input[type="color"], input[type="file"], input[type="submit"], input[type="reset"], input[type="button"], select { cursor: pointer; }
 }
 
 /* ========== 3. CATEGORY UTILITY CLASSES ========== */
@@ -411,13 +459,6 @@
 @layer components {
 
   /* ═══ LAYOUT ═══ */
-  .app-layout {
-    display: flex;
-    height: 100vh;
-    width: 100vw;
-    overflow: hidden;
-  }
-
   .main-content {
     flex: 1;
     padding: 32px 40px;
@@ -494,21 +535,6 @@
     padding: 32px 32px 20px;
     background: linear-gradient(135deg, color-mix(in srgb, var(--info) 8%, transparent) 0%, color-mix(in srgb, var(--info) 2%, transparent) 100%);
   }
-  .modal-header-gradient-success {
-    padding: 32px 32px 20px;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--success) 8%, transparent) 0%, color-mix(in srgb, var(--success) 2%, transparent) 100%);
-  }
-  .modal-header-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--primary-soft);
-    border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
-    color: var(--primary);
-  }
 
   /* Modal Footer */
   .modal-footer {
@@ -518,30 +544,6 @@
     padding: 20px 32px;
     background: var(--bg-surface);
     border-top: 1px solid var(--border);
-  }
-
-  /* Modal Backdrop & Content */
-  .modal-backdrop {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 200;
-    animation: fadeIn 0.2s;
-  }
-  .modal-content {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    width: 90%;
-    max-width: 520px;
-    animation: slideUp 0.2s;
-    max-height: 90vh;
-    overflow-y: auto;
   }
 
   /* ═══ BUTTONS ═══ */
@@ -587,25 +589,6 @@
     border-color: var(--text-dim);
   }
 
-  .btn-danger {
-    background: color-mix(in srgb, var(--danger) 12%, transparent);
-    color: var(--danger);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border-radius: var(--radius-sm);
-    font-weight: 500;
-    font-size: 13px;
-    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
-    cursor: pointer;
-    transition: var(--transition);
-  }
-  .btn-danger:hover {
-    background: color-mix(in srgb, var(--danger) 20%, transparent);
-  }
-
   .btn-cancel {
     padding: 12px 24px;
     border-radius: 16px;
@@ -622,19 +605,6 @@
   .btn-cancel:hover {
     color: var(--text);
     background: rgba(var(--overlay), 0.05);
-  }
-
-  .modal-close {
-    padding: 8px;
-    border-radius: 12px;
-    color: var(--text-dim);
-    background: none;
-    border: none;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .modal-close:hover {
-    background: rgba(var(--overlay), 0.1);
   }
 
   /* ═══ INPUT ═══ */
@@ -932,65 +902,17 @@
   --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
 }
-
-@keyframes fadeIn       { from { opacity: 0; }                                          to { opacity: 1; } }
 @keyframes slideUp      { from { transform: translateY(12px); opacity: 0; }             to { transform: translateY(0); opacity: 1; } }
 @keyframes fadeInSimple { from { opacity: 0; }                                          to { opacity: 1; } }
-@keyframes cascadeIn    { from { opacity: 0; transform: translateY(-40px); }            to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeInUp     { from { opacity: 0; transform: translateY(20px); }             to { opacity: 1; transform: translateY(0); } }
-@keyframes fadeInDown   { from { opacity: 0; transform: translateY(-20px); }            to { opacity: 1; transform: translateY(0); } }
-@keyframes countUp      { from { opacity: 0; transform: translateY(10px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes pulse-smooth { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-@keyframes shimmer      { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 @keyframes shake        { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
-@keyframes pulse-glow   { 0%, 100% { box-shadow: 0 0 15px var(--primary-glow); } 50% { box-shadow: 0 0 30px var(--primary-glow); } }
 
 @layer components {
   .animate-slide-up       { animation: slideUp 0.4s ease-out; }
   .animate-shake          { animation: shake 0.4s; }
   .animate-fade-in        { animation: fadeInSimple 0.3s var(--ease-smooth); }
-  .animate-cascade-in     { opacity: 0; animation: cascadeIn 0.6s var(--ease-out-expo) forwards; }
   .animate-fade-in-up     { opacity: 0; animation: fadeInUp 0.5s var(--ease-out-expo) forwards; }
-  .animate-fade-in-down   { opacity: 0; animation: fadeInDown 0.5s var(--ease-out-expo) forwards; }
-  .animate-count-up       { opacity: 0; animation: countUp 0.4s var(--ease-out-expo) forwards; }
-  .animate-pulse-smooth   { animation: pulse-smooth 2s var(--ease-smooth) infinite; }
-  .animate-shimmer {
-    background: linear-gradient(90deg, transparent 0%, rgba(var(--overlay), 0.04) 50%, transparent 100%);
-    background-size: 200% 100%;
-    animation: shimmer 2s infinite;
-  }
 }
-
-/* ── Stagger Delays ── */
-.stagger-1 { animation-delay: 0ms; }
-.stagger-2 { animation-delay: 100ms; }
-.stagger-3 { animation-delay: 200ms; }
-.stagger-4 { animation-delay: 300ms; }
-.stagger-5 { animation-delay: 400ms; }
-.stagger-6 { animation-delay: 500ms; }
-.stagger-7 { animation-delay: 600ms; }
-.stagger-8 { animation-delay: 700ms; }
-
-.animate-gpu {
-  will-change: auto; /* reset after animation to free GPU memory */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-}
-
-.page-cascade > * {
-  opacity: 0;
-  animation: fadeInUp 0.5s var(--ease-out-expo) forwards;
-}
-.page-cascade > *:nth-child(1)  { animation-delay: 0ms; }
-.page-cascade > *:nth-child(2)  { animation-delay: 80ms; }
-.page-cascade > *:nth-child(3)  { animation-delay: 160ms; }
-.page-cascade > *:nth-child(4)  { animation-delay: 240ms; }
-.page-cascade > *:nth-child(5)  { animation-delay: 320ms; }
-.page-cascade > *:nth-child(6)  { animation-delay: 400ms; }
-.page-cascade > *:nth-child(7)  { animation-delay: 480ms; }
-.page-cascade > *:nth-child(8)  { animation-delay: 560ms; }
-.page-cascade > *:nth-child(9)  { animation-delay: 640ms; }
-.page-cascade > *:nth-child(10) { animation-delay: 720ms; }
 
 /* ── Theme switch: instant (no fade) ── */
 :root:not(.theme-ready) *,
@@ -1050,9 +972,7 @@
   .drag-region { -webkit-app-region: drag; }
   .no-drag     { -webkit-app-region: no-drag; }
 
-  input, button, select, textarea, a, label,
-  .input-field, .btn-primary, .btn-ghost, .btn-danger,
-  [role="button"], [type="submit"] {
+  input, button, select, textarea, a, label, .input-field, .btn-primary, .btn-ghost, [role="button"], [type="submit"] {
     -webkit-app-region: no-drag;
   }
 
@@ -1144,68 +1064,15 @@ body.agenda-dragging .agenda-event:hover {
 .agenda-event:hover::after { opacity: 1; }
 .grid-rows-6 .agenda-event::after { display: none; }
 
-.time-indicator-line {
-  height: 2px;
-  background: linear-gradient(90deg, var(--primary) 0%, transparent 100%);
-  box-shadow: 0 0 10px var(--primary-glow);
-  position: relative;
-}
-.time-indicator-dot {
-  width: 8px;
-  height: 8px;
-  background: var(--primary);
-  border-radius: 50%;
-  box-shadow: 0 0 12px var(--primary);
-  position: absolute;
-  left: -4px;
-  top: -3px;
-  animation: pulse-dot 2s infinite;
-}
-
-@keyframes pulse-dot {
-  0%   { transform: scale(1);   box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 70%, transparent); }
-  70%  { transform: scale(1.5); box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent); }
-  100% { transform: scale(1);   box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 0%, transparent); }
-}
-
-.event-udienza {
-  border-left: 3px solid var(--primary);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--primary) 85%, transparent) 0%, color-mix(in srgb, var(--primary) 60%, transparent) 100%);
-  box-shadow: 0 4px 15px color-mix(in srgb, var(--primary) 20%, transparent);
-}
-.event-udienza:hover {
-  box-shadow: 0 6px 20px color-mix(in srgb, var(--primary) 40%, transparent);
-}
-
-.event-scadenza {
-  border-left: 3px solid var(--danger);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 85%, transparent) 0%, color-mix(in srgb, var(--danger) 60%, transparent) 100%);
-}
-
-.calendar-grid-header {
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
-}
-
 /* ========== 8. RESPONSIVE MOBILE ========== */
 
 /* A11y — touch target minimo 44×44 px su QUALUNQUE puntatore coarse
    (mobile, tablet, touch-screen ibridi) come da WCAG 2.5.5. */
 @media (pointer: coarse) {
-  button, a, [role="button"],
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
-  select,
-  .btn-primary, .btn-ghost, .btn-danger {
+  button, a, [role="button"], input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]), select, .btn-primary, .btn-ghost {
     min-height: 44px;
     min-width: 44px;
   }
-}
-
-@supports (padding: env(safe-area-inset-top)) {
-  .safe-top    { padding-top: env(safe-area-inset-top); }
-  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-  .safe-left   { padding-left: env(safe-area-inset-left); }
-  .safe-right  { padding-right: env(safe-area-inset-right); }
 }
 
 @media (max-width: 1024px) {
@@ -1216,30 +1083,19 @@ body.agenda-dragging .agenda-event:hover {
     padding-top: 64px;
   }
 
-  .window-controls,
-  [data-tauri-drag-region],
-  .drag-region,
-  .sidebar-traffic-spacer {
+  .window-controls {
     display: none;
+  }
+
+  /* Drag regions can contain whole forms: keep them visible on small screens. */
+  [data-tauri-drag-region],
+  .drag-region {
+    -webkit-app-region: no-drag;
   }
 
   .glass-card { padding: 14px; }
 
-  .modal-content {
-    width: 100%;
-    max-width: 100%;
-    max-height: 92dvh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    margin: 0;
-  }
-  .modal-backdrop { align-items: flex-end; }
-
   .main-content,
-  .modal-content,
   [class*="overflow-y"] {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -1255,7 +1111,7 @@ body.agenda-dragging .agenda-event:hover {
     border-radius: var(--radius-sm);
   }
 
-  .btn-primary, .btn-ghost, .btn-danger {
+  .btn-primary, .btn-ghost {
     padding: 14px 20px;
     font-size: 15px;
     border-radius: var(--radius-sm);
@@ -1274,22 +1130,7 @@ body.agenda-dragging .agenda-event:hover {
     -webkit-overflow-scrolling: touch;
   }
 
-  .page-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
-  }
-
-  .week-grid-scroll {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    min-width: 0;
-  }
-
-  .agenda-stats-sidebar { display: none; }
-
   @media (max-width: 480px) {
-    .date-time-grid,
     .grid-cols-2,
     .grid-cols-3,
     .grid-cols-4,
@@ -1369,7 +1210,9 @@ body.agenda-dragging .agenda-event:hover {
   /* ═══ ZONE COLORATE — testo resta bianco ═══ */
   & .hero-card .text-white,
   & .agenda-event .text-white,
-  & .ev-text, & .ev-text-strong, & .ev-badge { color: #fff; }
+  & .ev-text,
+  & .ev-text-strong,
+  & .ev-badge { color: #fff; }
 
   & .hero-card .text-white\/85, & .agenda-event .text-white\/85 { color: rgba(255,255,255,0.85); }
   & .hero-card .text-white\/80, & .agenda-event .text-white\/80 { color: rgba(255,255,255,0.80); }
@@ -1393,7 +1236,6 @@ body.agenda-dragging .agenda-event:hover {
 
   /* ═══ MODAL ═══ */
   & .modal-card { box-shadow: 0 25px 50px -12px rgba(0,0,0,0.12); }
-  & .modal-backdrop { background: rgba(0,0,0,0.25); backdrop-filter: blur(6px); }
 
   /* ═══ Sidebar brand ═══ */
   & .sidebar-brand { color: var(--primary); font-weight: 800; }
@@ -1402,26 +1244,14 @@ body.agenda-dragging .agenda-event:hover {
   & .text-black { color: #fff; }
 }
 
-/* Blur overlay classes — used instead of inline Tailwind backdrop-blur.
-   macOS: blur works natively via Core Animation GPU compositor.
-   Windows + Android: disabled below (software rendering = slow). */
+/* Shared overlay blur, simplified on Windows and mobile below. */
 .blur-overlay { backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
 .blur-overlay-sm { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 
 /* ═══════════════════════════════════════════════════════════════
-   11. WINDOWS + ANDROID PERFORMANCE — disable backdrop-filter
-   WebView2 renders backdrop-filter: blur() in software, causing
-   extreme slowness even on powerful hardware. Replace with opaque
-   backgrounds that look nearly identical but render 10x faster.
+   11. WINDOWS — simplified effects to reduce compositor work.
    ═══════════════════════════════════════════════════════════════ */
 body.is-windows {
-  /* Modal backdrops — opaque dark overlay instead of blur */
-  & .modal-backdrop {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: rgba(0, 0, 0, 0.75);
-  }
-
   /* Hamburger button — solid bg instead of blur */
   & .hamburger-btn {
     backdrop-filter: none !important;
@@ -1445,17 +1275,11 @@ body.is-windows {
   }
 
   /* Reduce heavy animations to simple fades */
-  & .animate-cascade-in,
-  & .animate-fade-in-up,
-  & .animate-fade-in-down {
+  & .animate-fade-in-up {
     animation-duration: 0.15s;
   }
 
-  & .page-cascade > * {
-    animation-duration: 0.2s;
-  }
-
-  /* Simplify box-shadow — WebView2 renders them in software with border-radius */
+  /* Keep a small shadow on cards and panels. */
   & .glass-card,
   & .card,
   & [class*="shadow-"] {
@@ -1470,13 +1294,10 @@ body.is-windows {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   12. MOBILE PERFORMANCE — Android/iOS WebView optimizations
-   Android WebView has even worse backdrop-filter performance than
-   WebView2. Also removes desktop-only decorations (rounded corners,
-   shadows) that waste GPU on mobile.
+   12. MOBILE — simpler effects and shorter transitions.
    ═══════════════════════════════════════════════════════════════ */
 body.is-mobile {
-  /* Kill ALL backdrop-filter globally — mobile GPUs can't handle them */
+  /* Avoid stacked blur layers on smaller devices. */
   & *,
   & *::before,
   & *::after {
@@ -1485,21 +1306,15 @@ body.is-mobile {
   }
 
   /* Remove desktop window decorations — full-screen on mobile */
-  & .flex.h-screen {
+  & .flex.h-dvh {
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
   }
 
   /* Faster animations — mobile needs snappier transitions */
-  & .animate-cascade-in,
-  & .animate-fade-in-up,
-  & .animate-fade-in-down {
+  & .animate-fade-in-up {
     animation-duration: 0.1s;
-  }
-
-  & .page-cascade > * {
-    animation-duration: 0.15s;
   }
 
   /* Reduce transition durations globally */
@@ -1515,38 +1330,17 @@ body.is-mobile {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   12. ANDROID PERFORMANCE — same as Windows: disable blur + heavy CSS
-   Android WebView has the same software-rendering issues as WebView2.
+   13. ANDROID — opaque cards.
    ═══════════════════════════════════════════════════════════════ */
 body.is-android {
-  & .blur-overlay,
-  & .blur-overlay-sm,
-  & .backdrop-blur-xl,
-  & [class*="backdrop-blur"] {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-
-  & .modal-backdrop {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: rgba(0, 0, 0, 0.75);
-  }
-
-  & .glass-card {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: var(--bg-card);
-  }
+  & .glass-card { background: var(--bg-card); }
 }
 /* ═══════════════════════════════════════════════════════════════
    13. PRINT STYLES — for agenda and deadline printing
    ═══════════════════════════════════════════════════════════════ */
 @media print {
   /* Hide non-printable elements */
-  nav, .sidebar, .hamburger-btn, button, .blur-overlay,
-  .modal-backdrop, [data-no-print], .toast-container,
-  .lexflow-toast, footer {
+  nav, .sidebar, .hamburger-btn, button, .blur-overlay, [data-no-print], .lexflow-toast, footer {
     display: none !important;
   }
 
@@ -1562,13 +1356,7 @@ body.is-android {
     box-shadow: none !important;
   }
 
-  /* Preserve colored badges */
-  .badge-warning { color: #b45309 !important; border-color: #b45309 !important; }
-  .badge-danger { color: #dc2626 !important; border-color: #dc2626 !important; }
-  .badge-success { color: #16a34a !important; border-color: #16a34a !important; }
-
   /* Page breaks */
-  .page-break-before { page-break-before: always; }
   table { page-break-inside: avoid; }
   tr { page-break-inside: avoid; }
 }
@@ -1584,16 +1372,10 @@ body.is-android {
   from { transform: translateY(0%); border-bottom-left-radius: 0% 0%; border-bottom-right-radius: 0% 0%; }
   to   { transform: translateY(-100%); border-bottom-left-radius: 100% 50%; border-bottom-right-radius: 100% 50%; }
 }
-@keyframes curtain-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes curtain-fade-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.98); } }
 @keyframes curtain-stagger-in { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 .curtain-enter { animation: curtain-slide-down 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
 .curtain-exit  { animation: curtain-slide-up 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
-.curtain-enter-delayed { animation: curtain-fade-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.6s both; }
-.curtain-exit-delayed  { animation: curtain-fade-out 0.3s ease both; }
-.curtain-enter-content { animation: curtain-fade-in 1s cubic-bezier(0.22, 1, 0.36, 1) 1.4s both; }
-.curtain-exit-content  { animation: curtain-fade-out 0.3s ease both; }
 .curtain-stagger-item  { animation: curtain-stagger-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 /* ═══════════════════════════════════════════════════════════════

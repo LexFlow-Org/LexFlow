@@ -153,26 +153,16 @@ DeadlineSection.propTypes = {
 };
 
 export default function DeadlinesPage({ practices, onSelectPractice, settings, agendaEvents, onNavigate, onSettingsChange }) {
-  const [briefingMattina, setBriefingMattina] = useState(settings?.briefingMattina || '08:30');
-  const [briefingPomeriggio, setBriefingPomeriggio] = useState(settings?.briefingPomeriggio || '14:30');
-  const [briefingSera, setBriefingSera] = useState(settings?.briefingSera || '19:30');
-  const [briefingDirty, setBriefingDirty] = useState(false);
-
-  // Sync local state when settings prop changes (from parent/backend)
-  useEffect(() => {
-    setBriefingMattina(settings?.briefingMattina || '08:30');
-    setBriefingPomeriggio(settings?.briefingPomeriggio || '14:30');
-    setBriefingSera(settings?.briefingSera || '19:30');
-    setBriefingDirty(false);
-  }, [settings]);
-
-  // FIX-19: when notifications get disabled mid-edit, clear the dirty flag
-  // so the "Salva" button doesn't reappear with stale state on re-enable.
-  useEffect(() => {
-    if (settings?.notifyEnabled === false && briefingDirty) setBriefingDirty(false);
-    // intentionally only on notifyEnabled flip
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings?.notifyEnabled]);
+  const [briefingDraft, setBriefingDraft] = useState(null);
+  const savedBriefing = {
+    briefingMattina: settings?.briefingMattina || '08:30',
+    briefingPomeriggio: settings?.briefingPomeriggio || '14:30',
+    briefingSera: settings?.briefingSera || '19:30',
+  };
+  const briefingSource = JSON.stringify([savedBriefing, settings?.notifyEnabled !== false]);
+  const briefingValues = briefingDraft?.source === briefingSource ? briefingDraft.values : savedBriefing;
+  const { briefingMattina, briefingPomeriggio, briefingSera } = briefingValues;
+  const briefingDirty = Object.keys(savedBriefing).some(key => briefingValues[key] !== savedBriefing[key]);
 
   // FIX-15: read the freshest agendaEvents at save-time. Without the ref, the
   // sync would carry the snapshot captured at component-mount in the closure,
@@ -204,7 +194,7 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
       const briefingTimes = times;
       const items = mapAgendaToScheduleItems(agendaRef.current, settings?.preavviso || 30);
       await api.syncNotificationSchedule({ briefingTimes, items });
-      setBriefingDirty(false);
+      setBriefingDraft(null);
       // Propagate to parent so all pages see the updated briefing times
       if (onSettingsChange) onSettingsChange({ briefingMattina, briefingPomeriggio, briefingSera });
       toast.success('Orari briefing aggiornati');
@@ -213,7 +203,9 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
     }
   };
 
-  const onBriefingChange = (setter) => (e) => { setter(e.target.value); setBriefingDirty(true); };
+  const onBriefingChange = (key) => (e) => {
+    setBriefingDraft({ source: briefingSource, values: { ...briefingValues, [key]: e.target.value } });
+  };
 
   // Pre-build practices map for O(1) lookup
   const practicesMap = useMemo(() => {
@@ -348,9 +340,9 @@ export default function DeadlinesPage({ practices, onSelectPractice, settings, a
           </div>
           <div className={`space-y-2 ${settings?.notifyEnabled === false ? 'pointer-events-none' : ''}`}>
             {[
-              { label: 'Mattina', value: briefingMattina, onChange: onBriefingChange(setBriefingMattina) },
-              { label: 'Pomeriggio', value: briefingPomeriggio, onChange: onBriefingChange(setBriefingPomeriggio) },
-              { label: 'Sera', value: briefingSera, onChange: onBriefingChange(setBriefingSera) },
+              { label: 'Mattina', value: briefingMattina, onChange: onBriefingChange('briefingMattina') },
+              { label: 'Pomeriggio', value: briefingPomeriggio, onChange: onBriefingChange('briefingPomeriggio') },
+              { label: 'Sera', value: briefingSera, onChange: onBriefingChange('briefingSera') },
             ].map(({ label, value, onChange }) => (
               <div key={label} className="flex items-center justify-between bg-surface rounded-lg px-3 py-2 border border-border">
                 <span className="text-xs text-text font-medium">{label}</span>

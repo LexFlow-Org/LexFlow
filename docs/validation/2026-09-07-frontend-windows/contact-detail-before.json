@@ -1,0 +1,49 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M5",
+    "cpuCount": 10,
+    "ramBytes": 25769803776,
+    "node": "v25.9.0",
+    "browser": "151.0.7922.34",
+    "playwright": "1.62.1"
+  },
+  "method": "Production-mode isolated component harness; synthetic records; IPC mocked; mount-to-two-animation-frames excludes dataset generation and module loading; search includes 200ms debounce.",
+  "results": [
+    {
+      "profile": "desktop",
+      "page": "contacts-expansion",
+      "records": 1000,
+      "cpuSlowdown": 1,
+      "expandMs": 134.59999999403954,
+      "renderedContactRows": 1000,
+      "domNodes": 23153,
+      "heapBytes": 12700000,
+      "status": "measured"
+    },
+    {
+      "profile": "desktop",
+      "page": "contacts-expansion",
+      "records": 10000,
+      "cpuSlowdown": 1,
+      "expandMs": 1199.2000000029802,
+      "renderedContactRows": 10000,
+      "domNodes": 230153,
+      "heapBytes": 103000000,
+      "status": "measured"
+    },
+    {
+      "profile": "desktop-cpu4x",
+      "page": "contacts-expansion",
+      "records": 10000,
+      "cpuSlowdown": 4,
+      "expandMs": 4619.5999999940395,
+      "renderedContactRows": 10000,
+      "domNodes": 230153,
+      "heapBytes": 103000000,
+      "status": "measured"
+    }
+  ],
+  "scope": "Only valid-CSS before-fix detail expansion cases retained; incomplete CSS/mobile-heading guard cases excluded."
+}

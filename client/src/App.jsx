@@ -6,6 +6,7 @@ import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notif
 import * as api from './tauri-api';
 import { mapAgendaToScheduleItems } from './utils/helpers';
 import { SEMANTIC } from './theme';
+import { clearSessionData } from './utils/sessionData';
 
 // Componenti (caricati subito — servono al layout)
 import LoginScreen from './components/LoginScreen';
@@ -14,44 +15,38 @@ import Sidebar, { HamburgerButton } from './components/Sidebar';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useTheme } from './hooks/useTheme';
 import WindowControls from './components/WindowControls';
-import PracticeDetail from './components/PracticeDetail';
-import CreatePracticeModal from './components/CreatePracticeModal';
+const PracticeDetail = lazy(() => import('./components/PracticeDetail'));
+const CreatePracticeModal = lazy(() => import('./components/CreatePracticeModal'));
 import TccLocationBanner from './components/TccLocationBanner';
 import CommandPalette from './components/CommandPalette';
 import Breadcrumb from './components/Breadcrumb';
-import OnboardingWizard from './components/OnboardingWizard';
+const OnboardingWizard = lazy(() => import('./components/OnboardingWizard'));
 import { AppProvider } from './contexts/AppContext';
 
 // Pagine — lazy loading: caricate solo quando l'utente ci naviga
-import Dashboard from './pages/Dashboard';
+const Dashboard = lazy(() => import('./pages/Dashboard'));
 const PracticesList = lazy(() => import('./pages/PracticesList'));
 const DeadlinesPage = lazy(() => import('./pages/DeadlinesPage'));
 const AgendaPage = lazy(() => import('./pages/AgendaPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const BioConfigurationModal = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.BioResetConfirmModal })));
 const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const ReportPage = lazy(() => import('./pages/ReportPage'));
 // ActivityPage merged into ReportPage
 const DocumentToolsPage = lazy(() => import('./pages/DocumentToolsPage'));
 
-// PERF: preload all lazy pages after initial render to eliminate navigation delay.
-// Chunks download in background so page switches are instant.
-const preloadPages = () => {
-  import('./pages/PracticesList');
-  import('./pages/DeadlinesPage');
-  import('./pages/AgendaPage');
-  import('./pages/SettingsPage');
-  import('./pages/TimeTrackingPage');
-  import('./pages/ContactsPage');
-  import('./pages/ReportPage');
-  // ActivityPage merged into ReportPage
-  import('./pages/DocumentToolsPage');
-};
-
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const contentRef = useRef(null);
+  const sessionRef = useRef(0);
+  const unlockedRef = useRef(false);
+  const saveQueueRef = useRef(Promise.resolve());
+  const practicesRef = useRef([]);
+  const settingsRef = useRef({});
+  const [loadingData, setLoadingData] = useState(false);
+  const [dataError, setDataError] = useState('');
 
   // --- STATI GLOBALI DI SICUREZZA ---
   // License gating is handled by the LicenseActivation component
@@ -93,10 +88,12 @@ export default function App() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showBioConfiguration, setShowBioConfiguration] = useState(false);
 
   // --- TEMA CHIARO/SCURO ---
   const saveSettingsForTheme = useCallback(async (updated) => {
     setSettings(updated);
+    settingsRef.current = updated;
     if (api.saveSettings) await api.saveSettings(updated);
   }, []);
   const { theme, toggleTheme } = useTheme(settings, saveSettingsForTheme);
@@ -112,7 +109,7 @@ export default function App() {
   api.getPlatform?.().then(platform => {
     if (platform === 'macos') {
       document.body.classList.add('is-macos');
-      try { api.warmSwift?.(); } catch { /* ignore */ }
+      api.warmSwift?.().catch(() => {});
     } else if (platform === 'android' || platform === 'ios') {
       document.body.classList.add('is-mobile');
       document.body.classList.add(`is-${platform}`);
@@ -125,13 +122,15 @@ export default function App() {
   api.getSettings?.().then(s => {
       if (s) {
         setSettings(s);
+        settingsRef.current = s;
         // Default to true (secure posture) when the key is missing
         setPrivacyEnabled(typeof s.privacyBlurEnabled === 'boolean' ? s.privacyBlurEnabled : true);
         // Apply screenshot protection — default to true on first launch
         const screenshotProt = typeof s.screenshotProtection === 'boolean' ? s.screenshotProtection : true;
-        api.setContentProtection?.(screenshotProt);
+        api.setContentProtection?.(screenshotProt).catch(() => {});
         if (s.autolockMinutes !== undefined) {
-          api.setAutolockMinutes?.(s.autolockMinutes);
+          const minutes = Number.isInteger(s.autolockMinutes) && s.autolockMinutes >= 1 && s.autolockMinutes <= 1440 ? s.autolockMinutes : 5;
+          api.setAutolockMinutes?.(minutes).catch(() => {});
         }
       }
     }).catch(() => {});
@@ -141,7 +140,7 @@ export default function App() {
   useEffect(() => {
     if (isLocked) return;
 
-    const pingBackend = () => api.pingActivity?.();
+    const pingBackend = () => api.pingActivity?.().catch(() => {});
     
     // Solo eventi intenzionali — mousemove e scroll generano troppi eventi
     // e thrashano il main thread (specialmente su Android). mousedown/keydown/touchstart
@@ -178,6 +177,20 @@ export default function App() {
 
   // --- 3. GESTIONE SICUREZZA (BLUR & LOCK) ---
   const handleLockLocal = useCallback((isAuto = false) => {
+    sessionRef.current += 1;
+    unlockedRef.current = false;
+    practicesRef.current = [];
+    agendaRef.current = [];
+    clearSessionData();
+    void api.clearSecureClipboard();
+    toast.remove();
+    setShowCreate(false);
+    setShowOnboarding(false);
+    setShowBioConfiguration(false);
+    setCmdPaletteOpen(false);
+    setSidebarOpen(false);
+    setLoadingData(false);
+    setDataError('');
     setBlurred(false);
     setPractices([]); 
     setAgendaEvents([]);
@@ -192,24 +205,8 @@ export default function App() {
       if (privacyEnabled) setBlurred(val);
     });
 
-    // Auto-lock from backend: always lock immediately (clears sensitive data),
-    // but only set autoLocked=true (which triggers biometric prompt) when the
-    // window actually has focus. If unfocused, lock silently and defer the
-    // biometric prompt to when the user returns to the app.
-    const handleAutoLock = () => {
-      if (document.hasFocus()) {
-        handleLockLocal(true);
-      } else {
-        // Lock immediately but without auto-triggering biometric
-        handleLockLocal(false);
-        // When the user returns, flip autoLocked so biometric triggers
-        const onFocusReturn = () => {
-          window.removeEventListener('focus', onFocusReturn);
-          setAutoLocked(true);
-        };
-        window.addEventListener('focus', onFocusReturn);
-      }
-    };
+    // Clear data immediately; focus-driven authentication belongs to LoginScreen.
+    const handleAutoLock = () => handleLockLocal(true);
 
     const removeLockListener = api.onLock?.(handleAutoLock);        // autolock backend
     const removeVaultLockedListener = api.onVaultLocked?.(handleAutoLock); // autolock backend
@@ -222,8 +219,9 @@ export default function App() {
   }, [privacyEnabled, handleLockLocal]);
 
   const handleManualLock = useCallback(async () => {
-    if (api.lockVault) await api.lockVault();
-    handleLockLocal(true); // lock manuale: auto-trigger biometria al re-unlock
+    handleLockLocal(true);
+    try { await api.lockVault(); }
+    catch { toast.error('Blocco del vault non confermato. Riprova a bloccarlo o chiudi l’app.'); }
   }, [handleLockLocal]);
 
   // --- KEYBOARD SHORTCUTS (cross-platform: ⌘ on Mac, Ctrl on Windows/Linux) ---
@@ -274,7 +272,7 @@ export default function App() {
     
     newPractices.filter(p => p.status === 'active').forEach(p => {
       (p.deadlines || []).forEach(d => {
-        const syncId = `deadline_${p.id}_${d.date}_${d.label.replaceAll(/\s/g, '_')}`;
+        const syncId = `deadline_${p.id}_${d.date}_${(d.label || '').replaceAll(/\s/g, '_')}`;
         const existing = existingSyncedMap.get(syncId);
         const deadlineTime = d.time || '09:00';
         // Calcola timeEnd = timeStart + 1h
@@ -315,70 +313,69 @@ export default function App() {
   // Centralizza il sync dello schedule verso il backend Rust scheduler
   const syncScheduleToBackend = useCallback(async (events, settingsOverride) => {
     if (!api.syncNotificationSchedule) return;
-    const s = settingsOverride || settings;
+    const s = settingsOverride || settingsRef.current;
     // Tutti gli impegni agenda (incluse scadenze auto-sincronizzate dai fascicoli)
     // diventano schedule items con orario reale + preavviso globale/individuale.
     // Non serve un blocco separato per le scadenze: syncDeadlinesToAgenda le ha già
     // inserite negli events con timeStart/category/remindMinutes corretti.
-    const items = mapAgendaToScheduleItems(events, s?.preavviso || 30);
+    const items = mapAgendaToScheduleItems(events, s?.preavviso ?? 30);
     const briefingTimes = [
       s?.briefingMattina || '08:30',
       s?.briefingPomeriggio || '14:30',
       s?.briefingSera || '19:30',
     ];
-    console.debug('[App] syncScheduleToBackend:', items.length, 'items,', briefingTimes.length, 'briefings, preavviso:', s?.preavviso || 30);
+    console.debug('[App] syncScheduleToBackend:', items.length, 'items,', briefingTimes.length, 'briefings, preavviso:', s?.preavviso ?? 30);
     await api.syncNotificationSchedule({ briefingTimes, items })
       .catch(e => console.warn('[App] syncScheduleToBackend failed:', e));
-  }, [settings]);
+  }, []);
 
-  const loadAllData = useCallback(async () => {
+  const loadAllData = useCallback(async (session) => {
+    setLoadingData(true);
+    setDataError('');
     try {
-      // PERF FIX: parallelize independent reads (was sequential → 3x round-trip)
+      // A failed read must never be treated as an empty, writable collection.
       const [rawPracs, agenda, currentSettings] = await Promise.all([
-        api.loadPractices().catch(() => []),
-        api.loadAgenda().catch(() => []),
-        api.getSettings().catch(() => ({})),
+        api.loadPractices(), api.loadAgenda(), api.getSettings(),
       ]);
-
-      const pracs = (rawPracs || []).map(p => ({
-        ...p,
-        biometricProtected: p.biometricProtected !== false,
-      }));
-
-      setPractices(pracs);
-      setSettings(currentSettings);
-      const synced = syncDeadlinesToAgenda(pracs, agenda || []);
-      setAgendaEvents(synced);
+      if (session !== sessionRef.current || !unlockedRef.current) return false;
+      if (!Array.isArray(rawPracs) || !Array.isArray(agenda)) {
+        throw new Error('Formato archivio non valido');
+      }
+      const pracs = rawPracs.map(p => ({ ...p, biometricProtected: p.biometricProtected !== false }));
+      const synced = syncDeadlinesToAgenda(pracs, agenda);
+      practicesRef.current = pracs;
       agendaRef.current = synced;
-
-      // PERF FIX: parallelize independent writes
-      await Promise.all([
-        api.saveAgenda(synced).catch(e => console.warn('[App] saveAgenda sync failed:', e)),
-        syncScheduleToBackend(synced, currentSettings),
-      ]);
-    } catch (e) {
-      console.error("Errore caricamento dati:", e);
+      settingsRef.current = currentSettings || {};
+      setPractices(pracs);
+      setAgendaEvents(synced);
+      setSettings(currentSettings || {});
+      // Loading is read-only for case/agenda records. Derived deadlines are saved
+      // with the next explicit change; a read failure cannot overwrite the vault.
+      await syncScheduleToBackend(synced, currentSettings || {});
+      return session === sessionRef.current && unlockedRef.current;
+    } catch {
+      if (session === sessionRef.current && unlockedRef.current) {
+        setDataError('Impossibile leggere l’archivio. Nessun dato è stato sostituito. Riprova prima di modificarlo.');
+      }
+      return false;
+    } finally {
+      if (session === sessionRef.current) setLoadingData(false);
     }
   }, [syncDeadlinesToAgenda, syncScheduleToBackend]);
 
   const handleUnlock = useCallback(async (vaultIsNew = false) => {
+    const session = ++sessionRef.current;
+    unlockedRef.current = true;
     setBlurred(false);
     setAutoLocked(false);
     setIsLocked(false);
-    // PERF: preload all lazy pages in background while data loads
-    preloadPages();
-    await loadAllData();
-
-    // Request notification permission on first unlock (macOS requires explicit grant)
+    if (!await loadAllData(session)) return;
     try {
       const granted = await isPermissionGranted();
-      if (!granted) {
-        await requestPermission();
-      }
-    } catch { console.debug('[App] Notification permission non-critical'); }
-
-    // Show onboarding wizard ONLY when vault was just created (first install or after reset)
-    if (vaultIsNew) {
+      if (session !== sessionRef.current || !unlockedRef.current) return;
+      if (!granted) await requestPermission();
+    } catch { /* notification permission is optional */ }
+    if (vaultIsNew && session === sessionRef.current && unlockedRef.current) {
       setShowOnboarding(true);
     }
   }, [loadAllData]);
@@ -397,45 +394,64 @@ export default function App() {
     } catch { console.debug('[App] E2E bypass check skipped'); }
   }, [handleUnlock]);
 
-  const savePractices = async (newList) => {
-    setPractices(newList);
-    if (api.savePractices) {
-      try {
-        const synced = syncDeadlinesToAgenda(newList, agendaRef.current);
-        setAgendaEvents(synced);
-        agendaRef.current = synced;
-        // PERF FIX: parallelize independent saves (practices, agenda, schedule)
-        await Promise.all([
-          api.savePractices(newList),
-          api.saveAgenda(synced),
-          syncScheduleToBackend(synced),
-        ]);
-      } catch (e) {
-        console.error('[App] savePractices pipeline error:', e);
-        toast.error('Impossibile salvare i fascicoli. Riprova.');
-      }
-    }
-  };
+  const enqueueSave = useCallback((work) => {
+    const session = sessionRef.current;
+    const isCurrent = () => unlockedRef.current && session === sessionRef.current;
+    const pending = saveQueueRef.current.then(async () => {
+      if (!isCurrent()) throw new Error('Sessione del vault terminata');
+      return work(isCurrent);
+    });
+    saveQueueRef.current = pending.catch(() => {});
+    return pending;
+  }, []);
 
-  const saveAgenda = async (newEvents) => {
-    setAgendaEvents(newEvents);
-    agendaRef.current = newEvents;
+  const savePractices = useCallback((update) => enqueueSave(async (isCurrent) => {
+    const newList = typeof update === 'function' ? update(practicesRef.current) : update;
     try {
-      // PERF FIX: parallelize save + schedule sync
-      await Promise.all([
-        api.saveAgenda?.(newEvents),
-        syncScheduleToBackend(newEvents),
-      ]);
-    } catch (e) {
-      console.error('[App] saveAgenda error:', e);
-      toast.error('Impossibile salvare l\'agenda. Riprova.');
+      await api.savePractices(newList);
+    } catch (error) {
+      if (isCurrent()) toast.error('Impossibile salvare i fascicoli. Riprova.');
+      throw error;
     }
-  };
+    if (!isCurrent()) throw new Error('Sessione del vault terminata');
+    practicesRef.current = newList;
+    setPractices(newList);
+    const synced = syncDeadlinesToAgenda(newList, agendaRef.current);
+    try {
+      await api.saveAgenda(synced);
+      if (!isCurrent()) return;
+      setAgendaEvents(synced);
+      agendaRef.current = synced;
+      await syncScheduleToBackend(synced);
+    } catch {
+      // The case is saved; do not encourage creating a duplicate on retry.
+      if (isCurrent()) toast.error('Fascicolo salvato, ma agenda non sincronizzata. Ricarica l’archivio.');
+    }
+  }), [enqueueSave, syncDeadlinesToAgenda, syncScheduleToBackend]);
+
+  const saveAgenda = useCallback(async (update) => {
+    try {
+      return await enqueueSave(async (isCurrent) => {
+        const newEvents = typeof update === 'function' ? update(agendaRef.current) : update;
+        await api.saveAgenda(newEvents);
+        if (!isCurrent()) return false;
+        setAgendaEvents(newEvents);
+        agendaRef.current = newEvents;
+        await syncScheduleToBackend(newEvents);
+        return true;
+      });
+    } catch {
+      if (unlockedRef.current) toast.error('Impossibile salvare l’agenda. Riprova.');
+      return false;
+    }
+  }, [enqueueSave, syncScheduleToBackend]);
 
   // Callback for child pages (Agenda, Scadenze) to propagate settings changes
   // back to App.jsx so all pages see the updated values immediately.
   const handleSettingsChange = useCallback((updatedSettings) => {
-    setSettings(prev => ({ ...prev, ...updatedSettings }));
+    settingsRef.current = { ...settingsRef.current, ...updatedSettings };
+    setSettings(settingsRef.current);
+    if (typeof updatedSettings.privacyBlurEnabled === 'boolean') setPrivacyEnabled(updatedSettings.privacyBlurEnabled);
   }, []);
 
   const handleSelectPractice = (id) => {
@@ -454,20 +470,35 @@ export default function App() {
   // quando cambiano solo reference di funzioni stabili.
   const ctxValue = useMemo(
     () => ({ practices, agendaEvents, settings, savePractices, saveAgenda }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [practices, agendaEvents, settings]
+    [practices, agendaEvents, settings, savePractices, saveAgenda]
   );
 
   // Gate 2: Vault — richiede password (o biometria)
   if (isLocked) {
     return (
       <LicenseActivation>
-        <div className="h-screen w-screen overflow-hidden bg-background">
+        <div className="h-dvh w-screen overflow-hidden bg-background">
           <WindowControls />
+          <Toaster />
           <LoginScreen onUnlock={handleUnlock} autoLocked={autoLocked} />
         </div>
       </LicenseActivation>
     );
+  }
+
+  if (loadingData || dataError) {
+    return <LicenseActivation>
+      <div className="min-h-dvh bg-background text-text flex items-center justify-center p-6">
+        <WindowControls />
+        <div role={dataError ? 'alert' : 'status'} className="max-w-lg space-y-4 text-center">
+          {loadingData ? <><Loader2 className="animate-spin mx-auto" /><p>Caricamento archivio…</p></> : <>
+            <p>{dataError}</p>
+            <button className="btn-primary" onClick={() => loadAllData(sessionRef.current)}>Riprova caricamento</button>
+          </>}
+          <button className="btn-secondary ml-3" onClick={handleManualLock}>Blocca vault</button>
+        </div>
+      </div>
+    </LicenseActivation>;
   }
 
   return (
@@ -481,7 +512,7 @@ export default function App() {
       >
         Salta al contenuto principale
       </a>
-      <div className="flex h-screen bg-background text-text-primary overflow-hidden border border-border/30 rounded-lg shadow-lg relative">
+      <div className="flex h-dvh bg-background text-text-primary overflow-hidden border border-border/30 rounded-lg shadow-lg relative">
 
         {/* Privacy Shield — alertdialog modale (semantica corretta) */}
         {privacyEnabled && blurred && (
@@ -539,7 +570,7 @@ export default function App() {
             else if (result.field === 'timeLogs') navigate('/ore');
           }}
         />
-        <main id="main" tabIndex={-1} className="flex-1 h-screen overflow-hidden relative flex flex-col bg-background pt-[env(titlebar-area-height,0px)] focus:outline-none">
+        <main id="main" tabIndex={-1} className="flex-1 min-w-0 h-dvh overflow-hidden relative flex flex-col bg-background pt-[env(titlebar-area-height,0px)] focus:outline-none">
           <WindowControls />
           <TccLocationBanner />
           <Toaster
@@ -584,12 +615,10 @@ export default function App() {
               <Route path="/pratiche" element={
                 selectedId && selectedPractice ? (
                   <PracticeDetail
+                    key={selectedPractice.id}
                     practice={selectedPractice}
                     onBack={() => setSelectedId(null)}
-                    onUpdate={async (up) => {
-                      const newList = practices.map(p => p.id === up.id ? up : p);
-                      await savePractices(newList);
-                    }}
+                    onUpdate={(changes) => savePractices(current => current.map(p => p.id === selectedPractice.id ? { ...p, ...changes } : p))}
                     agendaEvents={agendaEvents}
                     onNavigate={navigate}
                   />
@@ -617,8 +646,8 @@ export default function App() {
                 />
               } />
               
-              <Route path="/settings" element={<SettingsPage onLock={handleManualLock} />} />
-              <Route path="/sicurezza" element={<SettingsPage onLock={handleManualLock} />} />
+              <Route path="/settings" element={<SettingsPage onLock={handleManualLock} onSettingsChange={handleSettingsChange} />} />
+              <Route path="/sicurezza" element={<SettingsPage onLock={handleManualLock} onSettingsChange={handleSettingsChange} />} />
               
               {/* Redirect vecchia pagina Conflitti → Contatti & Conflitti */}
               <Route path="/conflitti" element={<Navigate to="/contatti" replace />} />
@@ -638,15 +667,21 @@ export default function App() {
           </div>
         </main>
 
+        <Suspense fallback={null}>
         {showCreate && (
           <CreatePracticeModal
             onClose={() => setShowCreate(false)}
-            onSave={(p) => savePractices([p, ...practices])}
+            onSave={(p) => savePractices(current => [p, ...current])}
           />
         )}
         {showOnboarding && (
-          <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
+          <OnboardingWizard
+            onComplete={() => setShowOnboarding(false)}
+            onConfigureBio={() => { setShowOnboarding(false); setShowBioConfiguration(true); }}
+          />
         )}
+        {showBioConfiguration && <BioConfigurationModal bioStatus="available" onClose={() => setShowBioConfiguration(false)} />}
+        </Suspense>
       </div>
     </AppProvider>
     </LicenseActivation>

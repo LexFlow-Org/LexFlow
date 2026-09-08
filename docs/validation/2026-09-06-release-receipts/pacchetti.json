@@ -1,0 +1,32 @@
+{
+  "application": "LexFlow",
+  "version": "1.0.1",
+  "date": "2026-09-06",
+  "artifacts": [
+    {
+      "file": "macOS/LexFlow-1.0.1-macOS-Apple-Silicon.dmg",
+      "bytes": 31020518,
+      "sha256": "d309259a92fba34f5dc2c4fa3a055357159470714693415621ccdd97e3023f3a"
+    },
+    {
+      "file": "macOS/LexFlow-1.0.1-macOS-Intel.dmg",
+      "bytes": 33517414,
+      "sha256": "f50033489da93a82c30192f6962ba4e0023e0113636f3ac9201059c6400114f1"
+    },
+    {
+      "file": "Windows/LexFlow_1.0.1_x64-setup.exe",
+      "bytes": 305791903,
+      "sha256": "b601d51d5a4eae3333e051e99d2becac48c62b2cfdb93bf9085430c373a499da"
+    },
+    {
+      "file": "Android/LexFlow-1.0.1-Android-arm64.apk",
+      "bytes": 13007417,
+      "sha256": "913ef6f3c74b96828570a3a015b17e07f02e23a01717406d987e3c27d0113e8f"
+    }
+  ],
+  "license_public_key_sha256": "4ff69b87240948576d916234273c2468e0906c1468e190f2b9a2ac3a5230672f",
+  "previous_license_tokens_and_cached_activations_rejected": true,
+  "old_offline_binaries_require_update": true,
+  "native_device_tests_completed": false,
+  "ios_package_created": false
+}

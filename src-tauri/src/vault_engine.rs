@@ -26,8 +26,10 @@ use zeroize::{Zeroize, Zeroizing};
 
 // ─── Constants ──────────────────────────────────────────────
 
-pub(crate) const CURRENT_VAULT_VERSION: u32 = 7;
+pub(crate) const CURRENT_VAULT_VERSION: u32 = 8;
 pub(crate) const VAULT_MAGIC: &[u8] = b"LEXFLOW_V7";
+/// Atomic snapshot marker: supersedes retained legacy split files.
+pub(crate) const CANONICAL_MAGIC: &[u8] = b"LEXFLOW_ATOMIC_V8";
 /// Legacy V4 magic — kept only for reading old vaults (auto-migrated on save).
 pub(crate) const VAULT_MAGIC_V4: &[u8] = b"LEXFLOW_V4";
 const AES_KEY_LEN: usize = 32;
@@ -187,101 +189,77 @@ pub(crate) const CURRENT_MANIFEST_VERSION: u32 = 1;
 /// Benchmark Argon2 to find params yielding ~250-400ms on this device.
 /// Called during vault creation and password change.
 pub fn benchmark_argon2_params() -> KdfParams {
-    // In debug builds, skip expensive benchmark and use safe defaults.
-    // Debug-mode Argon2 is 10-20x slower than release.
+    let android = cfg!(target_os = "android");
+    // Debug builds use the same memory floor without timing unoptimized Argon2.
     #[cfg(debug_assertions)]
     {
-        return KdfParams {
-            alg: "argon2id".to_string(),
-            m: 16384,
-            t: 3,
-            p: 1,
-            salt: String::new(),
-        };
+        kdf_profile(if android { 24576 } else { 65536 }, 1)
     }
-
     #[cfg(not(debug_assertions))]
     {
         let cores = std::thread::available_parallelism()
             .map(|n| n.get() as u32)
             .unwrap_or(1);
-        let max_p = (cores as f32 * 0.75).floor().clamp(1.0, 4.0) as u32;
+        let max_p = (cores.saturating_mul(3) / 4).clamp(1, 4);
+        calibrate_argon2_params(android, max_p, |m, p| {
+            let start = std::time::Instant::now();
+            derive_kek_raw("x", &[0u8; 32], m, 3, p).ok()?;
+            Some(start.elapsed().as_millis())
+        })
+    }
+}
 
-        // Android: cap memory at 32MB to avoid OOM
-        let max_m: u32 = if cfg!(target_os = "android") {
-            32768
-        } else {
-            262144 // 256MB absolute ceiling
-        };
+fn kdf_profile(m: u32, p: u32) -> KdfParams {
+    KdfParams {
+        alg: "argon2id".into(),
+        m,
+        t: 3,
+        p,
+        salt: String::new(),
+    }
+}
 
-        let target_ms: u128 = 300;
-        let candidates_m: &[u32] = if cfg!(target_os = "android") {
-            &[16384, 24576, 32768]
-        } else {
-            &[16384, 32768, 65536, 131072]
-        };
-
-        let mut best: Option<(KdfParams, i128)> = None;
-        let test_salt = [0u8; 32];
-
-        // Strategy: single probe per (m,p) combo — if within target, accept immediately.
-        // Only do 3-run median for the first good match to confirm stability.
-        'outer: for &m in candidates_m {
-            if m > max_m {
-                break;
+/// Keep every successful measurement, including those below the target window.
+/// Previously a fast CPU could exhaust all candidates and fall back to 16 MiB.
+/// Existing vault headers are read unchanged by `derive_kek`.
+#[cfg(any(test, not(debug_assertions)))]
+fn calibrate_argon2_params(
+    android: bool,
+    max_p: u32,
+    mut probe: impl FnMut(u32, u32) -> Option<u128>,
+) -> KdfParams {
+    let candidates: &[u32] = if android {
+        &[24576, 32768]
+    } else {
+        &[65536, 131072]
+    };
+    let mut best: Option<(KdfParams, u128)> = None;
+    'memory: for &m in candidates {
+        for p in 1..=max_p.clamp(1, 4) {
+            let Some(mut median) = probe(m, p) else {
+                continue;
+            };
+            if (200..=600).contains(&median) {
+                let (Some(second), Some(third)) = (probe(m, p), probe(m, p)) else {
+                    continue;
+                };
+                let mut samples = [median, second, third];
+                samples.sort_unstable();
+                median = samples[1];
             }
-            for p in 1..=max_p {
-                // Quick single probe first
-                let start = std::time::Instant::now();
-                let _ = derive_kek_raw("x", &test_salt, m, 3, p);
-                let probe_ms = start.elapsed().as_millis();
-
-                // Skip if way too slow (> 2x target) — higher m/p will be worse
-                if probe_ms > target_ms * 2 {
-                    break; // skip remaining p values for this m
-                }
-
-                // If within range, confirm with 2 more runs (median of 3)
-                if (200..=800).contains(&probe_ms) {
-                    let mut durations = vec![probe_ms];
-                    for _ in 0..2 {
-                        let start = std::time::Instant::now();
-                        let _ = derive_kek_raw("x", &test_salt, m, 3, p);
-                        durations.push(start.elapsed().as_millis());
-                    }
-                    durations.sort();
-                    let median = durations[1];
-                    let distance = (median as i128 - target_ms as i128).abs();
-
-                    if best.is_none() || distance < best.as_ref().unwrap().1 {
-                        best = Some((
-                            KdfParams {
-                                alg: "argon2id".to_string(),
-                                m,
-                                t: 3,
-                                p,
-                                salt: String::new(),
-                            },
-                            distance,
-                        ));
-                        // If very close to target (within 50ms), stop searching
-                        if distance < 50 {
-                            break 'outer;
-                        }
-                    }
-                }
+            let distance = median.abs_diff(300);
+            if best.as_ref().is_none_or(|(previous, score)| {
+                distance < *score || (distance == *score && m > previous.m)
+            }) {
+                best = Some((kdf_profile(m, p), distance));
+            }
+            if distance < 50 || median > 600 {
+                break 'memory;
             }
         }
-
-        // Fallback: safe minimum params
-        best.map(|(params, _)| params).unwrap_or(KdfParams {
-            alg: "argon2id".to_string(),
-            m: 16384,
-            t: 3,
-            p: 1,
-            salt: String::new(),
-        })
-    } // end #[cfg(not(debug_assertions))]
+    }
+    best.map(|(params, _)| params)
+        .unwrap_or_else(|| kdf_profile(candidates[0], 1))
 }
 
 /// Derive KEK from password + KdfParams (reads params from vault header).
@@ -490,12 +468,36 @@ pub fn verify_header_mac(kek: &[u8], vault: &VaultData) -> Result<bool, String> 
 /// Encrypt a single record/block with DEK.
 /// PERF: compresses with zstd level 3 before encryption (~60-80% size reduction on legal text).
 pub(crate) fn encrypt_record(dek: &[u8], plaintext: &[u8]) -> Result<EncryptedBlock, String> {
+    encrypt_record_bounded(dek, plaintext, MAX_RECORD_PLAINTEXT, MAX_RECORD_BASE64)
+}
+
+const MAX_RECORD_PLAINTEXT: usize = 100 * 1024 * 1024;
+const MAX_RECORD_BASE64: usize = 100 * 1024 * 1024;
+
+fn encrypt_record_bounded(
+    dek: &[u8],
+    plaintext: &[u8],
+    max_plaintext: usize,
+    max_base64: usize,
+) -> Result<EncryptedBlock, String> {
     if dek.len() != 32 {
         return Err("Invalid DEK length: expected 32 bytes".into());
     }
+    // Never commit a record that this reader would refuse on the next unlock.
+    if plaintext.len() > max_plaintext {
+        return Err("Record exceeds the plaintext size limit".into());
+    }
     // PERF: compress before encrypt (safe — no compression oracle in LexFlow)
-    let to_encrypt =
-        zstd::encode_all(plaintext, 3).map_err(|e| format!("Compression failed: {}", e))?;
+    let to_encrypt = Zeroizing::new(
+        zstd::encode_all(plaintext, 3).map_err(|e| format!("Compression failed: {}", e))?,
+    );
+    let encoded_len = to_encrypt
+        .len()
+        .checked_add(2)
+        .and_then(|length| (length / 3).checked_mul(4));
+    if encoded_len.is_none_or(|length| length > max_base64) {
+        return Err("Record exceeds the ciphertext size limit".into());
+    }
 
     let cipher = Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(dek));
     let mut nonce_bytes = [0u8; NONCE_LEN];
@@ -533,18 +535,16 @@ pub(crate) fn decrypt_record(
     if dek.len() != 32 {
         return Err("Invalid DEK length: expected 32 bytes".into());
     }
-    // FIX-5 (BE-5-MED): hard cap on ciphertext length (100 MiB) to prevent
-    // pathological allocation / DoS via a tampered EncryptedBlock.
-    const MAX_CT_LEN: usize = 100 * 1024 * 1024;
-    if block.data.len() > MAX_CT_LEN {
+    // The storage limit applies to base64 text, not only decoded ciphertext.
+    if block.data.len() > MAX_RECORD_BASE64 {
         return Err("ciphertext too large".to_string());
+    }
+    if block.iv.len() != 16 || block.tag.len() != 24 {
+        return Err("Invalid record IV or tag length".into());
     }
     let iv = B64.decode(&block.iv).map_err(|_| "Invalid record IV")?;
     let tag = B64.decode(&block.tag).map_err(|_| "Invalid record tag")?;
     let data = B64.decode(&block.data).map_err(|_| "Invalid record data")?;
-    if data.len() > MAX_CT_LEN {
-        return Err("ciphertext too large".to_string());
-    }
     if iv.len() != NONCE_LEN {
         return Err("Record IV length mismatch".into());
     }
@@ -577,19 +577,40 @@ pub(crate) fn decrypt_record(
     if block.compressed {
         // LOW FIX: cap decompression output at 100MB to prevent zip-bomb OOM
         // (data is AES-GCM-SIV authenticated, so attacker needs DEK — defense-in-depth)
-        let mut decoder = zstd::Decoder::new(decrypted.as_slice())
-            .map_err(|e| format!("Decompression init failed: {}", e))?;
-        let mut output = Zeroizing::new(Vec::new());
-        use std::io::Read;
-        decoder
-            .by_ref()
-            .take(100 * 1024 * 1024) // 100MB cap
-            .read_to_end(&mut output)
-            .map_err(|e| format!("Decompression failed: {}", e))?;
-        Ok(output)
+        decompress_record_bounded(decrypted.as_slice(), MAX_RECORD_PLAINTEXT as u64)
     } else {
         Ok(decrypted)
     }
+}
+
+fn decompress_record_bounded(data: &[u8], max_bytes: u64) -> Result<Zeroizing<Vec<u8>>, String> {
+    use std::io::Read;
+    let decoder =
+        zstd::Decoder::new(data).map_err(|e| format!("Decompression init failed: {}", e))?;
+    let mut output = Zeroizing::new(Vec::new());
+    decoder
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut output)
+        .map_err(|e| format!("Decompression failed: {}", e))?;
+    if output.len() as u64 > max_bytes {
+        return Err("Decompressed record exceeds the size limit".into());
+    }
+    Ok(output)
+}
+
+/// Decode current MessagePack and legacy JSON record objects. A JSON opening
+/// brace is itself a valid MessagePack integer; accepting that scalar would
+/// suppress the JSON fallback and make a valid legacy record look corrupted.
+pub(crate) fn decode_record_object(plaintext: &[u8]) -> Result<serde_json::Value, String> {
+    rmp_serde::from_slice::<serde_json::Value>(plaintext)
+        .ok()
+        .filter(serde_json::Value::is_object)
+        .or_else(|| {
+            serde_json::from_slice::<serde_json::Value>(plaintext)
+                .ok()
+                .filter(serde_json::Value::is_object)
+        })
+        .ok_or_else(|| "Record corrotto; dati conservati.".to_string())
 }
 
 /// Encrypt the index with DEK.
@@ -690,6 +711,14 @@ pub(crate) fn needs_rotation(rotation: &RotationMeta) -> bool {
 /// Called when needs_rotation() returns true (>90 days or >10k writes).
 /// Triggered automatically at unlock in vault.rs.
 pub(crate) fn rotate_dek(vault: &mut VaultData, kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
+    // The recovery wrapper cannot be updated without the recovery secret.
+    // Preserve a configured recovery key instead of silently invalidating it.
+    if vault.wrapped_dek_recovery.is_some() {
+        return Err(
+            "Rotazione rinviata: è necessario rigenerare la chiave di recupero insieme alla DEK."
+                .into(),
+        );
+    }
     // Unwrap old DEK
     let old_dek = unwrap_dek(kek, &vault.wrapped_dek, &vault.dek_iv)?;
 
@@ -729,12 +758,16 @@ pub(crate) fn rotate_dek(vault: &mut VaultData, kek: &[u8]) -> Result<Zeroizing<
     vault.rotation = RotationMeta {
         created: chrono::Utc::now().to_rfc3339(),
         interval_days: vault.rotation.interval_days,
-        writes: 0,
-        max_writes: vault.rotation.max_writes,
+        // Keep the lifetime counter monotonic across rotation and restart.
+        writes: vault.rotation.writes,
+        max_writes: vault.rotation.writes.saturating_add(10_000),
     };
 
     // Recompute header MAC
     vault.header_mac = compute_header_mac(kek, vault);
+    if vault.version >= 8 {
+        seal_snapshot_manifest(vault, &new_dek)?;
+    }
 
     Ok(new_dek)
 }
@@ -744,6 +777,7 @@ pub(crate) fn rotate_dek(vault: &mut VaultData, kek: &[u8]) -> Result<Zeroizing<
 // ═══════════════════════════════════════════════════════════
 
 /// Serialize VaultData to bytes for disk storage.
+#[allow(dead_code)] // Retained legacy serializer for compatibility regression tests.
 pub fn serialize_vault(vault: &VaultData) -> Result<Vec<u8>, String> {
     let json = serde_json::to_vec(vault).map_err(|e| format!("Vault serialize: {}", e))?;
     let mut out = VAULT_MAGIC.to_vec();
@@ -760,7 +794,9 @@ pub fn deserialize_vault(data: &[u8]) -> Result<VaultData, String> {
         return Err("vault file too large".into());
     }
     // Accept both current and legacy V4 magic
-    let magic_len = if data.starts_with(VAULT_MAGIC) {
+    let magic_len = if data.starts_with(CANONICAL_MAGIC) {
+        CANONICAL_MAGIC.len()
+    } else if data.starts_with(VAULT_MAGIC) {
         VAULT_MAGIC.len()
     } else if data.starts_with(VAULT_MAGIC_V4) {
         VAULT_MAGIC_V4.len()
@@ -814,6 +850,8 @@ pub fn create_vault(password: &str) -> Result<(VaultData, Zeroizing<Vec<u8>>), S
         records: BTreeMap::new(),
     };
 
+    seal_snapshot_manifest(&mut vault, &dek)?;
+
     // Compute header MAC
     vault.header_mac = compute_header_mac(&kek, &vault);
 
@@ -825,7 +863,7 @@ pub fn create_vault(password: &str) -> Result<(VaultData, Zeroizing<Vec<u8>>), S
 pub fn open_vault(password: &str, data: &[u8]) -> Result<(VaultData, Zeroizing<Vec<u8>>), String> {
     let mut vault = deserialize_vault(data)?;
 
-    if vault.version != CURRENT_VAULT_VERSION && vault.version != 4 {
+    if vault.version != CURRENT_VAULT_VERSION && vault.version != 7 && vault.version != 4 {
         return Err(format!("Unsupported vault version: {}", vault.version));
     }
 
@@ -837,6 +875,12 @@ pub fn open_vault(password: &str, data: &[u8]) -> Result<(VaultData, Zeroizing<V
 
     // Unwrap DEK
     let dek = unwrap_dek(&kek, &vault.wrapped_dek, &vault.dek_iv)?;
+
+    verify_snapshot_manifest(
+        &vault,
+        &dek,
+        vault.version >= 8 || data.starts_with(CANONICAL_MAGIC),
+    )?;
 
     // If MAC was verified with a legacy version, re-compute with current version
     if needs_mac_migration {
@@ -858,7 +902,7 @@ pub fn open_vault(password: &str, data: &[u8]) -> Result<(VaultData, Zeroizing<V
 
 /// Detect vault format by examining the first bytes.
 pub(crate) fn detect_vault_version(data: &[u8]) -> u32 {
-    if data.starts_with(VAULT_MAGIC) {
+    if data.starts_with(CANONICAL_MAGIC) || data.starts_with(VAULT_MAGIC) {
         return CURRENT_VAULT_VERSION;
     }
     if data.starts_with(VAULT_MAGIC_V4) {
@@ -1053,8 +1097,14 @@ pub(crate) fn open_vault_with_recovery(
     data: &[u8],
 ) -> Result<(VaultData, Zeroizing<Vec<u8>>), String> {
     let vault = deserialize_vault(data)?;
-    if vault.version != CURRENT_VAULT_VERSION && vault.version != 4 {
+    if vault.version != CURRENT_VAULT_VERSION && vault.version != 7 && vault.version != 4 {
         return Err("Unsupported vault version".into());
+    }
+    if vault.version < 8 {
+        return Err(
+            "L'archivio precedente deve essere migrato con la password prima di usare il recupero. I dati sono conservati."
+                .into(),
+        );
     }
 
     let wrapped = vault
@@ -1093,6 +1143,7 @@ pub(crate) fn open_vault_with_recovery(
     // TODO(audit:BE-5-MED-6): add header_mac_recovery field (HMAC keyed by recovery_KEK)
     // to VaultData schema, persist during generate_recovery_key, and verify here for
     // explicit header tamper detection on the recovery path.
+    verify_snapshot_manifest(&vault, &dek, true)?;
     let _ = decrypt_index(&dek, &vault.index).map_err(|_| {
         "Recovery failed: vault data integrity check failed. The vault may be corrupted."
     })?;
@@ -1190,6 +1241,7 @@ impl std::fmt::Debug for VaultHeader {
 
 impl VaultHeader {
     /// Convert from monolithic VaultData (drop index/records)
+    #[allow(dead_code)] // Retained legacy split serializer for migration regression tests.
     pub fn from_vault(v: &VaultData) -> Self {
         Self {
             version: v.version,
@@ -1233,7 +1285,263 @@ impl VaultHeader {
 
 /// Check if vault uses V6 split format (directory exists)
 pub fn is_split_vault(data_dir: &std::path::Path) -> bool {
-    data_dir.join(VAULT_DIR).join(VAULT_HEADER_FILE).exists()
+    !has_canonical_vault(data_dir) && data_dir.join(VAULT_DIR).join(VAULT_HEADER_FILE).exists()
+}
+
+pub(crate) fn has_canonical_vault(data_dir: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut prefix = vec![0; CANONICAL_MAGIC.len()];
+    std::fs::File::open(data_dir.join(crate::constants::VAULT_FILE))
+        .and_then(|mut file| file.read_exact(&mut prefix))
+        .is_ok()
+        && prefix == CANONICAL_MAGIC
+}
+
+/// One rename commits authentication metadata, index and all encrypted record
+/// versions together. Unchanged record ciphertext is reused without re-encryption.
+pub(crate) fn write_canonical_vault(
+    data_dir: &std::path::Path,
+    vault: &mut VaultData,
+    dek: &[u8],
+) -> Result<(), String> {
+    write_canonical_vault_bounded(data_dir, vault, dek, 500 * 1024 * 1024)
+}
+
+fn write_canonical_vault_bounded(
+    data_dir: &std::path::Path,
+    vault: &mut VaultData,
+    dek: &[u8],
+    max_bytes: usize,
+) -> Result<(), String> {
+    if vault.version < 8 {
+        return Err(
+            "L'archivio precedente richiede una migrazione autenticata prima del salvataggio."
+                .into(),
+        );
+    }
+    seal_snapshot_manifest(vault, dek)?;
+    // Serialize directly into one capped buffer. The previous payload+prefix
+    // copy doubled peak memory and could commit a snapshot above the 500MiB
+    // reader limit, making a previously usable archive impossible to reopen.
+    struct BoundedSnapshot {
+        bytes: Vec<u8>,
+        maximum: usize,
+    }
+    impl std::io::Write for BoundedSnapshot {
+        fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+            if data.len() > self.maximum.saturating_sub(self.bytes.len()) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Archivio oltre il limite di dimensione; il database precedente è conservato.",
+                ));
+            }
+            self.bytes.extend_from_slice(data);
+            Ok(data.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    if CANONICAL_MAGIC.len() > max_bytes {
+        return Err("Limite di dimensione archivio insufficiente.".into());
+    }
+    let mut output = BoundedSnapshot {
+        bytes: CANONICAL_MAGIC.to_vec(),
+        maximum: max_bytes,
+    };
+    serde_json::to_writer(&mut output, vault).map_err(|error| error.to_string())?;
+    let bytes = output.bytes;
+    crate::io::atomic_write_with_sync(&data_dir.join(crate::constants::VAULT_FILE), &bytes)
+}
+
+pub(crate) fn seal_snapshot_manifest(vault: &mut VaultData, dek: &[u8]) -> Result<(), String> {
+    use sha2::Digest;
+    let entries = decrypt_index(dek, &vault.index)?;
+    let mut record_manifest = BTreeMap::new();
+    for (id, record) in &vault.records {
+        let bytes = serde_json::to_vec(record).map_err(|e| e.to_string())?;
+        record_manifest.insert(id.clone(), hex::encode(Sha256::digest(&bytes)));
+    }
+    let manifest = V6Index {
+        entries,
+        record_manifest,
+        manifest_version: CURRENT_MANIFEST_VERSION,
+    };
+    let plaintext = Zeroizing::new(serde_json::to_vec(&manifest).map_err(|e| e.to_string())?);
+    vault.index = encrypt_record(dek, &plaintext)?;
+    Ok(())
+}
+
+/// Version is authenticated by the existing password header MAC. Only code
+/// possessing the password KEK can authorize the mandatory-manifest layout.
+pub(crate) fn upgrade_canonical_header(
+    vault: &mut VaultData,
+    password: &str,
+) -> Result<(), String> {
+    if vault.version < 8 {
+        let kek = derive_kek(password, &vault.kdf)?;
+        verify_header_mac(&kek, vault)?;
+        vault.version = CURRENT_VAULT_VERSION;
+        vault.mac_version = Some(CURRENT_MAC_VERSION);
+        vault.header_mac = compute_header_mac(&kek, vault);
+    }
+    Ok(())
+}
+
+/// Reuse the encrypted V6 manifest to bind each record's ciphertext, selected
+/// version and metadata to the current index. A valid old record cannot be
+/// spliced into a new snapshot independently of the authenticated index.
+fn verify_snapshot_manifest(
+    vault: &VaultData,
+    dek: &[u8],
+    require_manifest: bool,
+) -> Result<(), String> {
+    use sha2::Digest;
+    if vault.index.iv.is_empty() && !require_manifest && vault.records.is_empty() {
+        return Ok(());
+    }
+    let plaintext = decrypt_record(dek, &vault.index)?;
+    let manifest: V6Index = match serde_json::from_slice(&plaintext) {
+        Ok(manifest) => manifest,
+        // Legacy arrays contain no manifest. The AEAD-protected shape, not
+        // attacker-editable magic bytes, determines this compatibility path.
+        Err(_) if !require_manifest => {
+            let entries: Vec<IndexEntry> = serde_json::from_slice(&plaintext)
+                .map_err(|_| "Indice precedente non valido".to_string())?;
+            let ids: std::collections::HashSet<&str> =
+                entries.iter().map(|entry| entry.id.as_str()).collect();
+            if ids.len() != entries.len()
+                || ids.len() != vault.records.len()
+                || !vault.records.keys().all(|id| ids.contains(id.as_str()))
+            {
+                return Err("Indice precedente e record non coerenti".into());
+            }
+            return Ok(());
+        }
+        Err(_) => return Err("Manifest del database mancante o non valido".into()),
+    };
+    if !require_manifest && manifest.manifest_version == 0 && manifest.record_manifest.is_empty() {
+        let ids: std::collections::HashSet<&str> = manifest
+            .entries
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect();
+        if ids.len() != manifest.entries.len()
+            || ids.len() != vault.records.len()
+            || !vault.records.keys().all(|id| ids.contains(id.as_str()))
+        {
+            return Err("Indice precedente e record non coerenti".into());
+        }
+        return Ok(());
+    }
+    if manifest.manifest_version != CURRENT_MANIFEST_VERSION
+        || manifest.record_manifest.len() != vault.records.len()
+    {
+        return Err("Manifest del database non coerente".into());
+    }
+    for entry in &manifest.entries {
+        if !manifest.record_manifest.contains_key(&entry.id) {
+            return Err("Record del database mancante".into());
+        }
+    }
+    for (id, record) in &vault.records {
+        let bytes = serde_json::to_vec(record).map_err(|e| e.to_string())?;
+        let digest = hex::encode(Sha256::digest(&bytes));
+        if !manifest
+            .record_manifest
+            .get(id)
+            .map(|expected| constant_time_hex_eq(expected, &digest))
+            .unwrap_or(false)
+        {
+            return Err("Integrità di un record del database non verificabile".into());
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn deserialize_authenticated_vault(
+    data: &[u8],
+    dek: &[u8],
+) -> Result<VaultData, String> {
+    let vault = deserialize_vault(data)?;
+    // This accessor is used only by an authenticated current session. Legacy
+    // layouts must pass password-authenticated migration before session reads.
+    if vault.version < 8 {
+        return Err("Versione del database regredita durante la sessione.".into());
+    }
+    verify_snapshot_manifest(&vault, dek, true)?;
+    Ok(vault)
+}
+
+/// Current sessions may only read the authenticated atomic snapshot. Retained
+/// split files are migration inputs, never an alternate session data source.
+pub(crate) fn read_authenticated_snapshot(
+    data_dir: &std::path::Path,
+    dek: &[u8],
+) -> Result<VaultData, String> {
+    let raw = crate::io::safe_bounded_read(
+        &data_dir.join(crate::constants::VAULT_FILE),
+        500 * 1024 * 1024,
+    )?;
+    deserialize_authenticated_vault(&raw, dek)
+}
+
+/// Verify the current password and atomically commit its replacement together
+/// with the latest records. This also upgrades a readable legacy split vault.
+pub(crate) fn change_password_snapshot(
+    data_dir: &std::path::Path,
+    current_password: &str,
+    new_password: &str,
+) -> Result<(), String> {
+    let (mut vault, dek) = open_current_vault(data_dir, current_password)?;
+    let mut kdf = benchmark_argon2_params();
+    let mut salt = [0; 32];
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
+    kdf.salt = B64.encode(salt);
+    let kek = derive_kek(new_password, &kdf)?;
+    let (wrapped, iv) = wrap_dek(&kek, &dek)?;
+    vault.version = CURRENT_VAULT_VERSION;
+    vault.kdf = kdf;
+    vault.wrapped_dek = wrapped;
+    vault.dek_iv = iv;
+    vault.mac_version = Some(CURRENT_MAC_VERSION);
+    vault.header_mac = compute_header_mac(&kek, &vault);
+    write_canonical_vault(data_dir, &mut vault, &dek)
+}
+
+/// Authenticate the current vault. Legacy split data takes precedence over its
+/// old bootstrap snapshot, and any failed split read is a hard error.
+pub(crate) fn open_current_vault(
+    data_dir: &std::path::Path,
+    password: &str,
+) -> Result<(VaultData, Zeroizing<Vec<u8>>), String> {
+    let path = data_dir.join(crate::constants::VAULT_FILE);
+    let path = if path.exists() {
+        path
+    } else {
+        data_dir.join("vault.lex.v4-backup")
+    };
+    let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
+    let (bootstrap, dek) = open_vault(password, &raw)?;
+    // The password-authenticated header decides the layout. Changing an outer
+    // magic prefix cannot revive retained split data after migration to V8.
+    if bootstrap.version < 8 && is_split_vault(data_dir) {
+        let vault = read_split_vault(data_dir, &dek)?;
+        // A previously changed split password must never be bypassed by the
+        // stale bootstrap. Such old broken vaults need recovery with both keys.
+        let kek = derive_kek(password, &vault.kdf)?;
+        verify_header_mac(&kek, &vault).map_err(|_| {
+            "La password del vecchio archivio diviso non coincide con il suo file di sblocco. I dati sono conservati; è necessario un recupero dell'archivio.".to_string()
+        })?;
+        let current_dek = unwrap_dek(&kek, &vault.wrapped_dek, &vault.dek_iv)?;
+        if current_dek.as_slice() != dek.as_slice() {
+            return Err("Chiave del database non coerente; dati conservati.".into());
+        }
+        Ok((vault, dek))
+    } else {
+        Ok((bootstrap, dek))
+    }
 }
 
 /// Write vault in V6 split format with per-record SHA-256 manifest.
@@ -1244,6 +1552,7 @@ pub fn is_split_vault(data_dir: &std::path::Path) -> bool {
 /// and refuses to load on mismatch — preventing silent tamper / rollback /
 /// deletion of individual `record_<id>.enc` files that would otherwise go
 /// undetected because the V6 layout has no file-level MAC.
+#[allow(dead_code)] // Only legacy migration fixtures write this layout.
 pub fn write_split_vault(
     data_dir: &std::path::Path,
     vault: &VaultData,
@@ -1402,8 +1711,7 @@ pub fn read_split_vault(data_dir: &std::path::Path, dek: &[u8]) -> Result<VaultD
     // 3. Read each record file. When the manifest is authoritative (manifest_version
     //    >= 1), verify SHA-256 of every manifested file before decrypting it. Files
     //    not in the manifest are loaded best-effort but logged as orphans.
-    let manifest_active = v6_index.manifest_version >= CURRENT_MANIFEST_VERSION
-        && !v6_index.record_manifest.is_empty();
+    let manifest_active = v6_index.manifest_version >= CURRENT_MANIFEST_VERSION;
     if v6_index.manifest_version == 0 {
         eprintln!(
             "[SECURITY] V6 split-vault has no record manifest (manifest_version=0). Integrity check SKIPPED — manifest will be populated on next save."
@@ -1479,10 +1787,8 @@ pub fn read_split_vault(data_dir: &std::path::Path, dek: &[u8]) -> Result<VaultD
         }
     }
     if !corrupted_record_ids.is_empty() {
-        eprintln!(
-            "[SECURITY] VAULT_LOAD_SUMMARY: {} corrupted records skipped: [{}]",
-            corrupted_record_ids.len(),
-            corrupted_record_ids.join(", ")
+        return Err(
+            "Record del database danneggiati; caricamento interrotto per preservare i dati.".into(),
         );
     }
 
@@ -1497,6 +1803,14 @@ pub fn read_split_vault(data_dir: &std::path::Path, dek: &[u8]) -> Result<VaultD
         }
     }
 
+    if manifest_active {
+        for entry in &v6_index.entries {
+            if !v6_index.record_manifest.contains_key(&entry.id) || !records.contains_key(&entry.id)
+            {
+                return Err("Indice e record del database non coerenti; dati conservati.".into());
+            }
+        }
+    }
     Ok(header.into_vault(index, records))
 }
 
@@ -1513,32 +1827,6 @@ fn constant_time_hex_eq(a: &str, b: &str) -> bool {
         diff |= ab[i] ^ bb[i];
     }
     diff == 0
-}
-
-/// Migrate monolithic vault.lex to V6 split format
-pub fn migrate_to_split(
-    data_dir: &std::path::Path,
-    vault: &VaultData,
-    dek: &[u8],
-) -> Result<(), String> {
-    eprintln!("[MIGRATION] Migrating vault from monolithic to V6 split format...");
-
-    // Write split format
-    write_split_vault(data_dir, vault, dek)?;
-
-    // Rename old monolithic file as backup (don't delete — keep for 30 days)
-    let old_path = data_dir.join(crate::constants::VAULT_FILE);
-    if old_path.exists() {
-        let backup = data_dir.join("vault.lex.v4-backup");
-        let _ = std::fs::rename(&old_path, &backup);
-        eprintln!("[MIGRATION] Old vault.lex backed up as vault.lex.v4-backup");
-    }
-
-    eprintln!(
-        "[MIGRATION] V6 split migration complete. {} records.",
-        vault.records.len()
-    );
-    Ok(())
 }
 
 /// Write a single record file (V6 incremental save)
@@ -1576,6 +1864,123 @@ pub fn write_split_index(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snapshot_writer_size_limit_preserves_previous_file_and_password_access() {
+        let directory = tempfile::tempdir().unwrap();
+        let password = "SyntheticSnapshotPassword_123!";
+        let (mut vault, dek) = create_vault(password).unwrap();
+        write_canonical_vault(directory.path(), &mut vault, &dek).unwrap();
+        let path = directory.path().join(crate::constants::VAULT_FILE);
+        let original = std::fs::read(&path).unwrap();
+        // The complete encoded snapshot, including magic, fits at the exact
+        // limit. A snapshot metadata change of the same length does not
+        // fit one byte below it and must never replace the current file.
+        vault.rotation.writes = 1;
+        let mut expected = CANONICAL_MAGIC.to_vec();
+        seal_snapshot_manifest(&mut vault, &dek).unwrap();
+        expected.extend(serde_json::to_vec(&vault).unwrap());
+        assert!(write_canonical_vault_bounded(
+            directory.path(),
+            &mut vault,
+            &dek,
+            expected.len() - 1,
+        )
+        .is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        let (reopened, _) = open_current_vault(directory.path(), password).unwrap();
+        assert_eq!(reopened.rotation.writes, 0);
+        write_canonical_vault_bounded(directory.path(), &mut vault, &dek, expected.len()).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap().len(), expected.len());
+        let (reopened, _) = open_current_vault(directory.path(), password).unwrap();
+        assert_eq!(reopened.rotation.writes, 1);
+    }
+
+    #[test]
+    fn record_writer_rejects_plaintext_over_reader_limit_before_compression() {
+        let key = [7u8; 32];
+        // Tiny bounds exercise the production path without a 100MiB allocation.
+        let limit = 64;
+        let plaintext = vec![b'A'; limit];
+        let block = encrypt_record_bounded(&key, &plaintext, limit, 128).unwrap();
+        assert_eq!(decrypt_record(&key, &block).unwrap().as_slice(), plaintext);
+        let oversized = vec![b'A'; limit + 1];
+        assert!(encrypt_record_bounded(&key, &oversized, limit, 128).is_err());
+    }
+
+    #[test]
+    fn record_writer_enforces_base64_ciphertext_boundary_for_incompressible_data() {
+        let key = [8u8; 32];
+        let mut plaintext = [0u8; 256];
+        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut plaintext);
+        let block = encrypt_record(&key, &plaintext).unwrap();
+        let encoded_len = block.data.len();
+        assert!(encoded_len > plaintext.len());
+        assert!(
+            encrypt_record_bounded(&key, &plaintext, plaintext.len(), encoded_len - 1).is_err()
+        );
+        let accepted =
+            encrypt_record_bounded(&key, &plaintext, plaintext.len(), encoded_len).unwrap();
+        assert_eq!(accepted.data.len(), encoded_len);
+        assert_eq!(
+            decrypt_record(&key, &accepted).unwrap().as_slice(),
+            plaintext
+        );
+    }
+
+    #[test]
+    fn record_decoder_accepts_legacy_json_and_current_msgpack_objects() {
+        let expected = serde_json::json!({"id":"synthetic-1", "client":"Cliente sintetico"});
+        for encoded in [
+            serde_json::to_vec(&expected).unwrap(),
+            rmp_serde::to_vec_named(&expected).unwrap(),
+        ] {
+            assert_eq!(decode_record_object(&encoded).unwrap(), expected);
+        }
+        for invalid in [b"123".as_slice(), b"[]", b"null", b"{broken"] {
+            assert!(decode_record_object(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn calibration_fast_cpu_keeps_successful_strong_profile() {
+        let params = calibrate_argon2_params(false, 4, |m, _| Some(u128::from(m / 1024)));
+        assert_eq!(params.m, 131072);
+        assert_eq!(params.t, 3);
+    }
+
+    #[test]
+    fn calibration_slow_or_failed_probes_preserve_memory_floor() {
+        let mut calls = 0;
+        let slow = calibrate_argon2_params(false, 4, |_, _| {
+            calls += 1;
+            Some(1500)
+        });
+        assert_eq!(slow.m, 65536);
+        assert_eq!(
+            calls, 1,
+            "Do not keep benchmarking larger allocations on a slow CPU"
+        );
+        assert_eq!(calibrate_argon2_params(false, 4, |_, _| None).m, 65536);
+        let mobile = calibrate_argon2_params(true, 4, |m, _| Some(u128::from(m / 1024)));
+        assert_eq!(mobile.m, 32768);
+        assert_eq!(calibrate_argon2_params(true, 4, |_, _| None).m, 24576);
+    }
+
+    #[test]
+    fn decompression_limit_rejects_truncation_and_accepts_exact_size() {
+        let data = vec![0x5a; 513];
+        let compressed = zstd::encode_all(data.as_slice(), 1).unwrap();
+        assert!(decompress_record_bounded(&compressed, 512)
+            .unwrap_err()
+            .contains("size limit"));
+        assert_eq!(
+            decompress_record_bounded(&compressed, 513)
+                .unwrap()
+                .as_slice(),
+            data
+        );
+    }
 
     fn fresh_dek() -> Zeroizing<Vec<u8>> {
         let mut dek = Zeroizing::new(vec![0u8; AES_KEY_LEN]);

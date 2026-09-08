@@ -1,38 +1,24 @@
 // ═══════════════════════════════════════════════════════════
-//  BIOMETRICS — Touch ID / Windows Hello / Android
+//  BIOMETRICS — Touch ID; Windows credential cleanup
 // ═══════════════════════════════════════════════════════════
 
-use crate::state::{zeroize_password, AppState};
+use crate::state::AppState;
 use serde_json::Value;
 use std::sync::{Mutex, OnceLock};
+#[cfg(not(target_os = "windows"))]
 use std::time::{Duration as StdDuration, Instant};
 use tauri::State;
+use zeroize::Zeroizing;
 
 // ─────────────────────────────────────────────────────────────────────
 //  macOS Keychain ACL helper (HIGH-S-1 remediation)
 // ─────────────────────────────────────────────────────────────────────
-// On macOS, the legacy `keyring` crate stores generic-password items
-// WITHOUT an `SecAccessControl` ACL. That means any other Apple-signed
-// process trusted by the user's login keychain can read the entry —
-// the biometric prompt is purely a UI gate, not a cryptographic one.
-//
-// This module wraps `SecAccessControlCreateWithFlags` + `SecItemAdd`
-// via raw FFI (security-framework v2 does not expose ACL building on
-// generic passwords) so the keychain item is created with:
-//
-//   * kSecAttrAccessibleWhenUnlockedThisDeviceOnly  (protection)
-//   * kSecAccessControlBiometryCurrentSet            (flag)
-//
-// The `BiometryCurrentSet` flag binds the item to the *currently
-// enrolled* set of biometrics: enrolling a new fingerprint or face
-// invalidates the entry and forces re-derivation from the user
-// password. Combined with `WhenUnlockedThisDeviceOnly`, this gives
-// us a true biometric gate, not a UI illusion.
-//
-// On read failures we fall back to the plain `keyring` crate so users
-// who already have a non-ACL'd entry from previous LexFlow versions
-// can still log in (and on the next save_bio the entry will be
-// rewritten with the ACL).
+// macOS credentials are stored with an explicit biometric ACL. Reading an
+// ordinary generic-password item is not proof of biometric authentication.
+// We therefore reject legacy items that are readable while authentication UI
+// is suppressed. They must be enrolled again after a normal password login.
+// LocalAuthentication capability detection is compiled into the app; only
+// the ACL-protected Keychain read requests Touch ID during login.
 #[cfg(target_os = "macos")]
 mod macos_keychain {
     use core_foundation::base::{CFRelease, CFTypeRef, TCFType};
@@ -73,6 +59,7 @@ mod macos_keychain {
         // detect misconfigured entries without burning a Touch ID.
         static kSecUseAuthenticationUI: CFStringRef;
         static kSecUseAuthenticationUIFail: CFStringRef;
+        static kSecUseDataProtectionKeychain: CFStringRef;
     }
 
     // CFDictionary creation — using the CoreFoundation FFI directly so we
@@ -173,7 +160,11 @@ mod macos_keychain {
             let acc = CFString::new(account);
             let data = CFData::from_buffer(password.as_bytes());
 
-            let pairs: [(CFTypeRef, CFTypeRef); 5] = [
+            let pairs: [(CFTypeRef, CFTypeRef); 6] = [
+                (
+                    kSecUseDataProtectionKeychain as CFTypeRef,
+                    CFBoolean::true_value().as_concrete_TypeRef() as CFTypeRef,
+                ),
                 (
                     kSecClass as CFTypeRef,
                     kSecClassGenericPassword as CFTypeRef,
@@ -207,7 +198,7 @@ mod macos_keychain {
             if status == ERR_SEC_SUCCESS {
                 Ok(())
             } else {
-                Err(format!("SecItemAdd failed: OSStatus={}", status))
+                Err(format!("Impossibile abilitare il Portachiavi biometrico protetto (macOS {}). Usa la password; verifica firma e autorizzazioni dell'app.", status))
             }
         }
     }
@@ -218,22 +209,19 @@ mod macos_keychain {
     /// directly with no prompt — which is exactly the failure mode
     /// `verify_acl_enforced()` exists to detect.
     ///
-    /// KNOWN UX TRADE-OFF: combined with the existing `bio_login`
-    /// flow (which runs `LAContext.evaluatePolicy` first via a Swift
-    /// child process), this produces TWO biometric prompts on macOS
-    /// — one to gate the unlock UI, one to release the keychain
-    /// secret. To consolidate them, future work should pass an
-    /// `LAContext` to `SecItemCopyMatching` via
-    /// `kSecUseAuthenticationContext`. Tracked separately; the
-    /// double-prompt is annoying but strictly more secure than the
-    /// previous single-prompt-with-no-ACL design.
+    /// This is the single authentication prompt in the macOS login flow.
+    /// A preliminary suppressed-UI check rejects unprotected legacy items.
     pub(super) fn load(service: &str, account: &str) -> Result<String, String> {
         unsafe {
             let svc = CFString::new(service);
             let acc = CFString::new(account);
             let cf_true = CFBoolean::true_value();
 
-            let pairs: [(CFTypeRef, CFTypeRef); 5] = [
+            let pairs: [(CFTypeRef, CFTypeRef); 6] = [
+                (
+                    kSecUseDataProtectionKeychain as CFTypeRef,
+                    CFBoolean::true_value().as_concrete_TypeRef() as CFTypeRef,
+                ),
                 (
                     kSecClass as CFTypeRef,
                     kSecClassGenericPassword as CFTypeRef,
@@ -281,7 +269,11 @@ mod macos_keychain {
             let svc = CFString::new(service);
             let acc = CFString::new(account);
 
-            let pairs: [(CFTypeRef, CFTypeRef); 3] = [
+            let pairs: [(CFTypeRef, CFTypeRef); 4] = [
+                (
+                    kSecUseDataProtectionKeychain as CFTypeRef,
+                    CFBoolean::true_value().as_concrete_TypeRef() as CFTypeRef,
+                ),
                 (
                     kSecClass as CFTypeRef,
                     kSecClassGenericPassword as CFTypeRef,
@@ -322,7 +314,11 @@ mod macos_keychain {
             let acc = CFString::new(account);
             let cf_true = CFBoolean::true_value();
 
-            let pairs: [(CFTypeRef, CFTypeRef); 5] = [
+            let pairs: [(CFTypeRef, CFTypeRef); 6] = [
+                (
+                    kSecUseDataProtectionKeychain as CFTypeRef,
+                    CFBoolean::true_value().as_concrete_TypeRef() as CFTypeRef,
+                ),
                 (
                     kSecClass as CFTypeRef,
                     kSecClassGenericPassword as CFTypeRef,
@@ -368,47 +364,64 @@ mod macos_keychain {
         }
     }
 
-    /// Best-effort save: try the FFI ACL path; if anything fails, fall
-    /// back to plain `keyring` and emit a security warning.
-    pub(super) fn save_best_effort(
+    /// Require the biometric ACL; never silently store an unprotected fallback.
+    pub(super) fn save_protected(
         service: &str,
         account: &str,
         password: &str,
     ) -> Result<(), String> {
-        match save_with_acl(service, account, password) {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                eprintln!(
-                    "[bio] WARN: macOS keychain ACL save failed ({}). Falling back to plain keyring.",
-                    e
-                );
-                eprintln!(
-                    "[bio]       The entry will NOT have kSecAccessControlBiometryCurrentSet."
-                );
-                eprintln!("[bio]       Other Apple-signed apps trusted by the user may read it.");
-                let entry = keyring::Entry::new(service, account).map_err(|e| e.to_string())?;
-                entry.set_password(password).map_err(|e| e.to_string())?;
-                Ok(())
+        if !super::check_bio_hardware() {
+            return Err("Biometria non disponibile per questa build o configurazione macOS. Usa la password; l'accesso protetto al Portachiavi richiede firma ed entitlement compatibili.".into());
+        }
+        save_with_acl(service, account, password)?;
+        match verify_acl_enforced(service, account) {
+            Ok(true) => Ok(()),
+            _ => {
+                delete_both(service, account);
+                Err(
+                    "Impossibile proteggere la credenziale con la biometria. Usa la password."
+                        .into(),
+                )
             }
         }
     }
 
-    /// Best-effort load: try our ACL path first (succeeds for ACL'd
-    /// entries after the user passes biometrics). Only on `not-found`
-    /// do we fall back to the plain keyring crate — legacy entries
-    /// created by pre-HIGH-S-1 LexFlow versions still need to unlock,
-    /// but we MUST NOT silently bypass a failed biometric on a real
-    /// ACL'd entry (e.g. the user cancelled the prompt).
-    pub(super) fn load_with_fallback(service: &str, account: &str) -> Result<String, String> {
-        match load(service, account) {
-            Ok(p) => Ok(p),
-            Err(e) if e == "not-found" => {
-                // Either no ACL'd entry exists yet (first login after
-                // upgrade) or the entry is the legacy plain one.
-                let entry = keyring::Entry::new(service, account).map_err(|e| e.to_string())?;
-                entry.get_password().map_err(|e| e.to_string())
+    /// Require protection before releasing a credential. Never fall back to
+    /// plain keyring reads: cancelling Touch ID or finding a legacy item means
+    /// the user must use the vault password and enroll biometrics again.
+    pub(super) fn load_protected(service: &str, account: &str) -> Result<String, String> {
+        load_if_protected(verify_acl_enforced(service, account), || {
+            load(service, account)
+        })
+    }
+
+    fn load_if_protected(
+        protection: Result<bool, String>,
+        read: impl FnOnce() -> Result<String, String>,
+    ) -> Result<String, String> {
+        match protection {
+            Ok(true) => read(),
+            _ => Err("Biometria non configurata o credenziale non protetta. Accedi con la password e riconfigura la biometria nelle Impostazioni.".into()),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::load_if_protected;
+
+        #[test]
+        fn unprotected_or_missing_acl_never_reads_a_credential() {
+            for verification in [Ok(false), Err("not-found".into()), Err("cancelled".into())] {
+                assert!(
+                    load_if_protected(verification, || panic!("Unprotected credential read"))
+                        .is_err()
+                );
             }
-            Err(e) => Err(e),
+            assert_eq!(
+                load_if_protected(Ok(true), || Ok("synthetic".into())).unwrap(),
+                "synthetic"
+            );
+            assert!(load_if_protected(Ok(true), || Err("cancelled".into())).is_err());
         }
     }
 
@@ -422,28 +435,24 @@ mod macos_keychain {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
 use serde_json::json;
 
 #[cfg(not(target_os = "android"))]
-use crate::audit::append_audit_log;
-#[cfg(not(target_os = "android"))]
 use crate::constants::*;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
 use crate::io::secure_write;
-#[cfg(not(target_os = "android"))]
-use crate::lockout::{check_lockout, record_failed_attempt};
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
+use crate::lockout::check_lockout;
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
 use crate::vault::unlock_vault_with_password;
 #[cfg(not(target_os = "android"))]
 use std::fs;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use std::time::Duration;
 
 /// Cross-call serialisation lock: ensures `bio_login` (which reads from the
 /// keyring then unlocks the vault) cannot race with a concurrent `clear_bio`
-/// (which deletes the keyring entry), and vice versa. The critical section is
-/// short — only the keyring-touching portion of each operation holds it.
+/// (which deletes the keyring entry), and vice versa. macOS authentication may
+/// keep this mutex held while the OS prompt is open; it is not a timed child.
 #[cfg(not(target_os = "android"))]
 static BIO_OP_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -460,71 +469,259 @@ fn bio_op_lock() -> &'static Mutex<()> {
 /// The inner `Option<Instant>` is `None` before the first successful clear
 /// (so the first call always passes), then holds the timestamp of the last
 /// allowed invocation.
+#[cfg(not(target_os = "windows"))]
 static LAST_CLEAR_BIO: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+#[cfg(not(target_os = "windows"))]
 const CLEAR_BIO_RATE_LIMIT: StdDuration = StdDuration::from_secs(60);
+
+/// This is checked before any keychain mutation; UI consent alone is not an
+/// authorization boundary. The caller serializes with write_mutex so the vault
+/// cannot change or lock after this check and before the credential is stored.
+#[cfg(any(not(any(target_os = "android", target_os = "windows")), test))]
+fn authorize_bio_enrollment(state: &AppState, password: &str) -> Result<(), String> {
+    let session = state.document_session()?;
+    if password.len() != 64 || !password.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("Password biometrica non valida.".into());
+    }
+    let directory = state
+        .data_dir
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let (_, verified_dek) = crate::vault_engine::open_current_vault(&directory, password)
+        .map_err(|_| "Password non corretta. Biometria invariata.".to_string())?;
+    state.validate_document_session(session)?;
+    let active = state.vault_dek.lock().unwrap_or_else(|e| e.into_inner());
+    let current = &active.as_ref().ok_or("Archivio bloccato.")?.0;
+    let same_key = {
+        current.len() == verified_dek.len()
+            && current
+                .iter()
+                .zip(verified_dek.iter())
+                .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+                == 0
+    };
+    if !same_key {
+        return Err("Archivio modificato. Ripeti l'accesso.".into());
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub(crate) fn check_bio() -> bool {
-    use std::sync::OnceLock;
-    static BIO_AVAILABLE: OnceLock<bool> = OnceLock::new();
-    *BIO_AVAILABLE.get_or_init(check_bio_hardware)
+    #[cfg(target_os = "macos")]
+    {
+        // LocalAuthentication capability checks are prompt-free. Recheck so a
+        // temporary lockout or newly enrolled finger does not last for the app's
+        // entire lifetime in a cached negative result.
+        check_bio_status().available
+    }
+    #[cfg(target_os = "windows")]
+    {
+        false
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        static BIO_AVAILABLE: OnceLock<bool> = OnceLock::new();
+        *BIO_AVAILABLE.get_or_init(check_bio_hardware)
+    }
 }
 
-/// Runtime hardware detection — cached via OnceLock (runs once per process).
-#[cfg(target_os = "macos")]
-fn check_bio_hardware() -> bool {
-    use std::io::Write;
-    // SECURITY: hardcoded Swift only — never interpolate user input here.
-    let swift = "import LocalAuthentication\nlet c=LAContext();var e:NSError?\nexit(c.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,error:&e) ? 0 : 1)";
-    let mut cmd = std::process::Command::new("/usr/bin/swift");
-    cmd.arg("-")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    for (k, _) in std::env::vars() {
-        if k.starts_with("DYLD_") || k.starts_with("LD_") || k == "CFNETWORK_LIBRARY_PATH" {
-            cmd.env_remove(&k);
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BioStatus {
+    available: bool,
+    reason: &'static str,
+    // Current policy readiness, not a claim that the device lacks a sensor.
+    device_ready: Option<bool>,
+    // Presence of the required app entitlement. Actual enrollment also checks
+    // whether Security.framework accepts and enforces the protected item ACL.
+    app_authorized: Option<bool>,
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_status_from_flags(flags: i32) -> BioStatus {
+    // ABI bits are defined in macos_biometry.m. Unknown bits fail closed.
+    if flags & !3 != 0 {
+        return BioStatus {
+            available: false,
+            reason: "check_failed",
+            device_ready: None,
+            app_authorized: None,
+        };
+    }
+    let device_ready = flags & 1 != 0;
+    let app_authorized = flags & 2 != 0;
+    BioStatus {
+        available: device_ready && app_authorized,
+        reason: if !app_authorized {
+            "build_not_authorized"
+        } else if !device_ready {
+            "device_unavailable"
+        } else {
+            "available"
+        },
+        device_ready: Some(device_ready),
+        app_authorized: Some(app_authorized),
+    }
+}
+
+/// Read-only diagnostics: no authentication UI and no Keychain access.
+#[tauri::command]
+pub(crate) fn check_bio_status() -> BioStatus {
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            fn lexflow_biometry_status() -> i32;
+        }
+        // The bridge catches Objective-C exceptions before returning the flags.
+        macos_status_from_flags(unsafe { lexflow_biometry_status() })
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows_bio_status(WINDOWS_BIO_CLEANUP_FAILED.load(std::sync::atomic::Ordering::Relaxed))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        BioStatus {
+            available: false,
+            reason: "unsupported",
+            device_ready: None,
+            app_authorized: None,
         }
     }
-    let Ok(mut child) = cmd.spawn() else {
-        return false;
-    };
-    if let Some(ref mut stdin) = child.stdin {
-        let _ = stdin.write_all(swift.as_bytes());
-    }
-    drop(child.stdin.take());
-    child.wait().map(|s| s.success()).unwrap_or(false)
 }
 
-#[cfg(target_os = "windows")]
+/// Current platform capability; macOS also needs authorized app entitlements.
+#[cfg(target_os = "macos")]
 fn check_bio_hardware() -> bool {
-    // SECURITY: hardcoded PowerShell only — never interpolate user input here.
-    let ps = r#"Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$m = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
-function Await($t, $r) { $s = $m.MakeGenericMethod($r); $n = $s.Invoke($null, @($t)); $n.Wait(-1) | Out-Null; $n.Result }
-[Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime] | Out-Null
-$r = Await ([Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync()) ([Windows.Security.Credentials.UI.ConsentVerifierAvailability])
-if ($r -eq [Windows.Security.Credentials.UI.ConsentVerifierAvailability]::Available) { exit 0 } else { exit 1 }"#;
-    let Ok(mut child) =
-        std::process::Command::new(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
-            .args(["-NoProfile", "-NonInteractive", "-Command", ps])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-    else {
-        return false;
-    };
-    child.wait().map(|s| s.success()).unwrap_or(false)
+    extern "C" {
+        fn lexflow_can_use_biometrics() -> i32;
+    }
+    // ABI is a fixed-width integer; Objective-C exceptions are caught in the bridge.
+    unsafe { lexflow_can_use_biometrics() == 1 }
+}
+
+#[cfg(test)]
+mod capability_status_tests {
+    use super::macos_status_from_flags;
+
+    #[test]
+    fn available_requires_device_and_app_readiness() {
+        let status = macos_status_from_flags(3);
+        assert!(status.available);
+        assert_eq!(status.reason, "available");
+        assert_eq!(status.device_ready, Some(true));
+        assert_eq!(status.app_authorized, Some(true));
+    }
+
+    #[test]
+    fn unsigned_build_does_not_hide_a_ready_device() {
+        for (flags, device_ready) in [(1, true), (0, false)] {
+            let status = macos_status_from_flags(flags);
+            assert!(!status.available);
+            assert_eq!(status.reason, "build_not_authorized");
+            assert_eq!(status.device_ready, Some(device_ready));
+            assert_eq!(status.app_authorized, Some(false));
+        }
+    }
+
+    #[test]
+    fn device_unavailable_is_distinct_from_build_authorization() {
+        let status = macos_status_from_flags(2);
+        assert!(!status.available);
+        assert_eq!(status.reason, "device_unavailable");
+        assert_eq!(status.device_ready, Some(false));
+        assert_eq!(status.app_authorized, Some(true));
+    }
+
+    #[test]
+    fn bridge_error_and_unknown_bits_fail_closed() {
+        for flags in [4, 7, 8, -1] {
+            let status = macos_status_from_flags(flags);
+            assert!(!status.available);
+            assert_eq!(status.reason, "check_failed");
+            assert_eq!(status.device_ready, None);
+            assert_eq!(status.app_authorized, None);
+        }
+    }
+}
+
+// Windows Hello was removed: a consent prompt did not cryptographically protect
+// the generic Credential Manager item. Never save or read such a credential.
+#[cfg(target_os = "windows")]
+static WINDOWS_BIO_CLEANUP_FAILED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(any(target_os = "windows", all(test, not(target_os = "android"))))]
+fn windows_bio_status(cleanup_failed: bool) -> BioStatus {
+    BioStatus {
+        available: false,
+        reason: if cleanup_failed {
+            "windows_hello_cleanup_failed"
+        } else {
+            "windows_hello_removed"
+        },
+        // We do not inspect hardware or launch a helper on Windows.
+        device_ready: None,
+        app_authorized: None,
+    }
+}
+
+#[cfg(any(target_os = "windows", all(test, not(target_os = "android"))))]
+fn windows_bio_removed<T>() -> Result<T, String> {
+    Err("Windows Hello è stato rimosso. Usa la Master Password dell'archivio.".into())
+}
+
+/// The adapter exposes deletion only. Neither migration nor its tests can read
+/// a credential through this interface. A missing entry counts as deleted.
+#[cfg(any(target_os = "windows", all(test, not(target_os = "android"))))]
+fn remove_legacy_windows_bio_with(
+    directory: &std::path::Path,
+    account: &str,
+    delete_credential: impl FnOnce(&str, &str) -> Result<(), String>,
+) -> Result<(), String> {
+    delete_credential(BIO_SERVICE, account)?;
+    match fs::remove_file(directory.join(BIO_MARKER_FILE)) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(
+            "Vecchia credenziale Windows rimossa, ma pulizia dell'indicatore non completata. Riavvia LexFlow per riprovare.".into(),
+        ),
+    }
+}
+
+/// Called once during Windows startup, and on explicit clear/password change.
+/// Only the old username + BIO_SERVICE entry and its marker are removed. The
+/// encrypted vault and its password are untouched; future access needs that
+/// password. Failure remains visible in check_bio_status and is safe to retry.
+#[cfg(target_os = "windows")]
+pub(crate) fn remove_legacy_windows_bio(directory: &std::path::Path) -> Result<(), String> {
+    let _bio_lock = bio_op_lock().lock().unwrap_or_else(|e| e.into_inner());
+    let result = remove_legacy_windows_bio_with(
+        directory,
+        &whoami::username(),
+        |service, account| {
+            let entry = keyring::Entry::new(service, account).map_err(|_| {
+            "Impossibile eliminare la vecchia credenziale Windows. Riavvia LexFlow per riprovare.".to_string()
+        })?;
+            match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err(
+                "Impossibile eliminare la vecchia credenziale Windows. Riavvia LexFlow per riprovare.".into(),
+            ),
+        }
+        },
+    );
+    WINDOWS_BIO_CLEANUP_FAILED.store(result.is_err(), std::sync::atomic::Ordering::Relaxed);
+    result
 }
 
 #[cfg(target_os = "android")]
 fn check_bio_hardware() -> bool {
-    // KNOWN LIMITATION: Android biometric hardware availability is checked client-side
-    // via the BiometricManager API in the frontend (Capacitor/WebView layer). The Rust
-    // backend cannot query Android system services directly without JNI. Returning true
-    // here defers the real check to the frontend, which gates the biometric UI.
-    // TODO: Add JNI bridge to query BiometricManager.canAuthenticate() natively.
-    true
+    // No Android BiometricPrompt/Keystore bridge is implemented. Do not advertise
+    // enrollment support: the UI must keep using the verified password flow.
+    false
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "android")))]
@@ -534,7 +731,7 @@ fn check_bio_hardware() -> bool {
 
 #[tauri::command]
 pub(crate) fn has_bio_saved(state: State<AppState>) -> bool {
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "windows")))]
     {
         let dir = state
             .data_dir
@@ -543,7 +740,7 @@ pub(crate) fn has_bio_saved(state: State<AppState>) -> bool {
             .clone();
         dir.join(BIO_MARKER_FILE).exists()
     }
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "windows"))]
     {
         let _ = state;
         false
@@ -554,54 +751,34 @@ pub(crate) fn has_bio_saved(state: State<AppState>) -> bool {
 // `SecItemAdd` with `kSecAttrAccessControl` set to a `SecAccessControl`
 // built with `kSecAccessControlBiometryCurrentSet` and protection
 // `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Enrolling a new
-// fingerprint or face invalidates the stored secret, and other Apple-
-// signed apps trusted by the user's login keychain can no longer read
-// it without passing the biometric gate. See `macos_keychain` module
-// above. On Windows/Linux we keep the plain `keyring` crate — the
-// equivalent guarantees are provided by DPAPI / libsecret respectively.
+// fingerprint invalidates the stored credential. The Data Protection Keychain
+// enforces the item's access control. See `macos_keychain` module
+// above. Windows enrollment and login are explicitly unavailable.
 #[tauri::command]
 pub(crate) fn save_bio(state: State<AppState>, pwd: String) -> Result<bool, String> {
-    #[cfg(not(target_os = "android"))]
+    let pwd = Zeroizing::new(pwd);
+    #[cfg(not(any(target_os = "android", target_os = "windows")))]
     {
         // Hold the bio-op mutex while we touch the keyring + marker file so a
         // concurrent `clear_bio` cannot wipe the credentials we are about to
         // commit.
+        // Reject locked callers before any OS credential access. Serialize
+        // verification/enrollment with lock, reset and password changes.
+        let session = state.document_session()?;
         let _bio_lock = bio_op_lock().lock().unwrap_or_else(|e| e.into_inner());
+        let _write_lock = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+        state.validate_document_session(session)?;
+        authorize_bio_enrollment(&state, &pwd)?;
         let user = whoami::username();
 
         #[cfg(target_os = "macos")]
         {
-            if let Err(e) = macos_keychain::save_best_effort(BIO_SERVICE, &user, &pwd) {
-                zeroize_password(pwd);
-                return Err(e);
-            }
-            // Post-write self-test: verify the ACL actually took effect.
-            // We call SecItemCopyMatching with kSecUseAuthenticationUI =
-            // kSecUseAuthenticationUIFail — on a properly-ACL'd entry the
-            // call returns errSecInteractionNotAllowed (no bio prompt is
-            // raised, so this is non-disruptive). If it succeeds, the ACL
-            // didn't stick and we log a security-grade warning.
-            match macos_keychain::verify_acl_enforced(BIO_SERVICE, &user) {
-                Ok(true) => { /* ACL enforced — happy path. */ }
-                Ok(false) => {
-                    eprintln!(
-                        "[bio] WARN: keychain entry stored without biometric ACL (legacy fallback path)."
-                    );
-                }
-                Err(e) => {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[bio] verify_acl_enforced returned error: {}", e);
-                    let _ = e;
-                }
-            }
+            macos_keychain::save_protected(BIO_SERVICE, &user, &pwd)?;
         }
         #[cfg(not(target_os = "macos"))]
         {
             let entry = keyring::Entry::new(BIO_SERVICE, &user).map_err(|e| e.to_string())?;
-            if let Err(e) = entry.set_password(&pwd) {
-                zeroize_password(pwd);
-                return Err(e.to_string());
-            }
+            entry.set_password(&pwd).map_err(|e| e.to_string())?;
         }
 
         let dir = state
@@ -625,26 +802,31 @@ pub(crate) fn save_bio(state: State<AppState>, pwd: String) -> Result<bool, Stri
                     let _ = entry.delete_credential();
                 }
             }
-            zeroize_password(pwd);
             return Err(format!("Failed to save biometric marker: {}", e));
         }
-        zeroize_password(pwd);
         Ok(true)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = state;
+        drop(pwd);
+        windows_bio_removed()
     }
     #[cfg(target_os = "android")]
     {
         let _ = state;
-        zeroize_password(pwd);
-        // L-ANDROID: native save_bio is a stub on Android (no JNI bridge yet).
-        // The frontend uses Capacitor's Keystore plugin and treats the Rust
-        // call as a no-op success. If you need a hard sentinel, change this
-        // to `Err("android-bio-use-frontend")`, but make sure the FE branches
-        // on the error string before flipping the contract.
-        Ok(true)
+        drop(pwd);
+        Err("La biometria Android non è disponibile in questa versione. Usa la password.".into())
     }
 }
 
-#[cfg(not(target_os = "android"))]
+/// Password changes must preserve the ACL used at biometric enrolment.
+#[cfg(target_os = "macos")]
+pub(crate) fn refresh_macos_bio_password(password: &str) -> Result<(), String> {
+    macos_keychain::save_protected(BIO_SERVICE, &whoami::username(), password)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
 #[allow(dead_code)]
 fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
     // Serialise with `clear_bio` / `save_bio` while we hold the keyring
@@ -654,7 +836,7 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
 
     let user = whoami::username();
     #[cfg(target_os = "macos")]
-    let saved_pwd = macos_keychain::load_with_fallback(BIO_SERVICE, &user)?;
+    let saved_pwd = macos_keychain::load_protected(BIO_SERVICE, &user)?;
     #[cfg(not(target_os = "macos"))]
     let saved_pwd = keyring::Entry::new(BIO_SERVICE, &user)
         .and_then(|e| e.get_password())
@@ -665,12 +847,6 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let sec_dir = state
-        .security_dir
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
-
     // Use the same unlock flow as manual password (handles v4)
     // Pass ownership directly — no clone needed. unlock_vault_with_password
     // takes ownership and zeroizes internally.
@@ -682,14 +858,12 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
         .and_then(|v| v.as_bool())
         .unwrap_or(false)
     {
-        let _ = append_audit_log(state, "Sblocco Vault (biometria)");
+        // The common unlock records its event while holding write_mutex.
         return Ok(result);
     }
 
-    // L-BIO-FAIL: feed bio failures into the same lockout counter as manual
-    // password attempts, so brute-forcing via the bio path cannot bypass the
-    // global rate limiter.
-    record_failed_attempt(state, &sec_dir);
+    // The common password unlock already records an authentication failure.
+    // Do not count it twice or count lockout/storage errors as another guess.
 
     // Bio password is stale (e.g. password changed) — clear bio credentials
     #[cfg(target_os = "macos")]
@@ -709,11 +883,12 @@ fn bio_unlock_vault(state: &State<AppState>) -> Result<Value, String> {
 #[tauri::command]
 pub(crate) fn bio_login(_state: State<AppState>, window: tauri::Window) -> Result<Value, String> {
     // Prevent Touch ID from appearing over other apps when LexFlow is not focused
+    #[cfg(not(target_os = "windows"))]
     if !window.is_focused().unwrap_or(false) {
         return Ok(serde_json::json!({"success": false, "error": "Window not focused"}));
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "windows")))]
     {
         let sec_dir = _state
             .security_dir
@@ -727,167 +902,18 @@ pub(crate) fn bio_login(_state: State<AppState>, window: tauri::Window) -> Resul
 
     #[cfg(target_os = "macos")]
     {
-        // SECURITY: this Swift snippet is hardcoded — never interpolate user
-        // input into it. The shell/scripting boundary here is owned by the
-        // process arguments and stdin only; the script body must remain a
-        // string literal.
-        let swift_code = "import LocalAuthentication\nlet ctx = LAContext()\nvar err: NSError?\nif ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) {\n  let sema = DispatchSemaphore(value: 0)\n  var ok = false\n  ctx.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: \"LexFlow\") { s, _ in ok = s; sema.signal() }\n  sema.wait()\n  if ok { exit(0) } else { exit(1) }\n} else { exit(1) }";
-
-        use std::io::Write;
-        let mut cmd = std::process::Command::new("/usr/bin/swift");
-        cmd.arg("-")
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        for (k, _) in std::env::vars() {
-            if k.starts_with("DYLD_") || k.starts_with("LD_") || k == "CFNETWORK_LIBRARY_PATH" {
-                cmd.env_remove(&k);
-            }
-        }
-        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-
-        if let Some(ref mut stdin) = child.stdin {
-            stdin
-                .write_all(swift_code.as_bytes())
-                .map_err(|e| e.to_string())?;
-        }
-        drop(child.stdin.take());
-        let timeout = Duration::from_secs(60);
-        let (tx, rx) = std::sync::mpsc::channel();
-        let child_arc = std::sync::Arc::new(std::sync::Mutex::new(Some(child)));
-        let child_arc_thread = child_arc.clone();
-        std::thread::spawn(move || {
-            let result = {
-                let mut guard = child_arc_thread.lock().unwrap();
-                if let Some(ref mut c) = *guard {
-                    Some(c.wait())
-                } else {
-                    None
-                }
-            };
-            if let Some(r) = result {
-                let _ = tx.send(r);
-            }
-        });
-        match rx.recv_timeout(timeout) {
-            Ok(Ok(status)) => {
-                if !status.success() {
-                    // L-BIO-FAIL: count biometric rejections towards the
-                    // global lockout counter to slow brute-force.
-                    let sec_dir = _state
-                        .security_dir
-                        .read()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .clone();
-                    record_failed_attempt(&_state, &sec_dir);
-                    return Ok(
-                        json!({"success": false, "error": "Autenticazione biometrica fallita"}),
-                    );
-                }
-            }
-            Ok(Err(e)) => return Err(e.to_string()),
-            Err(_) => {
-                // L-TOCTOU: prefer try_wait once before kill — handles the
-                // race where the child terminated between recv_timeout
-                // returning and us reaching for the kill switch.
-                if let Ok(mut guard) = child_arc.lock() {
-                    if let Some(ref mut c) = *guard {
-                        match c.try_wait() {
-                            Ok(Some(_)) => {} // already exited cleanly
-                            _ => {
-                                let _ = c.kill();
-                            }
-                        }
-                    }
-                }
-                return Ok(
-                    json!({"success": false, "error": "Timeout autenticazione biometrica (60s)"}),
-                );
-            }
-        }
-
+        // No preliminary prompt or Swift process. load_protected requires the
+        // stored biometric ACL and lets Security.framework perform authentication.
         bio_unlock_vault(&_state)
     }
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
-        // SECURITY: this PowerShell snippet is hardcoded — never interpolate
-        // user input into it. Command-line arguments are also kept literal.
-        let ps_script = r#"
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
-function Await($WinRtTask, $ResultType) {
-    $asTaskSpecific = $asTaskGeneric.MakeGenericMethod($ResultType)
-    $netTask = $asTaskSpecific.Invoke($null, @($WinRtTask))
-    $netTask.Wait(-1) | Out-Null
-    $netTask.Result
-}
-[Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime] | Out-Null
-$result = Await ([Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync("LexFlow — Verifica identità")) ([Windows.Security.Credentials.UI.UserConsentVerificationResult])
-if ($result -eq [Windows.Security.Credentials.UI.UserConsentVerificationResult]::Verified) { exit 0 } else { exit 1 }
-"#;
-        let child = Command::new(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
-            .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| e.to_string())?;
-
-        let timeout = Duration::from_secs(60);
-        let (tx, rx) = std::sync::mpsc::channel();
-        let child_arc = std::sync::Arc::new(std::sync::Mutex::new(Some(child)));
-        let child_arc_thread = child_arc.clone();
-        std::thread::spawn(move || {
-            let result = {
-                let mut guard = child_arc_thread.lock().unwrap();
-                if let Some(ref mut c) = *guard {
-                    Some(c.wait())
-                } else {
-                    None
-                }
-            };
-            if let Some(r) = result {
-                let _ = tx.send(r);
-            }
-        });
-        let status = match rx.recv_timeout(timeout) {
-            Ok(Ok(s)) => s,
-            Ok(Err(e)) => return Err(e.to_string()),
-            Err(_) => {
-                // L-TOCTOU: prefer try_wait once before kill.
-                if let Ok(mut guard) = child_arc.lock() {
-                    if let Some(ref mut c) = *guard {
-                        match c.try_wait() {
-                            Ok(Some(_)) => {}
-                            _ => {
-                                let _ = c.kill();
-                            }
-                        }
-                    }
-                }
-                return Ok(
-                    json!({"success": false, "error": "Timeout autenticazione Windows Hello (60s)"}),
-                );
-            }
-        };
-        if !status.success() {
-            // L-BIO-FAIL: feed Windows Hello rejections into the lockout counter.
-            let sec_dir = _state
-                .security_dir
-                .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
-            record_failed_attempt(&_state, &sec_dir);
-            return Ok(
-                json!({"success": false, "error": "Windows Hello fallito o non disponibile"}),
-            );
-        }
-
-        bio_unlock_vault(&_state)
+        let _ = (_state, window);
+        windows_bio_removed()
     }
     #[cfg(target_os = "android")]
     {
-        Err("android-bio-use-frontend".into())
+        Err("La biometria Android non è disponibile in questa versione. Usa la password.".into())
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "android")))]
     {
@@ -901,53 +927,266 @@ if ($result -eq [Windows.Security.Credentials.UI.UserConsentVerificationResult]:
 /// calling this can only disable biometric login, not extract secrets.
 /// This is an accepted design choice.
 ///
-/// M-CB-2: nevertheless we now rate-limit the operation to one successful
-/// invocation per minute, to prevent a low-cost DoS where a malicious page
-/// or process repeatedly disables biometric login to force the user to
-/// re-enter their password every time.
+/// On platforms with biometric enrollment, clearing retains its existing rate
+/// limit. Windows only retries removal of the discontinued legacy credential.
 #[tauri::command]
-pub(crate) fn clear_bio(state: State<AppState>) -> bool {
-    // Rate limit
-    let last = LAST_CLEAR_BIO.get_or_init(|| Mutex::new(None));
+pub(crate) fn clear_bio(state: State<AppState>) -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
     {
-        let mut last_g = last.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(prev) = *last_g {
-            if prev.elapsed() < CLEAR_BIO_RATE_LIMIT {
-                // Silently refuse; FE treats `false` as "no-op / already cleared".
-                return false;
-            }
-        }
-        *last_g = Some(Instant::now());
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        // Serialise with `bio_login` / `save_bio` so we don't race a concurrent
-        // unlock that has just read the keyring entry into memory.
-        let _bio_lock = bio_op_lock().lock().unwrap_or_else(|e| e.into_inner());
-        let user = whoami::username();
-        #[cfg(target_os = "macos")]
-        macos_keychain::delete_both(BIO_SERVICE, &user);
-        #[cfg(not(target_os = "macos"))]
-        {
-            if let Ok(e) = keyring::Entry::new(BIO_SERVICE, &user) {
-                let _ = e.delete_credential();
-            }
-        }
-        let dir = state
+        let directory = state
             .data_dir
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let _ = fs::remove_file(dir.join(BIO_MARKER_FILE));
-        true
+        // Do not mark cleanup complete on a platform error. Retrying is safe
+        // because this path can only delete the discontinued credential.
+        remove_legacy_windows_bio(&directory).map(|()| true)
     }
-    #[cfg(target_os = "android")]
+    #[cfg(not(target_os = "windows"))]
     {
-        let _ = state;
-        // L-ANDROID: no native bio backend on Android — frontend manages it.
-        // Returning `false` here surfaces that the native call did nothing,
-        // so the FE knows to fall through to its own clearing flow.
-        false
+        // Rate limit
+        let last = LAST_CLEAR_BIO.get_or_init(|| Mutex::new(None));
+        {
+            let mut last_g = last.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(prev) = *last_g {
+                if prev.elapsed() < CLEAR_BIO_RATE_LIMIT {
+                    // Silently refuse; FE treats `false` as "no-op / already cleared".
+                    return Ok(false);
+                }
+            }
+            *last_g = Some(Instant::now());
+        }
+
+        #[cfg(not(target_os = "android"))]
+        {
+            // Serialise with `bio_login` / `save_bio` so we don't race a concurrent
+            // unlock that has just read the keyring entry into memory.
+            let _bio_lock = bio_op_lock().lock().unwrap_or_else(|e| e.into_inner());
+            let user = whoami::username();
+            #[cfg(target_os = "macos")]
+            macos_keychain::delete_both(BIO_SERVICE, &user);
+            #[cfg(not(target_os = "macos"))]
+            {
+                if let Ok(e) = keyring::Entry::new(BIO_SERVICE, &user) {
+                    let _ = e.delete_credential();
+                }
+            }
+            let dir = state
+                .data_dir
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            let _ = fs::remove_file(dir.join(BIO_MARKER_FILE));
+            Ok(true)
+        }
+        #[cfg(target_os = "android")]
+        {
+            let _ = state;
+            // L-ANDROID: no native bio backend on Android — frontend manages it.
+            // Returning `false` here surfaces that the native call did nothing,
+            // so the FE knows to fall through to its own clearing flow.
+            Ok(false)
+        }
+    }
+}
+
+#[cfg(all(test, not(target_os = "android")))]
+mod windows_removal_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[derive(Default)]
+    struct FakeCredentialStore {
+        entries: BTreeMap<(String, String), Vec<u8>>,
+        deletions: Vec<(String, String)>,
+        fail_delete: bool,
+    }
+
+    impl FakeCredentialStore {
+        fn delete(&mut self, service: &str, account: &str) -> Result<(), String> {
+            let key = (service.to_owned(), account.to_owned());
+            self.deletions.push(key.clone());
+            if self.fail_delete {
+                return Err("synthetic credential-store failure".into());
+            }
+            self.entries.remove(&key);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn migration_removes_only_the_legacy_entry_and_preserves_password_access() {
+        let directory = tempfile::tempdir().unwrap();
+        let password = "a".repeat(64);
+        let (mut vault, dek) = crate::vault_engine::create_vault(&password).unwrap();
+        crate::vault_engine::write_canonical_vault(directory.path(), &mut vault, &dek).unwrap();
+        let vault_before = fs::read(directory.path().join(VAULT_FILE)).unwrap();
+        fs::write(directory.path().join(BIO_MARKER_FILE), b"1").unwrap();
+        fs::write(directory.path().join(LICENSE_FILE), b"synthetic license").unwrap();
+        let legacy = (BIO_SERVICE.to_owned(), "synthetic-user".to_owned());
+        let unrelated = ("Unrelated_Service".to_owned(), "synthetic-user".to_owned());
+        let other_account = (BIO_SERVICE.to_owned(), "other-user".to_owned());
+        let mut store = FakeCredentialStore::default();
+        for key in [&legacy, &unrelated, &other_account] {
+            store
+                .entries
+                .insert(key.clone(), b"synthetic-only".to_vec());
+        }
+
+        remove_legacy_windows_bio_with(directory.path(), "synthetic-user", |service, account| {
+            store.delete(service, account)
+        })
+        .unwrap();
+
+        assert_eq!(store.deletions, vec![legacy.clone()]);
+        assert!(!store.entries.contains_key(&legacy));
+        assert!(store.entries.contains_key(&unrelated));
+        assert!(store.entries.contains_key(&other_account));
+        assert!(!directory.path().join(BIO_MARKER_FILE).exists());
+        assert_eq!(
+            fs::read(directory.path().join(VAULT_FILE)).unwrap(),
+            vault_before
+        );
+        assert_eq!(
+            fs::read(directory.path().join(LICENSE_FILE)).unwrap(),
+            b"synthetic license"
+        );
+        let (_, reopened_dek) =
+            crate::vault_engine::open_current_vault(directory.path(), &password).unwrap();
+        assert_eq!(&*reopened_dek, &*dek);
+    }
+
+    #[test]
+    fn cleanup_is_idempotent_with_a_missing_entry_and_marker() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = FakeCredentialStore::default();
+        for _ in 0..2 {
+            remove_legacy_windows_bio_with(
+                directory.path(),
+                "synthetic-user",
+                |service, account| store.delete(service, account),
+            )
+            .unwrap();
+        }
+        assert_eq!(store.deletions.len(), 2);
+        assert!(store.entries.is_empty());
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn credential_cleanup_failure_keeps_marker_and_is_retryable() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join(BIO_MARKER_FILE);
+        fs::write(&marker, b"1").unwrap();
+        let legacy = (BIO_SERVICE.to_owned(), "synthetic-user".to_owned());
+        let mut store = FakeCredentialStore {
+            fail_delete: true,
+            ..Default::default()
+        };
+        store
+            .entries
+            .insert(legacy.clone(), b"synthetic-only".to_vec());
+        assert!(remove_legacy_windows_bio_with(
+            directory.path(),
+            "synthetic-user",
+            |service, account| store.delete(service, account)
+        )
+        .is_err());
+        assert!(marker.exists());
+        assert!(store.entries.contains_key(&legacy));
+
+        store.fail_delete = false;
+        remove_legacy_windows_bio_with(directory.path(), "synthetic-user", |service, account| {
+            store.delete(service, account)
+        })
+        .unwrap();
+        assert!(!marker.exists());
+        assert!(store.entries.is_empty());
+    }
+
+    #[test]
+    fn marker_cleanup_failure_is_reported_without_deleting_a_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join(BIO_MARKER_FILE);
+        fs::create_dir(&marker).unwrap();
+        fs::write(marker.join("preserve"), b"synthetic unrelated file").unwrap();
+        let mut store = FakeCredentialStore::default();
+        assert!(remove_legacy_windows_bio_with(
+            directory.path(),
+            "synthetic-user",
+            |service, account| store.delete(service, account)
+        )
+        .is_err());
+        assert_eq!(
+            fs::read(marker.join("preserve")).unwrap(),
+            b"synthetic unrelated file"
+        );
+        assert_eq!(store.deletions.len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn marker_symlink_is_removed_without_touching_its_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("unrelated-file");
+        fs::write(&target, b"preserve this file").unwrap();
+        std::os::unix::fs::symlink(&target, directory.path().join(BIO_MARKER_FILE)).unwrap();
+        remove_legacy_windows_bio_with(directory.path(), "synthetic-user", |_, _| Ok(())).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"preserve this file");
+        assert!(fs::symlink_metadata(directory.path().join(BIO_MARKER_FILE)).is_err());
+    }
+
+    #[test]
+    fn removed_windows_backend_never_advertises_hardware_or_availability() {
+        for cleanup_failed in [false, true] {
+            let status = windows_bio_status(cleanup_failed);
+            assert!(!status.available);
+            assert_eq!(status.device_ready, None);
+            assert_eq!(status.app_authorized, None);
+            assert_eq!(
+                status.reason,
+                if cleanup_failed {
+                    "windows_hello_cleanup_failed"
+                } else {
+                    "windows_hello_removed"
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn removed_windows_operations_reject_enrollment_and_login() {
+        assert!(windows_bio_removed::<bool>()
+            .unwrap_err()
+            .contains("Master Password"));
+        assert!(windows_bio_removed::<Value>()
+            .unwrap_err()
+            .contains("Master Password"));
+    }
+}
+
+#[cfg(all(test, not(target_os = "android")))]
+mod enrollment_authorization_tests {
+    use super::*;
+
+    #[test]
+    fn enrollment_requires_unlocked_matching_vault_password() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = AppState::new(directory.path().into(), directory.path().into());
+        let password = "a".repeat(64); // Synthetic frontend prehash, never a real key.
+        assert!(authorize_bio_enrollment(&state, &password).is_err());
+        let (mut vault, dek) = crate::vault_engine::create_vault(&password).unwrap();
+        crate::vault_engine::write_canonical_vault(directory.path(), &mut vault, &dek).unwrap();
+        *state.vault_dek.lock().unwrap() = Some(crate::state::SecureKey::new(dek));
+        assert!(authorize_bio_enrollment(&state, &password).is_ok());
+        assert!(authorize_bio_enrollment(&state, &"b".repeat(64)).is_err());
+        assert!(authorize_bio_enrollment(&state, "not-a-prehash").is_err());
+        *state.vault_dek.lock().unwrap() =
+            Some(crate::state::SecureKey::new(Zeroizing::new(vec![0x19; 32])));
+        assert!(authorize_bio_enrollment(&state, &password).is_err());
+        state.lock_vault();
+        assert!(authorize_bio_enrollment(&state, &password).is_err());
+        assert!(!directory.path().join(BIO_MARKER_FILE).exists());
+        // This test calls no keychain functions and never resolves app folders.
     }
 }

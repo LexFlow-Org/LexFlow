@@ -73,6 +73,9 @@ jobs:
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
+      - name: Native release policy regression tests
+        run: python3 scripts/test-native-hardening.py
+
       - name: Fetch typst sidecar (Linux)
         run: |
           set -e
@@ -188,9 +191,9 @@ jobs:
 
       - name: Dependency Audit -- cargo audit + npm audit
         run: |
-          cargo install cargo-audit --quiet 2>/dev/null || true
-          cargo audit --file src-tauri/Cargo.lock 2>&1 || echo "cargo audit: vulnerabilities found (non-blocking)"
-          cd client && npm audit --audit-level=high 2>&1 || echo "npm audit: vulnerabilities found (non-blocking)"
+          cargo install cargo-audit --locked
+          cargo audit --file src-tauri/Cargo.lock
+          cd client && npm audit --omit=dev --audit-level=high
 
       - name: License Check -- cargo-deny
         uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
@@ -216,19 +219,30 @@ jobs:
           gh release create "$TAG" --draft --title "LexFlow $TAG" --notes-file /tmp/release-notes.md || echo "Release already exists."
 
   # ---------------------------------------------------------
-  # 2. MACOS UNIVERSAL BUILD
+  # 2. MACOS -- SEPARATE APPLE SILICON AND INTEL DMGS
   # ---------------------------------------------------------
   build-macos:
-    name: "macOS: Universal DMG"
+    name: "macOS: ${{ matrix.arch }} DMG"
     needs: pre-flight
     runs-on: macos-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: Apple-Silicon
+          - target: x86_64-apple-darwin
+            arch: Intel
     permissions:
       contents: write
       id-token: write
       attestations: write
     env:
       RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
+      MACOS_TARGET: ${{ matrix.target }}
+      MACOS_ARCH: ${{ matrix.arch }}
+      MACOS_SBOM: lexflow-macos-${{ matrix.arch }}-sbom.json
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
@@ -248,7 +262,7 @@ jobs:
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
-          targets: x86_64-apple-darwin,aarch64-apple-darwin
+          targets: ${{ matrix.target }}
 
       - name: Remove local cargo config (CI uses default linker)
         run: rm -f src-tauri/.cargo/config.toml
@@ -257,101 +271,63 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: ./src-tauri -> target
-          shared-key: macos-universal
+          shared-key: macos-${{ matrix.target }}
 
       - name: Install dependencies
         run: npm ci && cd client && npm ci --legacy-peer-deps
 
-      - name: Fetch typst sidecars (macOS universal)
-        run: |
-          set -e
-          mkdir -p src-tauri/binaries
-          for ARCH in aarch64 x86_64; do
-            ASSET="typst-${ARCH}-apple-darwin.tar.xz"
-            TAURI_NAME="typst-${ARCH}-apple-darwin"
-            OUT="src-tauri/binaries/$TAURI_NAME"
-            if [ -f "$OUT" ]; then
-              echo "$TAURI_NAME already exists"; continue
-            fi
-            URL="https://github.com/typst/typst/releases/latest/download/$ASSET"
-            echo "Downloading $URL"
-            WORKDIR=$(mktemp -d)
-            curl -fSL -o "$WORKDIR/$ASSET" "$URL"
-            tar -xJf "$WORKDIR/$ASSET" -C "$WORKDIR"
-            EXTRACTED="$WORKDIR/typst-${ARCH}-apple-darwin/typst"
-            if [ ! -f "$EXTRACTED" ]; then
-              echo "ERROR: typst not found at expected path $EXTRACTED"
-              echo "Archive contents:"; tar -tJf "$WORKDIR/$ASSET"
-              exit 1
-            fi
-            cp "$EXTRACTED" "$OUT"
-            chmod +x "$OUT"
-            strip -x "$OUT" 2>/dev/null || true
-            echo "$TAURI_NAME ready ($(wc -c < "$OUT") bytes)"
-            rm -rf "$WORKDIR"
-          done
-          # Create universal binary via lipo for universal-apple-darwin target
-          UNIVERSAL="src-tauri/binaries/typst-universal-apple-darwin"
-          lipo -create \
-            src-tauri/binaries/typst-aarch64-apple-darwin \
-            src-tauri/binaries/typst-x86_64-apple-darwin \
-            -output "$UNIVERSAL"
-          chmod +x "$UNIVERSAL"
-          strip -x "$UNIVERSAL" 2>/dev/null || true
-          echo "Universal sidecar ready: $UNIVERSAL ($(wc -c < "$UNIVERSAL") bytes)"
+      - name: Fetch verified typst sidecars (both macOS architectures)
+        run: ./scripts/fetch-macos-typst.sh
 
-      - name: Fetch qpdf sidecars (macOS universal)
-        run: |
-          set -e
-          brew install qpdf
-          QPDF_BIN=$(which qpdf)
-          echo "qpdf installed at: $QPDF_BIN"
-          # Copy for both architectures
-          cp "$QPDF_BIN" src-tauri/binaries/qpdf-aarch64-apple-darwin
-          cp "$QPDF_BIN" src-tauri/binaries/qpdf-x86_64-apple-darwin
-          chmod +x src-tauri/binaries/qpdf-aarch64-apple-darwin src-tauri/binaries/qpdf-x86_64-apple-darwin
-          # Create universal binary via lipo
-          lipo -create \
-            src-tauri/binaries/qpdf-aarch64-apple-darwin \
-            src-tauri/binaries/qpdf-x86_64-apple-darwin \
-            -output src-tauri/binaries/qpdf-universal-apple-darwin 2>/dev/null || \
-            cp src-tauri/binaries/qpdf-aarch64-apple-darwin src-tauri/binaries/qpdf-universal-apple-darwin
-          chmod +x src-tauri/binaries/qpdf-universal-apple-darwin
-          echo "qpdf universal sidecar ready"
+      - name: Build verified qpdf sidecars (both macOS architectures)
+        run: ./scripts/build-macos-qpdf.sh --jobs 4
 
-      - name: Build macOS DMG
-        uses: tauri-apps/tauri-action@6a45448f17a006facb105cc5257b3edbc353038a
+      - name: Verify macOS sidecar architectures and dependencies
+        run: python3 scripts/verify-macos-sidecars.py
+
+      - name: Build macOS DMG without uploading unfinished assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseDraft: true
-          prerelease: false
-          args: --target universal-apple-darwin --bundles dmg
+        run: ./node_modules/.bin/tauri build --target "$MACOS_TARGET" --bundles dmg -- --locked
 
-      - name: Inject rounded icon into DMG
+      - name: Add volume icon and stage the architecture-specific DMG
         run: |
-          DMG_FILE=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
-          if [ -n "$DMG_FILE" ]; then
-            hdiutil convert "$DMG_FILE" -format UDRW -o /tmp/lexflow-rw.dmg
-            hdiutil attach /tmp/lexflow-rw.dmg -mountpoint /tmp/lexflow-mount
-            cp src-tauri/icons/dmg-icon.icns /tmp/lexflow-mount/.VolumeIcon.icns
-            SetFile -a C /tmp/lexflow-mount
-            hdiutil detach /tmp/lexflow-mount
-            rm "$DMG_FILE"
-            hdiutil convert /tmp/lexflow-rw.dmg -format UDZO -o "$DMG_FILE"
-            rm /tmp/lexflow-rw.dmg
-            echo "✅ DMG volume icon injected (rounded)"
+          set -euo pipefail
+          shopt -s nullglob
+          DMG_FILES=("src-tauri/target/$MACOS_TARGET/release/bundle/dmg/"*.dmg)
+          if [ "${#DMG_FILES[@]}" -ne 1 ]; then
+            echo "Expected exactly one DMG for $MACOS_TARGET; found ${#DMG_FILES[@]}" >&2
+            exit 1
           fi
+          WORK_DIR=$(mktemp -d)
+          MOUNT_POINT="$WORK_DIR/mount"
+          MOUNTED=0
+          cleanup() {
+            if [ "$MOUNTED" -eq 1 ]; then
+              hdiutil detach "$MOUNT_POINT" || return
+            fi
+            rm -rf "$WORK_DIR"
+          }
+          trap cleanup EXIT
+          mkdir -p "$MOUNT_POINT" staging
+          hdiutil convert "${DMG_FILES[0]}" -format UDRW -o "$WORK_DIR/writable.dmg"
+          hdiutil attach "$WORK_DIR/writable.dmg" -nobrowse -mountpoint "$MOUNT_POINT"
+          MOUNTED=1
+          cp src-tauri/icons/dmg-icon.icns "$MOUNT_POINT/.VolumeIcon.icns"
+          SetFile -a C "$MOUNT_POINT"
+          hdiutil detach "$MOUNT_POINT"
+          MOUNTED=0
+          DMG_NAME="LexFlow-$RELEASE_TAG-macos-$MACOS_ARCH.dmg"
+          hdiutil convert "$WORK_DIR/writable.dmg" -format UDZO -o "staging/$DMG_NAME"
+          hdiutil verify "staging/$DMG_NAME"
 
       - name: Generate SBOM
         uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11
         with:
           path: ./
           format: cyclonedx-json
-          output-file: lexflow-macos-sbom.json
+          output-file: ${{ env.MACOS_SBOM }}
           upload-artifact: false
           upload-release-assets: false
 
@@ -359,25 +335,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$RELEASE_TAG" lexflow-macos-sbom.json --clobber
-          DMG_FILE=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
-          if [ -n "$DMG_FILE" ]; then
-            gh release upload "$RELEASE_TAG" "$DMG_FILE" --clobber
-            shasum -a 256 "$DMG_FILE" > lexflow-macos.dmg.sha256
-            gh release upload "$RELEASE_TAG" lexflow-macos.dmg.sha256 --clobber
-          fi
+          set -euo pipefail
+          DMG_NAME="LexFlow-$RELEASE_TAG-macos-$MACOS_ARCH.dmg"
+          test -f "staging/$DMG_NAME"
+          (cd staging && shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256")
+          gh release upload "$RELEASE_TAG" "$MACOS_SBOM" "staging/$DMG_NAME" "staging/$DMG_NAME.sha256" --clobber
 
       - name: Attest Build Provenance (SLSA)
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         continue-on-error: true
         with:
-          subject-path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          subject-path: staging/LexFlow-*-macos-${{ matrix.arch }}.dmg
 
   # ---------------------------------------------------------
-  # 3a. WINDOWS MSI LITE -- Standard (no bundled WebView2)
+  # 3. WINDOWS NSIS -- Fixed WebView2 with AppContainer runtime ACLs
   # ---------------------------------------------------------
-  build-windows-lite:
-    name: "Windows: MSI Lite (no WebView2)"
+  build-windows:
+    name: "Windows: NSIS Fixed WebView2"
     needs: pre-flight
     runs-on: windows-latest
     timeout-minutes: 45
@@ -412,70 +386,36 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: ./src-tauri -> target
-          shared-key: windows-lite
+          shared-key: windows-nsis-fixed
 
-      - name: Install WiX 4
-        shell: powershell
-        run: dotnet tool install --global wix --version 4.0.5; wix extension add WixToolset.UI.wixext/4.0.5 -g
-
-      - name: Install dependencies
-        run: npm ci && cd client && npm ci --legacy-peer-deps
-
-      - name: Remove local cargo config (CI uses default linker)
-        shell: powershell
-        run: Remove-Item -Force -ErrorAction SilentlyContinue src-tauri/.cargo/config.toml
-
-      - name: Fetch typst sidecar (Windows)
+      - name: Build Windows NSIS with pinned sidecars and fixed WebView2
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path "src-tauri/binaries" | Out-Null
-          $out = "src-tauri/binaries/typst-x86_64-pc-windows-msvc.exe"
-          if (Test-Path $out) { Write-Host "Typst sidecar already exists"; exit 0 }
-          $url = "https://github.com/typst/typst/releases/latest/download/typst-x86_64-pc-windows-msvc.zip"
-          Write-Host "Downloading $url"
-          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\typst-windows.zip"
-          Expand-Archive -Path "$env:TEMP\typst-windows.zip" -DestinationPath "$env:TEMP\typst-win" -Force
-          $exe = Get-ChildItem -Recurse -Filter "typst.exe" -Path "$env:TEMP\typst-win" | Select-Object -First 1
-          if (-not $exe) { Write-Error "typst.exe not found in archive"; exit 1 }
-          Copy-Item $exe.FullName $out
-          Write-Host "Typst sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
+          $ErrorActionPreference = 'Stop'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $vs) { throw 'Visual Studio C++ Build Tools not found.' }
+          & (Join-Path $vs 'Common7/Tools/Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          & ./scripts/build-windows.ps1 -Bundle nsis
 
-      - name: Fetch qpdf sidecar (Windows)
+      - name: Stage NSIS installer
         shell: powershell
         run: |
-          $out = "src-tauri/binaries/qpdf-x86_64-pc-windows-msvc.exe"
-          if (Test-Path $out) { Write-Host "qpdf sidecar already exists"; exit 0 }
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/qpdf/qpdf/releases/latest"
-          $version = $release.tag_name -replace '^v', ''
-          $url = "https://github.com/qpdf/qpdf/releases/download/v${version}/qpdf-${version}-msvc64.zip"
-          Write-Host "Downloading qpdf $version from $url"
-          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\qpdf-windows.zip"
-          Expand-Archive -Path "$env:TEMP\qpdf-windows.zip" -DestinationPath "$env:TEMP\qpdf-win" -Force
-          $exe = Get-ChildItem -Recurse -Filter "qpdf.exe" -Path "$env:TEMP\qpdf-win" | Select-Object -First 1
-          if (-not $exe) { Write-Error "qpdf.exe not found in archive"; exit 1 }
-          Copy-Item $exe.FullName $out
-          Write-Host "qpdf sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
-
-      - name: Build Windows MSI (Lite)
-        shell: powershell
-        run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi
-
-      - name: Stage Lite MSI
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path "staging"
-          $msi = Get-ChildItem -Recurse -Filter "*.msi" -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" | Select-Object -First 1
-          Copy-Item $msi.FullName "staging/LexFlow-$env:RELEASE_TAG-windows-x64.msi"
-          Write-Host "Lite MSI staged: LexFlow-$env:RELEASE_TAG-windows-x64.msi ($([math]::Round($msi.Length / 1MB, 1)) MB)"
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'staging' | Out-Null
+          $installer = Get-ChildItem -Filter '*-setup.exe' -Path 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis' | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS installer not found after build.' }
+          Copy-Item $installer.FullName "staging/LexFlow-$env:RELEASE_TAG-windows-x64-setup.exe"
+          Write-Host "Fixed-runtime NSIS staged: $($installer.Length) bytes"
 
       - name: Generate SBOM & SHA256 Checksums & Upload
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx @cyclonedx/cyclonedx-npm --output-format JSON --output-file lexflow-windows-lite-sbom.json
-          gh release upload "$env:RELEASE_TAG" lexflow-windows-lite-sbom.json --clobber
-          Get-ChildItem -Filter "LexFlow-*.msi" -Path "staging" | ForEach-Object {
+          npx @cyclonedx/cyclonedx-npm --output-format JSON --output-file lexflow-windows-sbom.json
+          gh release upload "$env:RELEASE_TAG" lexflow-windows-sbom.json --clobber
+          Get-ChildItem -Filter "LexFlow-*-setup.exe" -Path "staging" | ForEach-Object {
               $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
               "$hash  $($_.Name)" | Out-File "$($_.FullName).sha256" -Encoding ASCII
               gh release upload "$env:RELEASE_TAG" $_.FullName --clobber
@@ -486,134 +426,7 @@ jobs:
         continue-on-error: true
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-path: staging/LexFlow-*.msi
-
-  # ---------------------------------------------------------
-  # 3b. WINDOWS MSI -- Offline WebView2 (bundled installer)
-  # ---------------------------------------------------------
-  build-windows-offline:
-    name: "Windows: MSI Offline WebView2"
-    needs: pre-flight
-    runs-on: windows-latest
-    timeout-minutes: 45
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
-    env:
-      RELEASE_TAG: ${{ needs.pre-flight.outputs.tag }}
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
-        with:
-          egress-policy: audit
-
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: "**/package-lock.json"
-
-      - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          workspaces: ./src-tauri -> target
-          shared-key: windows-offline
-
-      - name: Install WiX 4
-        shell: powershell
-        run: dotnet tool install --global wix --version 4.0.5; wix extension add WixToolset.UI.wixext/4.0.5 -g
-
-      - name: Install dependencies
-        run: npm ci && cd client && npm ci --legacy-peer-deps
-
-      - name: Remove local cargo config (CI uses default linker)
-        shell: powershell
-        run: Remove-Item -Force -ErrorAction SilentlyContinue src-tauri/.cargo/config.toml
-
-      - name: Fetch typst sidecar (Windows)
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path "src-tauri/binaries" | Out-Null
-          $out = "src-tauri/binaries/typst-x86_64-pc-windows-msvc.exe"
-          if (Test-Path $out) { Write-Host "Typst sidecar already exists"; exit 0 }
-          $url = "https://github.com/typst/typst/releases/latest/download/typst-x86_64-pc-windows-msvc.zip"
-          Write-Host "Downloading $url"
-          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\typst-windows.zip"
-          Expand-Archive -Path "$env:TEMP\typst-windows.zip" -DestinationPath "$env:TEMP\typst-win" -Force
-          $exe = Get-ChildItem -Recurse -Filter "typst.exe" -Path "$env:TEMP\typst-win" | Select-Object -First 1
-          if (-not $exe) { Write-Error "typst.exe not found in archive"; exit 1 }
-          Copy-Item $exe.FullName $out
-          Write-Host "Typst sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
-
-      - name: Fetch qpdf sidecar (Windows offline)
-        shell: powershell
-        run: |
-          $out = "src-tauri/binaries/qpdf-x86_64-pc-windows-msvc.exe"
-          if (Test-Path $out) { Write-Host "qpdf sidecar already exists"; exit 0 }
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/qpdf/qpdf/releases/latest"
-          $version = $release.tag_name -replace '^v', ''
-          $url = "https://github.com/qpdf/qpdf/releases/download/v${version}/qpdf-${version}-msvc64.zip"
-          Write-Host "Downloading qpdf $version from $url"
-          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\qpdf-windows.zip"
-          Expand-Archive -Path "$env:TEMP\qpdf-windows.zip" -DestinationPath "$env:TEMP\qpdf-win" -Force
-          $exe = Get-ChildItem -Recurse -Filter "qpdf.exe" -Path "$env:TEMP\qpdf-win" | Select-Object -First 1
-          if (-not $exe) { Write-Error "qpdf.exe not found in archive"; exit 1 }
-          Copy-Item $exe.FullName $out
-          Write-Host "qpdf sidecar ready: $out ($([math]::Round((Get-Item $out).Length / 1MB, 1)) MB)"
-
-      - name: Write WebView2 offline config
-        shell: powershell
-        run: |
-          $j = '{"bundle":{"windows":{"webviewInstallMode":{"type":"offlineInstaller","silent":true}}}}'
-          $u = New-Object System.Text.UTF8Encoding $false
-          [System.IO.File]::WriteAllText("$PWD\src-tauri\tauri.webview2.conf.json", $j, $u)
-
-      - name: Build Windows MSI (Offline WebView2)
-        shell: powershell
-        run: npx tauri build --target x86_64-pc-windows-msvc --bundles msi --config src-tauri/tauri.webview2.conf.json
-
-      - name: Stage Offline MSI
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path "staging"
-          $msi = Get-ChildItem -Recurse -Filter "*.msi" -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" | Select-Object -First 1
-          if ($msi) {
-            Copy-Item $msi.FullName "staging/LexFlow-$env:RELEASE_TAG-windows-x64-offline-webview2.msi"
-            Write-Host "Offline MSI staged: LexFlow-$env:RELEASE_TAG-windows-x64-offline-webview2.msi ($([math]::Round($msi.Length / 1MB, 1)) MB)"
-          } else {
-            Write-Error "No MSI found after offline WebView2 build!"
-            exit 1
-          }
-
-      - name: Generate SBOM & SHA256 Checksums & Upload
-        shell: powershell
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npx @cyclonedx/cyclonedx-npm --output-format JSON --output-file lexflow-windows-offline-sbom.json
-          gh release upload "$env:RELEASE_TAG" lexflow-windows-offline-sbom.json --clobber
-          Get-ChildItem -Filter "LexFlow-*.msi" -Path "staging" | ForEach-Object {
-              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-              "$hash  $($_.Name)" | Out-File "$($_.FullName).sha256" -Encoding ASCII
-              gh release upload "$env:RELEASE_TAG" $_.FullName --clobber
-              gh release upload "$env:RELEASE_TAG" "$($_.FullName).sha256" --clobber
-          }
-
-      - name: Attest Build Provenance (SLSA)
-        continue-on-error: true
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-path: staging/LexFlow-*.msi
+          subject-path: staging/LexFlow-*-setup.exe
 
   # ---------------------------------------------------------
   # 4. ANDROID APK + AAB (Secure RAM-Disk Signing)
@@ -684,6 +497,7 @@ jobs:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           npx tauri android init
+          python3 scripts/harden-android.py
           # Copy custom Android icons + adaptive icon XML into the generated project.
           ANDROID_RES="src-tauri/gen/android/app/src/main/res"
           for dir in src-tauri/icons/android/mipmap-mdpi \
@@ -715,6 +529,7 @@ jobs:
           APK=$(find src-tauri/gen/android -name "*universal-release*.apk" | head -1)
           echo "Found APK: $APK"
           if [ -z "$APK" ]; then echo "ERROR: No APK found!"; find src-tauri/gen/android -name "*.apk" -o -name "*.aab" | sort; exit 1; fi
+          python3 scripts/harden-android.py --verify-apk "$APK" --aapt "$BT/aapt"
           "$BT/zipalign" -f -p 4 "$APK" aligned.apk
           "$BT/apksigner" sign \
             --ks /dev/shm/release.keystore \
@@ -723,10 +538,18 @@ jobs:
             --key-pass "env:ANDROID_KEY_PASSWORD" \
             --out "LexFlow-${RELEASE_TAG}-android.apk" \
             aligned.apk
+          "$BT/apksigner" verify "LexFlow-${RELEASE_TAG}-android.apk"
           AAB=$(find src-tauri/gen/android -name "*release.aab" | head -1)
           echo "Found AAB: $AAB"
           if [ -z "$AAB" ]; then echo "ERROR: No AAB found!"; exit 1; fi
-          cp "$AAB" "LexFlow-${RELEASE_TAG}-android.aab"
+          # An AAB is a JAR/ZIP container: apksigner signs APKs only.
+          jarsigner \
+            -keystore /dev/shm/release.keystore \
+            -storepass:env ANDROID_STORE_PASSWORD \
+            -keypass:env ANDROID_KEY_PASSWORD \
+            -signedjar "LexFlow-${RELEASE_TAG}-android.aab" \
+            "$AAB" "$ANDROID_KEY_ALIAS"
+          jarsigner -verify "LexFlow-${RELEASE_TAG}-android.aab"
           rm -f aligned.apk
           echo "Signing complete. Trap EXIT will shred keystore automatically."
 
@@ -751,11 +574,11 @@ jobs:
   # ---------------------------------------------------------
   publish-release:
     name: "Publish Release"
-    needs: [pre-flight, build-macos, build-windows-lite, build-windows-offline, build-android]
+    needs: [pre-flight, build-macos, build-windows, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: always() && needs.build-macos.result == 'success' && needs.build-windows-lite.result == 'success' && needs.build-windows-offline.result == 'success' && needs.build-android.result == 'success'
+    if: always() && needs.build-macos.result == 'success' && needs.build-windows.result == 'success' && needs.build-android.result == 'success'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -784,11 +607,11 @@ jobs:
   # ---------------------------------------------------------
   rollback:
     name: "Rollback: Cleanup Failed Release"
-    needs: [pre-flight, build-macos, build-windows-lite, build-windows-offline, build-android]
+    needs: [pre-flight, build-macos, build-windows, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: always() && (needs.build-macos.result == 'failure' || needs.build-windows-lite.result == 'failure' || needs.build-windows-offline.result == 'failure' || needs.build-android.result == 'failure')
+    if: always() && (needs.build-macos.result == 'failure' || needs.build-windows.result == 'failure' || needs.build-android.result == 'failure')
     steps:
       - name: Delete Draft Release
         env:

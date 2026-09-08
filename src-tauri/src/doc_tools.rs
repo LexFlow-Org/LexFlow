@@ -2,19 +2,13 @@
 //  DOC TOOLS — PDF manipulation for legal professionals
 // ═══════════════════════════════════════════════════════════
 //
-// TODO(audit:LOW-F10): the temp files used by add_watermark / add_page_numbers
-// / redact_pdf / images_to_pdf are still created via `std::fs::write` on a
-// `rand::random::<u64>()` path. That has a tiny TOCTOU window where a
-// malicious local user could symlink-swap the path before write. The
-// password-handling sites in secure_pdf / unsecure_pdf / redact_pdf already
-// use `tempfile::NamedTempFile`. Migrate the remaining temp-file uses to
-// `tempfile::NamedTempFile::new_in(std::env::temp_dir())` and persist via
-// `.path()` / `.persist_noclobber()` to fully close that gap.
-
 use lopdf::{Document, Object, ObjectId};
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+
+const PDF_MAX_INPUT_BYTES: u64 = 100 * 1024 * 1024;
+const PDF_MAX_BATCH_BYTES: u64 = 250 * 1024 * 1024;
 
 // ─── Path validation ───────────────────────────────────────
 
@@ -47,16 +41,19 @@ fn validate_input_path(path: &str) -> Result<(), String> {
     if !p.is_absolute() {
         return Err("Percorso relativo non consentito".to_string());
     }
+    let metadata = std::fs::symlink_metadata(p)
+        .map_err(|_| "File non valido o non accessibile.".to_string())?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err("Seleziona un file regolare, senza collegamenti simbolici.".into());
+    }
+    if metadata.len() > PDF_MAX_INPUT_BYTES {
+        return Err("File troppo grande (massimo 100 MiB).".into());
+    }
     let canonical = p
         .canonicalize()
         .map_err(|_| format!("Percorso non valido o non accessibile: {}", path))?;
     let prefixes = allowed_prefixes();
     if !prefixes.iter().any(|pfx| canonical.starts_with(pfx)) {
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[LexFlow] SECURITY: doc_tools refused input path outside allowed dirs: {:?}",
-            canonical
-        );
         return Err(
             "Percorso non consentito: il file deve trovarsi nelle directory dell'utente."
                 .to_string(),
@@ -91,6 +88,15 @@ fn validate_output_path(path: &str) -> Result<(), String> {
                 .to_string(),
         );
     }
+    if std::fs::symlink_metadata(p).is_ok() {
+        return Err("La destinazione esiste già. Scegli un nuovo nome.".into());
+    }
+    if p.extension()
+        .and_then(|ext| ext.to_str())
+        .is_none_or(|ext| !ext.eq_ignore_ascii_case("pdf"))
+    {
+        return Err("La destinazione deve avere estensione .pdf.".into());
+    }
     let parent = p
         .parent()
         .ok_or_else(|| "Percorso senza directory padre".to_string())?;
@@ -99,11 +105,6 @@ fn validate_output_path(path: &str) -> Result<(), String> {
         .map_err(|_| "Directory di destinazione non valida o non accessibile".to_string())?;
     let prefixes = allowed_prefixes();
     if !prefixes.iter().any(|pfx| canonical_parent.starts_with(pfx)) {
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[LexFlow] SECURITY: doc_tools refused output path outside allowed dirs: {:?}",
-            path
-        );
         return Err(
             "Percorso non consentito: la destinazione deve essere all'interno delle directory dell'utente."
                 .to_string(),
@@ -133,11 +134,6 @@ fn validate_output_dir(path: &str) -> Result<(), String> {
     };
     let prefixes = allowed_prefixes();
     if !prefixes.iter().any(|pfx| canonical.starts_with(pfx)) {
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[LexFlow] SECURITY: doc_tools refused output dir outside allowed dirs: {:?}",
-            path
-        );
         return Err(
             "Percorso non consentito: la destinazione deve essere all'interno delle directory dell'utente."
                 .to_string(),
@@ -154,20 +150,7 @@ fn validate_output_dir(path: &str) -> Result<(), String> {
 // Markup characters like `#`, `[`, `]`, `$` are safe inside a string literal
 // and are passed through verbatim — but we drop NUL.
 fn escape_typst_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 8);
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            // Drop other control characters (U+0000..U+001F, U+007F).
-            c if (c as u32) < 0x20 || c == '\u{007F}' => {}
-            c => out.push(c),
-        }
-    }
-    out
+    crate::hardening::typst_string(s)
 }
 
 // ─── qpdf stderr sanitization (F7) ─────────────────────────
@@ -207,6 +190,13 @@ fn ok_result(output_path: &str, message: &str) -> DocToolResult {
     }
 }
 
+fn publish_pdf_result(staged: &Path, destination: &str, message: &str) -> DocToolResult {
+    match crate::hardening::publish_new_file(staged, Path::new(destination)) {
+        Ok(()) => ok_result(destination, message),
+        Err(error) => err_result(&error),
+    }
+}
+
 fn err_result(message: &str) -> DocToolResult {
     DocToolResult {
         success: false,
@@ -234,10 +224,75 @@ fn extract_info_string(doc: &Document, key: &[u8]) -> Option<String> {
     let dict = info_obj.as_dict().ok()?;
     let val = dict.get(key).ok()?;
     // Try various lopdf Object string accessors
-    val.as_name_str()
-        .map(|s| s.to_string())
-        .or_else(|_| val.as_string().map(|s| s.into_owned()))
-        .ok()
+    lopdf::decode_text_string(val).ok().or_else(|| {
+        val.as_name()
+            .ok()
+            .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+    })
+}
+
+/// Read through one bounded regular-file descriptor before invoking the parser.
+fn load_pdf(path: impl AsRef<Path>) -> Result<Document, String> {
+    let bytes = zeroize::Zeroizing::new(crate::io::safe_bounded_read(
+        path.as_ref(),
+        PDF_MAX_INPUT_BYTES,
+    )?);
+    Document::load_mem(&bytes).map_err(|_| "PDF danneggiato o non supportato.".into())
+}
+
+/// Save only a complete result, with private permissions and no overwrite.
+fn save_pdf(doc: &mut Document, destination: impl AsRef<Path>) -> Result<(), String> {
+    let work = crate::hardening::DocumentWorkspace::new()?;
+    let staged = work.join("result.pdf");
+    doc.save(&staged)
+        .map_err(|_| "Impossibile preparare il PDF.".to_string())?;
+    crate::hardening::publish_new_file(&staged, destination.as_ref())
+}
+
+/// Materialize inherited page properties before changing its parent.
+fn inherited_page_attributes(
+    doc: &Document,
+    page_id: ObjectId,
+) -> Result<lopdf::Dictionary, String> {
+    let mut attributes = lopdf::Dictionary::new();
+    let mut current = Some(page_id);
+    let mut visited = BTreeSet::new();
+    while let Some(id) = current {
+        if !visited.insert(id) || visited.len() > 128 {
+            return Err("Gerarchia delle pagine PDF non valida.".into());
+        }
+        let dict = doc
+            .get_dictionary(id)
+            .map_err(|_| "Pagina PDF non valida.")?;
+        for key in [b"Resources".as_slice(), b"MediaBox", b"CropBox", b"Rotate"] {
+            if !attributes.has(key) {
+                if let Ok(value) = dict.get(key) {
+                    attributes.set(key, value.clone());
+                }
+            }
+        }
+        current = dict
+            .get(b"Parent")
+            .ok()
+            .and_then(|value| value.as_reference().ok());
+    }
+    Ok(attributes)
+}
+
+/// Some PDFs put a direct Resources dictionary on an ancestor; materializing
+/// it also makes font decoding independent of parser inheritance shortcuts.
+fn materialize_page_attributes(doc: &mut Document) -> Result<(), String> {
+    for page_id in doc.get_pages().values() {
+        let attributes = inherited_page_attributes(doc, *page_id)?;
+        let page = doc
+            .get_object_mut(*page_id)
+            .and_then(Object::as_dict_mut)
+            .map_err(|_| "Pagina PDF non valida.".to_string())?;
+        for (key, value) in attributes.iter() {
+            page.set(key.as_slice(), value.clone());
+        }
+    }
+    Ok(())
 }
 
 // ─── PDF Info ───────────────────────────────────────────────
@@ -252,14 +307,13 @@ pub struct PdfInfo {
     pub author: Option<String>,
 }
 
-#[tauri::command]
-pub async fn pdf_info(app: tauri::AppHandle, path: String) -> Result<PdfInfo, String> {
+async fn pdf_info_impl(app: tauri::AppHandle, path: String) -> Result<PdfInfo, String> {
     validate_input_path(&path)?;
     let file_size = std::fs::metadata(&path)
         .map(|m| m.len())
         .map_err(|e| format!("Impossibile leggere il file: {}", e))?;
 
-    match Document::load(&path) {
+    match load_pdf(&path) {
         Ok(doc) => {
             let pages = doc.get_pages().len() as u32;
             let encrypted = doc.is_encrypted();
@@ -301,14 +355,7 @@ pub async fn pdf_info(app: tauri::AppHandle, path: String) -> Result<PdfInfo, St
 
 // ─── Merge PDFs ─────────────────────────────────────────────
 
-#[tauri::command]
-pub fn merge_pdfs(input_paths: Vec<String>, output_path: String) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::merge_pdfs] {} files → {}",
-        input_paths.len(),
-        output_path
-    );
+fn merge_pdfs_impl(input_paths: Vec<String>, output_path: String) -> DocToolResult {
     for p in &input_paths {
         if let Err(e) = validate_input_path(p) {
             return err_result(&e);
@@ -325,14 +372,23 @@ pub fn merge_pdfs(input_paths: Vec<String>, output_path: String) -> DocToolResul
         return err_result("Troppi PDF in input (massimo 1000).");
     }
 
-    // Simple approach: start with first doc, append pages from others
-    let mut base = match Document::load(&input_paths[0]) {
+    let total_bytes: u64 = input_paths
+        .iter()
+        .filter_map(|path| std::fs::metadata(path).ok())
+        .map(|metadata| metadata.len())
+        .sum();
+    if total_bytes > PDF_MAX_BATCH_BYTES {
+        return err_result("I PDF selezionati superano il limite complessivo di 250 MiB.");
+    }
+
+    // Keep a single result document, appending each input once.
+    let mut base = match load_pdf(&input_paths[0]) {
         Ok(d) => d,
         Err(e) => return err_result(&format!("Errore nel primo file: {}", e)),
     };
 
     for path in &input_paths[1..] {
-        let other = match Document::load(path) {
+        let other = match load_pdf(path) {
             Ok(d) => d,
             Err(e) => return err_result(&format!("Errore nel file {}: {}", path, e)),
         };
@@ -345,7 +401,7 @@ pub fn merge_pdfs(input_paths: Vec<String>, output_path: String) -> DocToolResul
 
     base.compress();
 
-    match base.save(&output_path) {
+    match save_pdf(&mut base, &output_path) {
         Ok(_) => ok_result(
             &output_path,
             &format!("{} PDF uniti con successo.", input_paths.len()),
@@ -390,9 +446,15 @@ fn merge_document(base: &mut Document, other: &Document) -> Result<(), String> {
 
     for (_, page_id) in other_pages {
         if let Some(&new_page_id) = id_map.get(&page_id) {
-            // Update page's Parent to point to base's Pages
+            let inherited = inherited_page_attributes(other, page_id)?;
+            // Preserve inherited resources/geometry before attaching to base.
             if let Some(obj) = base.objects.get_mut(&new_page_id) {
                 if let Ok(dict) = obj.as_dict_mut() {
+                    for (key, value) in inherited.iter() {
+                        let mut value = value.clone();
+                        remap_references(&mut value, &id_map);
+                        dict.set(key.as_slice(), value);
+                    }
                     dict.set("Parent", Object::Reference(base_pages_id));
                 }
             }
@@ -448,22 +510,25 @@ fn remap_references(obj: &mut Object, map: &BTreeMap<ObjectId, ObjectId>) {
 
 // ─── Split PDF ──────────────────────────────────────────────
 
-#[tauri::command]
-pub fn split_pdf(input_path: String, output_dir: String) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::split_pdf] {} → dir {}", input_path, output_dir);
+fn split_pdf_impl(input_path: String, output_dir: String) -> DocToolResult {
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
     if let Err(e) = validate_output_dir(&output_dir) {
         return err_result(&e);
     }
-    let doc = match Document::load(&input_path) {
+    let mut doc = match load_pdf(&input_path) {
         Ok(d) => d,
         Err(e) => return err_result(&format!("Errore nell'apertura: {}", e)),
     };
 
+    if let Err(error) = materialize_page_attributes(&mut doc) {
+        return err_result(&error);
+    }
     let total = doc.get_pages().len();
+    if total == 0 || total > 500 {
+        return err_result("La divisione richiede da 1 a 500 pagine per operazione.");
+    }
     if let Err(e) = std::fs::create_dir_all(&output_dir) {
         return err_result(&format!("Impossibile creare la cartella: {}", e));
     }
@@ -481,14 +546,19 @@ pub fn split_pdf(input_path: String, output_dir: String) -> DocToolResult {
         let pages_to_remove: Vec<u32> = (1..=total as u32)
             .filter(|&p| p != page_num as u32)
             .collect();
-        for &p in pages_to_remove.iter().rev() {
-            single.delete_pages(&[p]);
-        }
+        single.delete_pages(&pages_to_remove);
+        // Removing a page alone leaves its content and images in the file.
+        single.prune_objects();
+        single.renumber_objects();
 
         let out_path = PathBuf::from(&output_dir).join(format!("{}_pag{}.pdf", stem, page_num));
-        if single.save(&out_path).is_ok() {
-            created += 1;
+        if let Err(error) = save_pdf(&mut single, &out_path) {
+            return err_result(&format!(
+                "Divisione interrotta dopo {} pagine: {}",
+                created, error
+            ));
         }
+        created += 1;
     }
 
     ok_result(
@@ -499,18 +569,12 @@ pub fn split_pdf(input_path: String, output_dir: String) -> DocToolResult {
 
 // ─── Remove Pages ───────────────────────────────────────────
 
-#[tauri::command]
-pub async fn remove_pages(
+async fn remove_pages_impl(
     app: tauri::AppHandle,
     input_path: String,
     output_path: String,
     pages_to_remove: Vec<u32>,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::remove_pages] {} → {}, removing {:?}",
-        input_path, output_path, pages_to_remove
-    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -525,7 +589,7 @@ pub async fn remove_pages(
     }
 
     // Get total pages for validation
-    let total = match Document::load(&input_path) {
+    let total = match load_pdf(&input_path) {
         Ok(d) => d.get_pages().len() as u32,
         Err(e) => return err_result(&format!("Errore nell'apertura: {}", e)),
     };
@@ -536,6 +600,7 @@ pub async fn remove_pages(
             total
         ));
     }
+    let pages_to_remove: BTreeSet<u32> = pages_to_remove.into_iter().collect();
     if pages_to_remove.len() as u32 >= total {
         return err_result("Non puoi rimuovere tutte le pagine.");
     }
@@ -553,6 +618,13 @@ pub async fn remove_pages(
         Err(e) => return err_result(&format!("qpdf non trovato: {}", e)),
     };
 
+    let work = match crate::hardening::DocumentWorkspace::new() {
+        Ok(work) => work,
+        Err(error) => return err_result(&error),
+    };
+    let staged = work.join("result.pdf");
+    let staged_path = staged.to_string_lossy();
+
     let args = vec![
         "--empty",
         "--pages",
@@ -560,13 +632,14 @@ pub async fn remove_pages(
         &page_spec,
         "--",
         "--",
-        output_path.as_str(),
+        staged_path.as_ref(),
     ];
 
     let cmd = sidecar.args(args);
     let removed = pages_to_remove.len();
     match cmd.output().await {
-        Ok(out) if out.status.success() => ok_result(
+        Ok(out) if out.status.success() => publish_pdf_result(
+            &staged,
             &output_path,
             &format!(
                 "{} pagine rimosse. Rimangono {} pagine.",
@@ -576,32 +649,20 @@ pub async fn remove_pages(
         ),
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::remove_pages] qpdf stderr: {}", stderr);
             err_result(map_qpdf_stderr(&stderr))
         }
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools] qpdf exec error: {}", _e);
-            err_result("Errore esecuzione qpdf")
-        }
+        Err(_e) => err_result("Errore esecuzione qpdf"),
     }
 }
 
 // ─── Extract Pages ──────────────────────────────────────────
 
-#[tauri::command]
-pub async fn extract_pages(
+async fn extract_pages_impl(
     app: tauri::AppHandle,
     input_path: String,
     output_path: String,
     pages_to_extract: Vec<u32>,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::extract_pages] {} → {}, extracting {:?}",
-        input_path, output_path, pages_to_extract
-    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -628,6 +689,13 @@ pub async fn extract_pages(
         Err(e) => return err_result(&format!("qpdf non trovato: {}", e)),
     };
 
+    let work = match crate::hardening::DocumentWorkspace::new() {
+        Ok(work) => work,
+        Err(error) => return err_result(&error),
+    };
+    let staged = work.join("result.pdf");
+    let staged_path = staged.to_string_lossy();
+
     let args = vec![
         "--empty",
         "--pages",
@@ -635,39 +703,31 @@ pub async fn extract_pages(
         &page_spec,
         "--",
         "--",
-        output_path.as_str(),
+        staged_path.as_ref(),
     ];
 
     let cmd = sidecar.args(args);
     match cmd.output().await {
-        Ok(out) if out.status.success() => ok_result(
+        Ok(out) if out.status.success() => publish_pdf_result(
+            &staged,
             &output_path,
             &format!("{} pagine estratte.", pages_to_extract.len()),
         ),
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::extract_pages] qpdf stderr: {}", stderr);
             err_result(map_qpdf_stderr(&stderr))
         }
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools] qpdf exec error: {}", _e);
-            err_result("Errore esecuzione qpdf")
-        }
+        Err(_e) => err_result("Errore esecuzione qpdf"),
     }
 }
 
 // ─── Compress PDF ───────────────────────────────────────────
 
-#[tauri::command]
-pub async fn compress_pdf(
+async fn compress_pdf_impl(
     app: tauri::AppHandle,
     input_path: String,
     output_path: String,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::compress_pdf] {} → {}", input_path, output_path);
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -690,7 +750,7 @@ pub async fn compress_pdf(
         Ok(s) => s,
         Err(_) => {
             // Fallback to lopdf if qpdf not available
-            let mut doc = match Document::load(&input_path) {
+            let mut doc = match load_pdf(&input_path) {
                 Ok(d) => d,
                 Err(e) => return err_result(&format!("Errore nell'apertura: {}", e)),
             };
@@ -698,7 +758,7 @@ pub async fn compress_pdf(
             doc.delete_zero_length_streams();
             doc.prune_objects();
             doc.renumber_objects();
-            return match doc.save(&output_path) {
+            return match save_pdf(&mut doc, &output_path) {
                 Ok(_) => {
                     let new_size = std::fs::metadata(&output_path)
                         .map(|m| m.len())
@@ -728,6 +788,13 @@ pub async fn compress_pdf(
         }
     };
 
+    let work = match crate::hardening::DocumentWorkspace::new() {
+        Ok(work) => work,
+        Err(error) => return err_result(&error),
+    };
+    let staged = work.join("result.pdf");
+    let staged_path = staged.to_string_lossy();
+
     let args = vec![
         input_path.as_str(),
         "--stream-data=compress",
@@ -735,13 +802,18 @@ pub async fn compress_pdf(
         "--object-streams=generate",
         "--remove-unreferenced-resources=yes",
         "--",
-        output_path.as_str(),
+        staged_path.as_ref(),
     ];
 
     let cmd = sidecar.args(args);
     match cmd.output().await {
         Ok(out) => {
             if out.status.success() {
+                if let Err(error) =
+                    crate::hardening::publish_new_file(&staged, Path::new(&output_path))
+                {
+                    return err_result(&error);
+                }
                 let new_size = std::fs::metadata(&output_path)
                     .map(|m| m.len())
                     .unwrap_or(0);
@@ -766,23 +838,16 @@ pub async fn compress_pdf(
                 }
             } else {
                 let stderr = String::from_utf8_lossy(&out.stderr);
-                #[cfg(debug_assertions)]
-                eprintln!("[doc_tools::compress_pdf] qpdf stderr: {}", stderr);
                 err_result(map_qpdf_stderr(&stderr))
             }
         }
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools] qpdf exec error: {}", _e);
-            err_result("Errore esecuzione qpdf")
-        }
+        Err(_e) => err_result("Errore esecuzione qpdf"),
     }
 }
 
 // ─── Watermark ──────────────────────────────────────────────
 
-#[tauri::command]
-pub async fn add_watermark(
+async fn add_watermark_impl(
     app: tauri::AppHandle,
     input_path: String,
     output_path: String,
@@ -790,11 +855,6 @@ pub async fn add_watermark(
     opacity: Option<f64>,
     font_size: Option<f64>,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::add_watermark] {} → {}, text='{}', opacity={:?}",
-        input_path, output_path, text, opacity
-    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -803,7 +863,7 @@ pub async fn add_watermark(
     }
 
     // Count pages: try lopdf first, fall back to qpdf --show-npages
-    let page_count = match Document::load(&input_path) {
+    let page_count = match load_pdf(&input_path) {
         Ok(doc) => doc.get_pages().len(),
         Err(_) => {
             use tauri_plugin_shell::ShellExt;
@@ -828,6 +888,13 @@ pub async fn add_watermark(
 
     let opacity_val = opacity.unwrap_or(0.15);
     let fs = font_size.unwrap_or(60.0);
+    if !opacity_val.is_finite()
+        || !(0.0..=1.0).contains(&opacity_val)
+        || !fs.is_finite()
+        || !(1.0..=144.0).contains(&fs)
+    {
+        return err_result("Opacità o dimensione del watermark non valide.");
+    }
 
     // F11: cap watermark text length to prevent absurd Typst inputs.
     let text_capped: String = text.chars().take(256).collect();
@@ -845,7 +912,7 @@ pub async fn add_watermark(
             .map(|i| {
                 let pb = if i > 0 { "#pagebreak()\n" } else { "" };
                 format!(
-                    "{pb}#place(center + horizon, rotate(-30deg, text[\"{text}\"]))",
+                    "{pb}#place(center + horizon, rotate(-30deg, text(\"{text}\")))",
                     pb = pb,
                     text = escaped
                 )
@@ -854,9 +921,13 @@ pub async fn add_watermark(
             .join("\n"),
     );
 
-    let tmp_dir = std::env::temp_dir();
-    let tmp_typ = tmp_dir.join(format!("lexflow_app_wm_{}.typ", rand::random::<u64>()));
-    let tmp_overlay = tmp_dir.join(format!("lexflow_app_wm_{}.pdf", rand::random::<u64>()));
+    let work = match crate::hardening::DocumentWorkspace::new() {
+        Ok(work) => work,
+        Err(e) => return err_result(&e),
+    };
+    let tmp_typ = work.join("overlay.typ");
+    let tmp_overlay = work.join("overlay.pdf");
+    let staged = work.join("result.pdf");
 
     if let Err(e) = std::fs::write(&tmp_typ, &typst_content) {
         return err_result(&format!("Errore scrittura file typst: {}", e));
@@ -904,24 +975,19 @@ pub async fn add_watermark(
         &tmp_overlay.to_string_lossy(),
         "--",
         "--",
-        output_path.as_str(),
+        &staged.to_string_lossy(),
     ]);
     let result = match qpdf_cmd.output().await {
-        Ok(out) if out.status.success() => ok_result(
+        Ok(out) if out.status.success() => publish_pdf_result(
+            &staged,
             &output_path,
             &format!("Watermark \"{}\" aggiunto a {} pagine.", text, page_count),
         ),
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::add_watermark] qpdf stderr: {}", stderr);
             err_result(map_qpdf_stderr(&stderr))
         }
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::add_watermark] qpdf exec error: {}", _e);
-            err_result("Errore esecuzione qpdf")
-        }
+        Err(_e) => err_result("Errore esecuzione qpdf"),
     };
     let _ = crate::security::secure_delete_file(&tmp_overlay);
     result
@@ -929,19 +995,13 @@ pub async fn add_watermark(
 
 // ─── Rotate Pages ───────────────────────────────────────────
 
-#[tauri::command]
-pub async fn rotate_pdf(
+async fn rotate_pdf_impl(
     app: tauri::AppHandle,
     input_path: String,
     output_path: String,
     rotation: i32,
     pages_to_rotate: Option<Vec<u32>>,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::rotate_pdf] {} → {}, rotation={}°, pages={:?}",
-        input_path, output_path, rotation, pages_to_rotate
-    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -951,6 +1011,7 @@ pub async fn rotate_pdf(
     if rotation % 90 != 0 {
         return err_result("La rotazione deve essere un multiplo di 90°.");
     }
+    let rotation = rotation.rem_euclid(360);
     if let Some(ref pages) = pages_to_rotate {
         if pages.len() > 100_000 {
             return err_result("Troppe pagine selezionate (massimo 100000).");
@@ -962,7 +1023,7 @@ pub async fn rotate_pdf(
         Ok(s) => s,
         Err(_) => {
             // Fallback to lopdf
-            let mut doc = match Document::load(&input_path) {
+            let mut doc = match load_pdf(&input_path) {
                 Ok(d) => d,
                 Err(e) => return err_result(&format!("Errore nell'apertura: {}", e)),
             };
@@ -981,16 +1042,14 @@ pub async fn rotate_pdf(
                             .get(b"Rotate")
                             .ok()
                             .and_then(|r| r.as_i64().ok())
-                            .unwrap_or(0) as i32;
-                        dict.set(
-                            "Rotate",
-                            Object::Integer(((cur + rotation) % 360 + 360) as i64 % 360),
-                        );
+                            .unwrap_or(0)
+                            .rem_euclid(360);
+                        dict.set("Rotate", Object::Integer((cur + i64::from(rotation)) % 360));
                         rotated += 1;
                     }
                 }
             }
-            return match doc.save(&output_path) {
+            return match save_pdf(&mut doc, &output_path) {
                 Ok(_) => ok_result(
                     &output_path,
                     &format!("{} pagine ruotate di {}°.", rotated, rotation),
@@ -1011,84 +1070,54 @@ pub async fn rotate_pdf(
     };
     let rotate_arg = format!("--rotate=+{}:{}", rotation, page_spec);
 
-    let args = vec![input_path.as_str(), &rotate_arg, "--", output_path.as_str()];
+    let work = match crate::hardening::DocumentWorkspace::new() {
+        Ok(work) => work,
+        Err(error) => return err_result(&error),
+    };
+    let staged = work.join("result.pdf");
+    let staged_path = staged.to_string_lossy();
+
+    let args = vec![input_path.as_str(), &rotate_arg, "--", staged_path.as_ref()];
 
     let cmd = sidecar.args(args);
     match cmd.output().await {
         Ok(out) => {
             if out.status.success() {
+                if let Err(error) =
+                    crate::hardening::publish_new_file(&staged, Path::new(&output_path))
+                {
+                    return err_result(&error);
+                }
                 ok_result(&output_path, &format!("Pagine ruotate di {}°.", rotation))
             } else {
                 let stderr = String::from_utf8_lossy(&out.stderr);
-                #[cfg(debug_assertions)]
-                eprintln!("[doc_tools::rotate_pdf] qpdf stderr: {}", stderr);
                 err_result(map_qpdf_stderr(&stderr))
             }
         }
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools] qpdf exec error: {}", _e);
-            err_result("Errore esecuzione qpdf")
-        }
+        Err(_e) => err_result("Errore esecuzione qpdf"),
     }
 }
 
 // ─── PDF to Text ────────────────────────────────────────────
 
-#[tauri::command]
-pub fn pdf_to_text(input_path: String) -> Result<String, String> {
-    #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::pdf_to_text] {}", input_path);
+fn pdf_to_text_impl(input_path: String) -> Result<String, String> {
     validate_input_path(&input_path)?;
-    let doc = Document::load(&input_path).map_err(|e| format!("Errore nell'apertura: {}", e))?;
+    let mut doc = load_pdf(&input_path).map_err(|e| format!("Errore nell'apertura: {}", e))?;
 
+    materialize_page_attributes(&mut doc)?;
     let pages = doc.get_pages();
     let mut full_text = String::new();
 
-    for (page_num, page_id) in &pages {
-        let content = doc.get_page_content(*page_id).unwrap_or_default();
-        let text = String::from_utf8_lossy(&content);
-
-        // Extract text from BT/ET blocks (basic text extraction from content streams)
-        let mut page_text = String::new();
-        let mut in_text = false;
-        for line in text.lines() {
-            let trimmed = line.trim();
-            if trimmed == "BT" {
-                in_text = true;
-            } else if trimmed == "ET" {
-                in_text = false;
-                page_text.push(' ');
-            } else if in_text && (trimmed.ends_with("Tj") || trimmed.ends_with("TJ")) {
-                // Extract text between parentheses from Tj operator
-                let mut i = 0;
-                let chars: Vec<char> = trimmed.chars().collect();
-                while i < chars.len() {
-                    if chars[i] == '(' {
-                        let mut depth = 1;
-                        i += 1;
-                        let start = i;
-                        while i < chars.len() && depth > 0 {
-                            if chars[i] == '(' && (i == 0 || chars[i - 1] != '\\') {
-                                depth += 1;
-                            } else if chars[i] == ')' && (i == 0 || chars[i - 1] != '\\') {
-                                depth -= 1;
-                            }
-                            if depth > 0 {
-                                i += 1;
-                            }
-                        }
-                        page_text.push_str(&chars[start..i].iter().collect::<String>());
-                    }
-                    i += 1;
-                }
-            }
+    for page_num in pages.keys() {
+        let page_text = doc
+            .extract_text(&[*page_num])
+            .map_err(|_| "Impossibile estrarre il testo da una pagina PDF.".to_string())?;
+        if full_text.len().saturating_add(page_text.len()) > 10 * 1024 * 1024 {
+            return Err("Testo estratto troppo grande (massimo 10 MiB).".into());
         }
-
-        let trimmed_text = page_text.trim();
-        if !trimmed_text.is_empty() {
+        if !page_text.trim().is_empty() {
             full_text.push_str(&format!("--- Pagina {} ---\n", page_num));
-            full_text.push_str(trimmed_text);
+            full_text.push_str(page_text.trim());
             full_text.push_str("\n\n");
         }
     }
@@ -1104,18 +1133,11 @@ pub fn pdf_to_text(input_path: String) -> Result<String, String> {
 // Uses the same LexFlow premium style as fascicolo.typ:
 // Libertinus Serif, Slate palette, header, footer with page numbers.
 
-#[tauri::command]
-pub async fn images_to_pdf(
+async fn images_to_pdf_impl(
     app: tauri::AppHandle,
     image_paths: Vec<String>,
     output_path: String,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::images_to_pdf] {} images → {}",
-        image_paths.len(),
-        output_path
-    );
     for p in &image_paths {
         if let Err(e) = validate_input_path(p) {
             return err_result(&e);
@@ -1128,6 +1150,13 @@ pub async fn images_to_pdf(
         return err_result("Nessuna immagine selezionata.");
     }
 
+    if image_paths.len() > 500 {
+        return err_result("Massimo 500 immagini per operazione.");
+    }
+    let work = match crate::hardening::DocumentWorkspace::new() {
+        Ok(work) => work,
+        Err(e) => return err_result(&e),
+    };
     // Build Typst document using the same style as fascicolo.typ
     let total = image_paths.len();
     let now = chrono::Local::now().format("%d/%m/%Y").to_string();
@@ -1185,11 +1214,23 @@ pub async fn images_to_pdf(
 
     // ── Images — each centered on its own page ──
     for (i, img_path) in image_paths.iter().enumerate() {
-        // F12: cap to 4096 chars and run through the Typst string escape so
-        // a path containing a quote / backslash / control char cannot break
-        // out of the string literal.
-        let normalized: String = img_path.replace('\\', "/").chars().take(4096).collect();
-        let escaped = escape_typst_string(&normalized);
+        let extension = Path::new(img_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !["png", "jpg", "jpeg", "webp", "gif"].contains(&extension.as_str()) {
+            return err_result("Formato immagine non consentito.");
+        }
+        let local_name = format!("image_{i}.{extension}");
+        let bytes = match crate::io::safe_bounded_read(Path::new(img_path), 50 * 1024 * 1024) {
+            Ok(bytes) => zeroize::Zeroizing::new(bytes),
+            Err(_) => return err_result("Immagine non leggibile o troppo grande."),
+        };
+        if crate::io::secure_write(&work.join(&local_name), &bytes).is_err() {
+            return err_result("Impossibile preparare l'immagine.");
+        }
+        let escaped = escape_typst_string(&local_name);
         typst_content.push_str(&format!(
             "#align(center)[#image(\"{}\", width: 100%)]\n",
             escaped
@@ -1199,7 +1240,7 @@ pub async fn images_to_pdf(
         }
     }
 
-    let tmp_typ = std::env::temp_dir().join("lexflow_app_img2pdf.typ");
+    let tmp_typ = work.join("images.typ");
     let tmp_pdf = tmp_typ.with_extension("pdf");
 
     if let Err(e) = std::fs::write(&tmp_typ, &typst_content) {
@@ -1236,7 +1277,7 @@ pub async fn images_to_pdf(
             // L11: Use secure_delete_file for temp file cleanup
             let _ = crate::security::secure_delete_file(&tmp_typ);
             if out.status.success() {
-                match std::fs::copy(&tmp_pdf, &output_path) {
+                match crate::hardening::publish_new_file(&tmp_pdf, Path::new(&output_path)) {
                     Ok(_) => {
                         let _ = crate::security::secure_delete_file(&tmp_pdf);
                         ok_result(
@@ -1264,24 +1305,18 @@ pub async fn images_to_pdf(
 
 // ─── Reorder Pages ─────────────────────────────────────────
 
-#[tauri::command]
-pub fn reorder_pages(
+fn reorder_pages_impl(
     input_path: String,
     output_path: String,
     new_order: Vec<u32>,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::reorder_pages] {} → {}, order={:?}",
-        input_path, output_path, new_order
-    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
     if let Err(e) = validate_output_path(&output_path) {
         return err_result(&e);
     }
-    let doc = match Document::load(&input_path) {
+    let doc = match load_pdf(&input_path) {
         Ok(d) => d,
         Err(e) => return err_result(&format!("Errore nell'apertura: {}", e)),
     };
@@ -1305,32 +1340,47 @@ pub fn reorder_pages(
         return err_result("L'ordine deve contenere ogni pagina da 1 a N esattamente una volta.");
     }
 
-    // Strategy: clone original for each page extraction, then merge them in
-    // the requested order.
-    let mut base_doc: Option<Document> = None;
-    for &page_num in &new_order {
-        let mut single = doc.clone();
-        let pages_to_remove: Vec<u32> = (1..=total).filter(|&p| p != page_num).collect();
-        for &p in pages_to_remove.iter().rev() {
-            single.delete_pages(&[p]);
+    let pages = doc.get_pages();
+    let root_pages = match doc
+        .catalog()
+        .and_then(|catalog| catalog.get(b"Pages"))
+        .and_then(Object::as_reference)
+    {
+        Ok(id) => id,
+        Err(_) => return err_result("Gerarchia delle pagine PDF non valida."),
+    };
+    let mut final_doc = doc;
+    let mut kids = Vec::with_capacity(new_order.len());
+    for page_number in &new_order {
+        let page_id = pages[page_number];
+        let inherited = match inherited_page_attributes(&final_doc, page_id) {
+            Ok(attributes) => attributes,
+            Err(error) => return err_result(&error),
+        };
+        let page = match final_doc
+            .get_object_mut(page_id)
+            .and_then(Object::as_dict_mut)
+        {
+            Ok(page) => page,
+            Err(_) => return err_result("Pagina PDF non valida."),
+        };
+        for (key, value) in inherited.iter() {
+            page.set(key.as_slice(), value.clone());
         }
-
-        match base_doc {
-            None => {
-                base_doc = Some(single);
-            }
-            Some(ref mut base) => {
-                if let Err(e) = merge_document(base, &single) {
-                    return err_result(&format!("Errore nel riordino pagina {}: {}", page_num, e));
-                }
-            }
-        }
+        page.set("Parent", Object::Reference(root_pages));
+        kids.push(Object::Reference(page_id));
     }
-
-    let mut final_doc = base_doc.unwrap();
+    let mut page_tree = lopdf::Dictionary::new();
+    page_tree.set("Type", Object::Name(b"Pages".to_vec()));
+    page_tree.set("Kids", Object::Array(kids));
+    page_tree.set("Count", Object::Integer(i64::from(total)));
+    final_doc
+        .objects
+        .insert(root_pages, Object::Dictionary(page_tree));
+    final_doc.prune_objects();
     final_doc.compress();
 
-    match final_doc.save(&output_path) {
+    match save_pdf(&mut final_doc, &output_path) {
         Ok(_) => ok_result(
             &output_path,
             &format!("{} pagine riordinate con successo.", total),
@@ -1341,8 +1391,7 @@ pub fn reorder_pages(
 
 // ─── Add Page Numbers ──────────────────────────────────────
 
-#[tauri::command]
-pub async fn add_page_numbers(
+async fn add_page_numbers_impl(
     app: tauri::AppHandle,
     input_path: String,
     output_path: String,
@@ -1351,11 +1400,6 @@ pub async fn add_page_numbers(
     start_from: Option<u32>,
     font_size: Option<f64>,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::add_page_numbers] {} → {}, pos={:?}, fmt={:?}, start={:?}",
-        input_path, output_path, position, format_str, start_from
-    );
     if let Err(e) = validate_input_path(&input_path) {
         return err_result(&e);
     }
@@ -1364,7 +1408,7 @@ pub async fn add_page_numbers(
     }
 
     // Count pages: try lopdf first, fall back to qpdf --show-npages
-    let total = match Document::load(&input_path) {
+    let total = match load_pdf(&input_path) {
         Ok(d) => d.get_pages().len() as u32,
         Err(_) => {
             use tauri_plugin_shell::ShellExt;
@@ -1390,7 +1434,13 @@ pub async fn add_page_numbers(
     let pos = position.unwrap_or_else(|| "bottom-center".to_string());
     let fmt = format_str.unwrap_or_else(|| "{n}".to_string());
     let start = start_from.unwrap_or(1);
+    if fmt.len() > 1024 || start.checked_add(total).is_none() {
+        return err_result("Formato o numerazione non validi.");
+    }
     let fs = font_size.unwrap_or(10.0);
+    if !fs.is_finite() || !(1.0..=144.0).contains(&fs) {
+        return err_result("Dimensione del carattere non valida.");
+    }
 
     // Typst alignment + offset from position (margin: 0pt like watermark, offset explicit)
     let (align, dx, dy) = match pos.as_str() {
@@ -1414,15 +1464,23 @@ pub async fn add_page_numbers(
             typst_content.push_str("#pagebreak()\n");
         }
         let num = start + i;
-        let label = fmt
-            .replace("{n}", &num.to_string())
-            .replace("{total}", &(start + total - 1).to_string());
-        typst_content.push_str(&format!("#place({}, {}{}[{}])\n", align, dx, dy, label));
+        let label = escape_typst_string(
+            &fmt.replace("{n}", &num.to_string())
+                .replace("{total}", &(start + total - 1).to_string()),
+        );
+        typst_content.push_str(&format!(
+            "#place({}, {}{}text(\"{}\"))\n",
+            align, dx, dy, label
+        ));
     }
 
-    let tmp_dir = std::env::temp_dir();
-    let tmp_typ = tmp_dir.join(format!("lexflow_app_pn_{}.typ", rand::random::<u64>()));
-    let tmp_overlay = tmp_dir.join(format!("lexflow_app_pn_{}.pdf", rand::random::<u64>()));
+    let work = match crate::hardening::DocumentWorkspace::new() {
+        Ok(work) => work,
+        Err(e) => return err_result(&e),
+    };
+    let tmp_typ = work.join("overlay.typ");
+    let tmp_overlay = work.join("overlay.pdf");
+    let staged = work.join("result.pdf");
 
     if let Err(e) = std::fs::write(&tmp_typ, &typst_content) {
         return err_result(&format!("Errore scrittura file typst: {}", e));
@@ -1468,10 +1526,11 @@ pub async fn add_page_numbers(
         &tmp_overlay.to_string_lossy(),
         "--",
         "--",
-        output_path.as_str(),
+        &staged.to_string_lossy(),
     ]);
     let result = match qpdf_cmd.output().await {
-        Ok(out) if out.status.success() => ok_result(
+        Ok(out) if out.status.success() => publish_pdf_result(
+            &staged,
             &output_path,
             &format!(
                 "Numeri di pagina aggiunti a {} pagine (da {} a {}).",
@@ -1482,432 +1541,28 @@ pub async fn add_page_numbers(
         ),
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::add_page_numbers] qpdf stderr: {}", stderr);
             err_result(map_qpdf_stderr(&stderr))
         }
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::add_page_numbers] qpdf exec error: {}", _e);
-            err_result("Errore esecuzione qpdf")
-        }
+        Err(_e) => err_result("Errore esecuzione qpdf"),
     };
     let _ = crate::security::secure_delete_file(&tmp_overlay);
     result
 }
 
-/// Get page dimensions from MediaBox, defaulting to A4.
-fn get_page_dimensions(doc: &Document, page_id: ObjectId) -> (f64, f64) {
-    if let Ok(page_obj) = doc.get_object(page_id) {
-        if let Ok(dict) = page_obj.as_dict() {
-            if let Ok(mbox) = dict.get(b"MediaBox") {
-                if let Ok(arr) = mbox.as_array() {
-                    if arr.len() == 4 {
-                        let w: f64 = arr[2]
-                            .as_float()
-                            .map(|v| v as f64)
-                            .or_else(|_| arr[2].as_i64().map(|v| v as f64))
-                            .unwrap_or(595.0);
-                        let h: f64 = arr[3]
-                            .as_float()
-                            .map(|v| v as f64)
-                            .or_else(|_| arr[3].as_i64().map(|v| v as f64))
-                            .unwrap_or(842.0);
-                        return (w, h);
-                    }
-                }
-            }
-        }
-    }
-    (595.0, 842.0) // A4 default
-}
-
-// ─── Redact PDF (censura) ──────────────────────────────────
-// True redaction: wraps existing content in a clipping path that EXCLUDES
-// the redacted areas, so text underneath is unselectable/uncopiable,
-// then draws black rectangles on top for visual coverage.
-
-#[tauri::command]
-pub async fn redact_pdf(
-    app: tauri::AppHandle,
+// Redaction is unavailable until image, Form XObject, annotation, metadata and
+// orphan-object removal can all be verified. Overlays and PDF permissions do
+// not remove confidential content. Keep IPC compatible and fail without I/O.
+fn redact_pdf_impl(
     input_path: String,
     output_path: String,
     redactions: Vec<RedactArea>,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::redact_pdf] {} → {}, {} redaction areas",
-        input_path,
-        output_path,
-        redactions.len()
-    );
-    if let Err(e) = validate_input_path(&input_path) {
-        return err_result(&e);
-    }
-    if let Err(e) = validate_output_path(&output_path) {
-        return err_result(&e);
-    }
-    if redactions.is_empty() {
-        return err_result("Nessuna area da censurare specificata.");
-    }
-
-    // ── Approach: Typst overlay (black rects) + qpdf overlay + qpdf encrypt ──
-    // Same proven pipeline as watermark. No lopdf needed.
-
-    // Step 1: Load doc with lopdf to get per-page MediaBox; fall back to qpdf
-    // for page count if lopdf can't parse (in which case all pages assumed A4).
-    use tauri_plugin_shell::ShellExt;
-    let lopdf_doc = Document::load(&input_path).ok();
-    let total: u32 = match &lopdf_doc {
-        Some(d) => d.get_pages().len() as u32,
-        None => match app.shell().sidecar("qpdf") {
-            Ok(s) => {
-                let cmd = s.args(["--show-npages", input_path.as_str()]);
-                match cmd.output().await {
-                    Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
-                        .trim()
-                        .parse::<u32>()
-                        .unwrap_or(0),
-                    _ => return err_result("Impossibile determinare il numero di pagine."),
-                }
-            }
-            Err(_) => return err_result("Impossibile aprire il PDF."),
-        },
-    };
-    if total == 0 {
-        return err_result("Il PDF non contiene pagine.");
-    }
-
-    // Validate page numbers
-    for area in &redactions {
-        if area.page < 1 || area.page > total {
-            return err_result(&format!(
-                "Pagina {} non valida. Il PDF ha {} pagine.",
-                area.page, total
-            ));
-        }
-    }
-
-    // Resolve per-page (width, height) — A4 fallback when lopdf failed.
-    let pages_map: BTreeMap<u32, (f64, f64)> = match &lopdf_doc {
-        Some(d) => d
-            .get_pages()
-            .into_iter()
-            .map(|(n, id)| (n, get_page_dimensions(d, id)))
-            .collect(),
-        None => (1..=total).map(|n| (n, (595.28_f64, 841.89_f64))).collect(),
-    };
-
-    // Step 2: Generate Typst overlay. ONE Typst page per source PDF page, sized
-    // to that page's MediaBox so the overlay matches qpdf's per-page overlay.
-    // CRIT-2: Y-flip uses the page's actual height, not a hardcoded A4.
-    let mut typst_content = String::new();
-
-    for page_num in 1..=total {
-        let (page_w, page_h) = pages_map
-            .get(&page_num)
-            .copied()
-            .unwrap_or((595.28_f64, 841.89_f64));
-
-        if page_num > 1 {
-            typst_content.push_str("#pagebreak()\n");
-        }
-        // Per-page set page resets dimensions for the next page block.
-        typst_content.push_str(&format!(
-            "#set page(width: {}pt, height: {}pt, margin: 0pt, fill: none)\n",
-            page_w, page_h
-        ));
-
-        let page_areas: Vec<&RedactArea> =
-            redactions.iter().filter(|a| a.page == page_num).collect();
-        for a in &page_areas {
-            // PDF user-space coords have origin at bottom-left. Typst with
-            // margin:0pt places from top-left. Y-flip = page_h - y - height.
-            let dy = (page_h - a.y - a.height).max(0.0);
-            let dx = a.x.max(0.0);
-            let w = a.width.max(0.0);
-            let h = a.height.max(0.0);
-            typst_content.push_str(&format!(
-                "#place(top + left, dx: {}pt, dy: {}pt, rect(width: {}pt, height: {}pt, fill: black))\n",
-                dx, dy, w, h
-            ));
-        }
-        if page_areas.is_empty() {
-            typst_content.push_str("// empty page\n");
-        }
-    }
-
-    let tmp_dir = std::env::temp_dir();
-    let tmp_typ = tmp_dir.join(format!("lexflow_app_redact_{}.typ", rand::random::<u64>()));
-    let tmp_overlay = tmp_dir.join(format!("lexflow_app_redact_{}.pdf", rand::random::<u64>()));
-
-    if let Err(e) = std::fs::write(&tmp_typ, &typst_content) {
-        return err_result(&format!("Errore scrittura file typst: {}", e));
-    }
-
-    // Step 3: Compile Typst → overlay PDF
-    let typst_sidecar = match app.shell().sidecar("typst") {
-        Ok(s) => s,
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp_typ);
-            return err_result(&format!("typst non trovato: {}", e));
-        }
-    };
-    let typst_cmd = typst_sidecar.args([
-        "compile",
-        &tmp_typ.to_string_lossy(),
-        &tmp_overlay.to_string_lossy(),
-    ]);
-    match typst_cmd.output().await {
-        Ok(out) if !out.status.success() => {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            let _ = std::fs::remove_file(&tmp_typ);
-            return err_result(&format!("Errore generazione overlay censura: {}", stderr));
-        }
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp_typ);
-            return err_result(&format!("Errore typst: {}", e));
-        }
-        _ => {}
-    }
-    let _ = crate::security::secure_delete_file(&tmp_typ);
-
-    // Step 4: qpdf overlay (black rects on top of original PDF)
-    let tmp_overlaid = tmp_dir.join(format!(
-        "lexflow_app_redact_overlaid_{}.pdf",
-        rand::random::<u64>()
-    ));
-    let qpdf_sidecar = match app.shell().sidecar("qpdf") {
-        Ok(s) => s,
-        Err(_) => {
-            let _ = std::fs::remove_file(&tmp_overlay);
-            return err_result("qpdf non trovato.");
-        }
-    };
-    let overlay_cmd = qpdf_sidecar.args([
-        input_path.as_str(),
-        "--overlay",
-        &tmp_overlay.to_string_lossy(),
-        "--",
-        "--",
-        &tmp_overlaid.to_string_lossy(),
-    ]);
-    match overlay_cmd.output().await {
-        Ok(out) if !out.status.success() => {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            let _ = std::fs::remove_file(&tmp_overlay);
-            return err_result(&format!("qpdf overlay fallito: {}", stderr));
-        }
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp_overlay);
-            return err_result(&format!("Errore qpdf: {}", e));
-        }
-        _ => {}
-    }
-    let _ = crate::security::secure_delete_file(&tmp_overlay);
-
-    // Step 4-bis (CRIT-1): destructive content-stream redaction.
-    // The visual overlay alone leaves the underlying text recoverable. As a
-    // best-effort destructive pass we use lopdf to nuke ALL Tj/TJ/'/"
-    // text-showing operators on any page that has at least one redaction area.
-    // This is over-aggressive (removes ALL text from those pages, not just
-    // the redacted region) but guarantees zero text leakage on those pages.
-    let pages_with_redactions: std::collections::BTreeSet<u32> =
-        redactions.iter().map(|a| a.page).collect();
-    let destructive_ok =
-        match strip_text_on_pages(&tmp_overlaid.to_string_lossy(), &pages_with_redactions) {
-            Ok(_) => true,
-            Err(_e) => {
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "[doc_tools::redact_pdf] destructive content-stream pass failed: {}",
-                    _e
-                );
-                false
-            }
-        };
-    if !destructive_ok {
-        // CRIT-1: do NOT silently rename the unprotected overlay as success.
-        let _ = crate::security::secure_delete_file(&tmp_overlaid);
-        return err_result(
-            "Redazione fallita: protezione testo non applicata. NON usare questo file per documenti riservati.",
-        );
-    }
-
-    // Step 5: qpdf encrypt with --extract=n to block copy-paste of any
-    // remaining text (defense-in-depth; the destructive pass above already
-    // removed Tj/TJ on redacted pages).
-    let owner_pwd = format!("LF_{:016x}", rand::random::<u64>());
-    let qpdf_sidecar2 = match app.shell().sidecar("qpdf") {
-        Ok(s) => s,
-        Err(_) => {
-            // No qpdf available for the encryption step. Since the destructive
-            // pass succeeded, we can still publish the file — but flag this in
-            // the message. (We do NOT silently call this success without
-            // destructive_ok — that branch already returned above.)
-            let _ = std::fs::rename(&tmp_overlaid, &output_path);
-            return ok_result(
-                &output_path,
-                &format!(
-                    "{} aree censurate (testo rimosso a livello content-stream sulle pagine redatte; cifratura anti-copia non applicata, qpdf non disponibile). Verifica con pdftotext consigliata.",
-                    redactions.len()
-                ),
-            );
-        }
-    };
-    // F2: write owner password to temp file instead of putting on argv.
-    use std::io::Write;
-    let mut owner_file = match tempfile::NamedTempFile::new_in(std::env::temp_dir()) {
-        Ok(t) => t,
-        Err(_) => {
-            let _ = crate::security::secure_delete_file(&tmp_overlaid);
-            return err_result("Impossibile creare file temp password.");
-        }
-    };
-    let _ = owner_file.write_all(owner_pwd.as_bytes());
-    let _ = owner_file.flush();
-    let owner_path = owner_file.path().to_path_buf();
-    let mut user_file = match tempfile::NamedTempFile::new_in(std::env::temp_dir()) {
-        Ok(t) => t,
-        Err(_) => {
-            let _ = crate::security::secure_delete_file(&tmp_overlaid);
-            return err_result("Impossibile creare file temp password.");
-        }
-    };
-    let _ = user_file.write_all(b"");
-    let _ = user_file.flush();
-    let user_path = user_file.path().to_path_buf();
-
-    let owner_arg = format!("@{}", owner_path.display());
-    let user_arg = format!("@{}", user_path.display());
-    let encrypt_cmd = qpdf_sidecar2.args([
-        &tmp_overlaid.to_string_lossy(),
-        "--encrypt",
-        user_arg.as_str(),
-        owner_arg.as_str(),
-        "256",
-        "--extract=n",
-        "--print=full",
-        "--modify=none",
-        "--",
-        output_path.as_str(),
-    ]);
-    let result = match encrypt_cmd.output().await {
-        Ok(out) if out.status.success() => {
-            let _ = crate::security::secure_delete_file(&tmp_overlaid);
-            ok_result(
-                &output_path,
-                &format!(
-                    "{} aree censurate su {} pagine (testo rimosso a livello content-stream sulle pagine redatte). Ulteriori controlli con pdftotext consigliati.",
-                    redactions.len(), total
-                ),
-            )
-        }
-        Ok(out) => {
-            let _ = crate::security::secure_delete_file(&tmp_overlaid);
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::redact_pdf] qpdf encrypt failed: {}", stderr);
-            // CRIT-1: do NOT silently rename the unencrypted overlaid file as
-            // success. Encryption failure is a real failure when the user
-            // requested redaction.
-            err_result(map_qpdf_stderr(&stderr))
-        }
-        Err(_e) => {
-            let _ = crate::security::secure_delete_file(&tmp_overlaid);
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::redact_pdf] qpdf encrypt exec error: {}", _e);
-            err_result("Errore esecuzione qpdf")
-        }
-    };
-    drop(owner_file);
-    drop(user_file);
-    let _ = crate::security::secure_delete_file(&owner_path);
-    let _ = crate::security::secure_delete_file(&user_path);
-    result
-}
-
-/// CRIT-1 destructive helper: open `pdf_path` with lopdf, walk the content
-/// stream of every page in `pages` (1-based), and replace every text-showing
-/// operator (Tj, TJ, ', ") with an equivalent no-op so the strings are not
-/// recoverable via copy-paste or pdftotext. Saves in place.
-fn strip_text_on_pages(
-    pdf_path: &str,
-    pages: &std::collections::BTreeSet<u32>,
-) -> Result<(), String> {
-    use lopdf::content::Content;
-
-    if pages.is_empty() {
-        return Ok(());
-    }
-    let mut doc = Document::load(pdf_path).map_err(|e| format!("lopdf load: {}", e))?;
-    let pages_map: BTreeMap<u32, ObjectId> = doc.get_pages();
-
-    for &page_num in pages {
-        let page_id = match pages_map.get(&page_num) {
-            Some(id) => *id,
-            None => continue,
-        };
-        let raw = match doc.get_page_content(page_id) {
-            Ok(b) => b,
-            Err(_) => continue,
-        };
-        let mut content = match Content::decode(&raw) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        // Replace every text-showing op with a no-op. We KEEP positioning ops
-        // (Td, TD, Tm, Tf, etc.) so the page's text layer structure stays
-        // valid even though no glyphs are drawn.
-        for op in &mut content.operations {
-            match op.operator.as_str() {
-                "Tj" | "'" => {
-                    // Replace the (string) argument with an empty string.
-                    op.operands = vec![lopdf::Object::String(
-                        Vec::new(),
-                        lopdf::StringFormat::Literal,
-                    )];
-                }
-                "\"" => {
-                    // " takes (aw ac string) — replace string with empty.
-                    if op.operands.len() >= 3 {
-                        op.operands[2] =
-                            lopdf::Object::String(Vec::new(), lopdf::StringFormat::Literal);
-                    } else {
-                        op.operands = vec![lopdf::Object::String(
-                            Vec::new(),
-                            lopdf::StringFormat::Literal,
-                        )];
-                    }
-                }
-                "TJ" => {
-                    // TJ takes an array of strings/numbers. Replace with [()].
-                    op.operands = vec![lopdf::Object::Array(vec![lopdf::Object::String(
-                        Vec::new(),
-                        lopdf::StringFormat::Literal,
-                    )])];
-                }
-                _ => {}
-            }
-        }
-        // Re-encode and replace the page content stream.
-        let new_bytes = content.encode().map_err(|e| format!("encode: {}", e))?;
-        // Find the page's Contents object and overwrite with the new bytes.
-        // get_page_content concatenates streams; for safety we build a fresh
-        // single stream object and point Contents at it.
-        let new_stream = lopdf::Stream::new(lopdf::Dictionary::new(), new_bytes);
-        let new_id = doc.add_object(lopdf::Object::Stream(new_stream));
-        if let Ok(page_obj) = doc.get_object_mut(page_id) {
-            if let Ok(dict) = page_obj.as_dict_mut() {
-                dict.set("Contents", lopdf::Object::Reference(new_id));
-            }
-        }
-    }
-    doc.save(pdf_path).map_err(|e| format!("save: {}", e))?;
-    Ok(())
+    let _ = (input_path, output_path, redactions);
+    err_result("Censura PDF disabilitata: la rimozione irreversibile dei contenuti non è ancora garantita. Nessun file è stato creato.")
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code)] // Retained only for compatible rejection of the disabled IPC command.
 pub struct RedactArea {
     pub page: u32,
     pub x: f64,
@@ -1916,17 +1571,7 @@ pub struct RedactArea {
     pub height: f64,
 }
 
-// ─── Protect PDF — REMOVED (was a no-op stub, F6) ──────────
-// The previous `protect_pdf` Tauri command merely copied the input file to
-// the output path while pretending to apply password protection — a real
-// security risk because callers got success=true on an unprotected PDF.
-// It was NOT registered in src-tauri/src/lib.rs (already verified) so no
-// invoke_handler change is needed here. The FE wrappers will be cleaned up
-// by FE-10 (client/src/tauri-api.js) and FE-7 (DocumentToolsPage.jsx).
-// Use `secure_pdf` instead — it performs real qpdf encryption with
-// anti-copy/print/modify enforcement.
-
-// ─── Secure PDF (qpdf + Tr 3 + watermark) ──────────────────
+// ─── PDF permission restrictions ──────────────────────────
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1938,995 +1583,718 @@ pub struct SecurePdfOptions {
     pub owner_password: Option<String>,
 }
 
-#[tauri::command]
-pub async fn secure_pdf(
+/// qpdf response files contain one argument per line. Prefixing the owner
+/// password with its flag also prevents passwords beginning with '@' becoming
+/// nested response-file reads. Requires qpdf >= 11.7.
+fn encryption_arguments(
+    password: &str,
+    no_copy: bool,
+    no_print: bool,
+    no_modify: bool,
+) -> Result<zeroize::Zeroizing<String>, String> {
+    if password.is_empty() || password.len() > 127 || password.chars().any(char::is_control) {
+        return Err(
+            "Password proprietario non valida: usa da 1 a 127 byte senza caratteri di controllo."
+                .into(),
+        );
+    }
+    Ok(zeroize::Zeroizing::new(format!(
+        "--encrypt\n--user-password=\n--owner-password={}\n--bits=256\n--extract={}\n--print={}\n--modify={}\n--\n",
+        password, if no_copy { "n" } else { "y" },
+        if no_print { "none" } else { "full" }, if no_modify { "none" } else { "all" }
+    )))
+}
+
+async fn secure_pdf_impl(
     app: tauri::AppHandle,
     input_path: String,
     output_path: String,
     options: SecurePdfOptions,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!("[doc_tools::secure_pdf] {} → {}, no_copy={:?}, no_print={:?}, no_modify={:?}, watermark={:?}",
-        input_path, output_path, options.no_copy, options.no_print, options.no_modify, options.watermark);
-    if let Err(e) = validate_input_path(&input_path) {
+    if let Err(e) =
+        validate_input_path(&input_path).and_then(|_| validate_output_path(&output_path))
+    {
         return err_result(&e);
     }
-    if let Err(e) = validate_output_path(&output_path) {
-        return err_result(&e);
+    if Path::new(&output_path).exists() {
+        return err_result("Il file di destinazione esiste già. Scegli un nuovo nome.");
     }
-    // F5: refuse to overwrite existing output silently
-    if std::path::Path::new(&output_path).exists() {
-        return err_result(
-            "Il file di destinazione esiste già. Eliminalo o scegli un'altra destinazione.",
-        );
+    let work = match crate::hardening::DocumentWorkspace::new() {
+        Ok(work) => work,
+        Err(e) => return err_result(&e),
+    };
+    let owner_pwd = zeroize::Zeroizing::new(options.owner_password.unwrap_or_else(|| {
+        use rand::RngCore;
+        let mut random = [0u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut random);
+        hex::encode(random)
+    }));
+    let arguments = match encryption_arguments(
+        &owner_pwd,
+        options.no_copy.unwrap_or(true),
+        options.no_print.unwrap_or(true),
+        options.no_modify.unwrap_or(true),
+    ) {
+        Ok(arguments) => arguments,
+        Err(e) => return err_result(&e),
+    };
+    let arguments_path = work.join("encryption.args");
+    if crate::io::secure_write(&arguments_path, arguments.as_bytes()).is_err() {
+        return err_result("Impossibile preparare la protezione PDF.");
     }
-
-    let no_copy = options.no_copy.unwrap_or(true);
-    let no_print = options.no_print.unwrap_or(true);
-    let no_modify = options.no_modify.unwrap_or(true);
-    let watermark_text = options.watermark.clone();
-    let owner_pwd = options.owner_password.unwrap_or_else(|| {
-        // Generate a random owner password so the user can't easily remove restrictions
-        format!("LF_{:016x}", rand::random::<u64>())
-    });
-
-    // Step 1: Copy input to output as starting point
-    // (Tr3 lopdf manipulation removed — it corrupted certain PDFs.
-    //  Anti-copy protection is enforced by qpdf encryption with --extract=n)
-    if let Err(e) = std::fs::copy(&input_path, &output_path) {
-        return err_result(&format!("Errore copia: {}", e));
-    }
-
-    // Step 2: Apply watermark if requested
-    if let Some(ref wm_text) = watermark_text {
-        if !wm_text.is_empty() {
-            let tmp_wm = format!("{}.wm_tmp.pdf", output_path);
-            let wm_result = add_watermark(
-                app.clone(),
-                output_path.clone(),
-                tmp_wm.clone(),
-                wm_text.clone(),
-                Some(0.15),
-                Some(48.0),
-            )
-            .await;
-            if !wm_result.success {
-                let _ = std::fs::remove_file(&tmp_wm);
-                return err_result(&format!("Errore watermark: {}", wm_result.message));
-            }
-            let _ = std::fs::rename(&tmp_wm, &output_path);
+    let mut source = input_path;
+    if let Some(text) = options.watermark.filter(|text| !text.is_empty()) {
+        let watermarked = work.join("watermarked.pdf").to_string_lossy().into_owned();
+        let result = add_watermark_impl(
+            app.clone(),
+            source,
+            watermarked.clone(),
+            text,
+            Some(0.15),
+            Some(48.0),
+        )
+        .await;
+        if !result.success {
+            return err_result(&result.message);
         }
+        source = watermarked;
     }
-
-    // Step 3: Apply PDF encryption/permissions via qpdf sidecar
     use tauri_plugin_shell::ShellExt;
     let sidecar = match app.shell().sidecar("qpdf") {
-        Ok(s) => s,
-        Err(_e) => {
-            // qpdf not available — return success with just Tr 3 + watermark
-            let mut msg = "PDF protetto con overlay anti-copia".to_string();
-            if watermark_text.is_some() {
-                msg.push_str(" e watermark");
+        Ok(sidecar) => sidecar,
+        Err(_) => return err_result("qpdf non disponibile: nessun PDF protetto è stato creato."),
+    };
+    let encrypted = work.join("encrypted.pdf");
+    let result = sidecar
+        .args([
+            source.as_str(),
+            &format!("@{}", arguments_path.display()),
+            &encrypted.to_string_lossy(),
+        ])
+        .output()
+        .await;
+    match result {
+        Ok(out) if out.status.success() => {
+            if let Err(e) = crate::hardening::publish_new_file(&encrypted, Path::new(&output_path))
+            {
+                return err_result(&e);
             }
-            msg.push_str(". (qpdf non disponibile per permessi avanzati)");
-            return ok_result(&output_path, &msg);
+            DocToolResult {
+                success: true,
+                output_path: Some(output_path),
+                message: "Restrizioni PDF applicate. Il file si apre senza password: queste restrizioni non garantiscono la riservatezza e possono essere ignorate da altri programmi.".into(),
+                details: Some(serde_json::json!({ "owner_password": owner_pwd.as_str() })),
+            }
         }
-    };
-
-    let tmp_encrypted = format!("{}.qpdf_tmp", output_path);
-    let owner_pwd_display = owner_pwd.clone();
-
-    // F2: write owner password to a temp file and pass it via --password-file=
-    // instead of putting it on argv (where ps aux could see it).
-    // qpdf still needs the user/owner pair on argv for --encrypt — but with
-    // --password-file the file content is used as the OWNER password and
-    // user is read from positional. To keep the previous semantics
-    // (empty user, generated owner), we use the qpdf trick:
-    //   --encrypt @<userfile> @<ownerfile> 256 ...
-    // qpdf supports `@filename` for password values to read them from a file.
-    use std::io::Write;
-    let mut user_pwd_file = match tempfile::NamedTempFile::new_in(std::env::temp_dir()) {
-        Ok(t) => t,
-        Err(e) => {
-            return err_result(&format!(
-                "Impossibile creare file temp password utente: {}",
-                e
-            ));
-        }
-    };
-    // empty user password → empty file
-    let _ = user_pwd_file.write_all(b"");
-    let _ = user_pwd_file.flush();
-    let user_pwd_path = user_pwd_file.path().to_path_buf();
-
-    let mut owner_pwd_file = match tempfile::NamedTempFile::new_in(std::env::temp_dir()) {
-        Ok(t) => t,
-        Err(e) => {
-            return err_result(&format!(
-                "Impossibile creare file temp password owner: {}",
-                e
-            ));
-        }
-    };
-    if let Err(e) = owner_pwd_file.write_all(owner_pwd.as_bytes()) {
-        return err_result(&format!("Impossibile scrivere password owner: {}", e));
+        Ok(out) => err_result(map_qpdf_stderr(&String::from_utf8_lossy(&out.stderr))),
+        Err(_) => err_result("Impossibile eseguire qpdf. Nessun PDF protetto è stato creato."),
     }
-    let _ = owner_pwd_file.flush();
-    let owner_pwd_path = owner_pwd_file.path().to_path_buf();
-
-    let args: Vec<String> = vec![
-        output_path.clone(),
-        "--encrypt".to_string(),
-        format!("@{}", user_pwd_path.display()),
-        format!("@{}", owner_pwd_path.display()),
-        "256".to_string(), // AES-256 encryption
-        format!("--extract={}", if no_copy { "n" } else { "y" }),
-        format!("--print={}", if no_print { "none" } else { "full" }),
-        format!("--modify={}", if no_modify { "none" } else { "all" }),
-        "--assemble=n".to_string(),
-        "--annotate=n".to_string(),
-        "--form=n".to_string(),
-        "--".to_string(),
-        tmp_encrypted.clone(),
-    ];
-
-    let cmd = sidecar.args(args.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
-
-    let result = match cmd.output().await {
-        Ok(out) => {
-            if out.status.success() {
-                // Replace output with encrypted version
-                let _ = std::fs::rename(&tmp_encrypted, &output_path);
-                let mut msg = "PDF blindato: ".to_string();
-                let mut protections = vec![];
-                if no_copy {
-                    protections.push("no-copia");
-                }
-                if no_print {
-                    protections.push("no-stampa");
-                }
-                if no_modify {
-                    protections.push("no-modifica");
-                }
-                if watermark_text.is_some() {
-                    protections.push("watermark");
-                }
-                msg.push_str(&protections.join(", "));
-                msg.push('.');
-                DocToolResult {
-                    success: true,
-                    output_path: Some(output_path.clone()),
-                    message: msg,
-                    details: Some(serde_json::json!({ "owner_password": owner_pwd_display })),
-                }
-            } else {
-                let _ = std::fs::remove_file(&tmp_encrypted);
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                #[cfg(debug_assertions)]
-                eprintln!("[doc_tools::secure_pdf] qpdf encryption failed: {}", stderr);
-                err_result(map_qpdf_stderr(&stderr))
-            }
-        }
-        Err(_e) => {
-            let _ = std::fs::remove_file(&tmp_encrypted);
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::secure_pdf] qpdf exec error: {}", _e);
-            err_result("Errore esecuzione qpdf")
-        }
-    };
-
-    // F2: scrub temp password files
-    drop(user_pwd_file);
-    drop(owner_pwd_file);
-    let _ = crate::security::secure_delete_file(&user_pwd_path);
-    let _ = crate::security::secure_delete_file(&owner_pwd_path);
-
-    result
 }
 
-// ─── Unsecure PDF (remove restrictions via qpdf) ───────────
-
-#[tauri::command]
-pub async fn unsecure_pdf(
+async fn unsecure_pdf_impl(
     app: tauri::AppHandle,
     input_path: String,
     output_path: String,
     password: Option<String>,
 ) -> DocToolResult {
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[doc_tools::unsecure_pdf] {} → {}, has_password={}",
-        input_path,
-        output_path,
-        password.is_some()
-    );
-    if let Err(e) = validate_input_path(&input_path) {
+    if let Err(e) =
+        validate_input_path(&input_path).and_then(|_| validate_output_path(&output_path))
+    {
         return err_result(&e);
     }
-    if let Err(e) = validate_output_path(&output_path) {
-        return err_result(&e);
+    if Path::new(&output_path).exists() {
+        return err_result("Il file di destinazione esiste già. Scegli un nuovo nome.");
     }
+    let work = match crate::hardening::DocumentWorkspace::new() {
+        Ok(work) => work,
+        Err(e) => return err_result(&e),
+    };
+    let password = zeroize::Zeroizing::new(password.unwrap_or_default());
+    if password.len() > 1024 || password.chars().any(char::is_control) {
+        return err_result("Password non valida.");
+    }
+    let password_path = work.join("password.txt");
+    if crate::io::secure_write(&password_path, password.as_bytes()).is_err() {
+        return err_result("Impossibile preparare la password.");
+    }
+    let decrypted = work.join("decrypted.pdf");
     use tauri_plugin_shell::ShellExt;
     let sidecar = match app.shell().sidecar("qpdf") {
-        Ok(s) => s,
-        Err(e) => return err_result(&format!("qpdf non trovato: {}", e)),
+        Ok(sidecar) => sidecar,
+        Err(_) => return err_result("qpdf non disponibile."),
     };
-
-    // F5: refuse to overwrite existing output silently
-    if std::path::Path::new(&output_path).exists() {
-        return err_result(
-            "Il file di destinazione esiste già. Eliminalo o scegli un'altra destinazione.",
-        );
-    }
-
-    let mut args: Vec<String> = vec!["--decrypt".to_string()];
-
-    // F2: pass the password through a temp file (--password-file=...) instead
-    // of argv, so it does NOT show up in `ps aux`. The temp file is securely
-    // deleted after the qpdf run.
-    let mut pwd_file_keepalive: Option<tempfile::NamedTempFile> = None;
-    let mut pwd_file_path: Option<std::path::PathBuf> = None;
-    if let Some(pwd) = &password {
-        if !pwd.is_empty() {
-            use std::io::Write;
-            let mut tf = match tempfile::NamedTempFile::new_in(std::env::temp_dir()) {
-                Ok(t) => t,
-                Err(e) => {
-                    return err_result(&format!(
-                        "Impossibile creare file temporaneo per la password: {}",
-                        e
-                    ));
-                }
-            };
-            if let Err(e) = tf.write_all(pwd.as_bytes()) {
-                return err_result(&format!(
-                    "Impossibile scrivere file temporaneo password: {}",
-                    e
-                ));
-            }
-            let _ = tf.flush();
-            let p = tf.path().to_path_buf();
-            args.push(format!("--password-file={}", p.display()));
-            pwd_file_path = Some(p);
-            pwd_file_keepalive = Some(tf);
-        }
-    }
-    // F1: use `--` as positional separator before output. Input is positional
-    // and validated via canonicalize(); output basename is also screened for
-    // leading-dash by validate_output_path (F3).
-    args.push(input_path.clone());
-    args.push("--".to_string());
-    args.push(output_path.clone());
-
-    let cmd = sidecar.args(args.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
-
-    let result = match cmd.output().await {
-        Ok(out) => {
-            if out.status.success() {
-                ok_result(
-                    &output_path,
-                    "Restrizioni rimosse con successo. Il PDF è ora libero.",
-                )
-            } else {
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                #[cfg(debug_assertions)]
-                eprintln!("[doc_tools::unsecure_pdf] qpdf stderr: {}", stderr);
-                err_result(map_qpdf_stderr(&stderr))
+    let result = sidecar
+        .args([
+            &format!("--password-file={}", password_path.display()),
+            "--decrypt",
+            input_path.as_str(),
+            &decrypted.to_string_lossy(),
+        ])
+        .output()
+        .await;
+    match result {
+        Ok(out) if out.status.success() => {
+            match crate::hardening::publish_new_file(&decrypted, Path::new(&output_path)) {
+                Ok(()) => ok_result(&output_path, "Restrizioni rimosse con successo."),
+                Err(e) => err_result(&e),
             }
         }
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("[doc_tools::unsecure_pdf] exec error: {}", _e);
-            err_result("Errore esecuzione qpdf")
-        }
-    };
-
-    // F2: scrub the password file. Drop the NamedTempFile guard (closes handle),
-    // then explicitly secure-delete in case the OS didn't unlink it.
-    drop(pwd_file_keepalive);
-    if let Some(p) = pwd_file_path {
-        let _ = crate::security::secure_delete_file(&p);
+        Ok(out) => err_result(map_qpdf_stderr(&String::from_utf8_lossy(&out.stderr))),
+        Err(_) => err_result("Errore esecuzione qpdf."),
     }
+}
 
+// ─── Authenticated document IPC ────────────────────────────
+
+fn finish_document_result(
+    state: &crate::state::AppState,
+    session: crate::state::DocumentSession,
+    mut result: DocToolResult,
+) -> DocToolResult {
+    if let Err(error) = state.validate_document_session(session) {
+        if let Some(details) = &mut result.details {
+            crate::state::scrub_json(details);
+        }
+        return err_result(&error);
+    }
     result
 }
 
-// ═══════════════════════════════════════════════════════════
-//  TESTS — simulate human usage of every PDF tool
-// ═══════════════════════════════════════════════════════════
+#[tauri::command]
+pub async fn pdf_info(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<PdfInfo, String> {
+    let session = state.document_session()?;
+    let mut result = pdf_info_impl(app, path).await;
+    if let Err(error) = state.validate_document_session(session) {
+        use zeroize::Zeroize;
+        if let Ok(value) = &mut result {
+            value.title.zeroize();
+            value.author.zeroize();
+        }
+        return Err(error);
+    }
+    result
+}
 
-// TODO(audit:BE-1-CRIT): rewrite all tests as #[tokio::test] with mock AppHandle
-// (currently disabled — many commands are now async and take AppHandle, so the
-// previous synchronous-arity tests no longer compile). To re-enable: build with
-// `--features broken_tests` after porting the test bodies. The feature is
-// intentionally NOT declared in Cargo.toml (which is owned by BE-1) so the
-// module never compiles by default; the unexpected_cfgs lint, if active, will
-// flag the missing feature, which is acceptable while these tests are stale.
-#[cfg(all(test, feature = "broken_tests"))]
-mod tests {
+#[tauri::command]
+pub fn merge_pdfs(
+    state: tauri::State<'_, crate::state::AppState>,
+    input_paths: Vec<String>,
+    output_path: String,
+) -> DocToolResult {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return err_result(&error),
+    };
+    let result = merge_pdfs_impl(input_paths, output_path);
+    finish_document_result(&state, session, result)
+}
+
+#[tauri::command]
+pub fn split_pdf(
+    state: tauri::State<'_, crate::state::AppState>,
+    input_path: String,
+    output_dir: String,
+) -> DocToolResult {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return err_result(&error),
+    };
+    let result = split_pdf_impl(input_path, output_dir);
+    finish_document_result(&state, session, result)
+}
+
+#[tauri::command]
+pub async fn remove_pages(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+    pages_to_remove: Vec<u32>,
+) -> Result<DocToolResult, String> {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return Ok(err_result(&error)),
+    };
+    let result = remove_pages_impl(app, input_path, output_path, pages_to_remove).await;
+    Ok(finish_document_result(&state, session, result))
+}
+
+#[tauri::command]
+pub async fn extract_pages(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+    pages_to_extract: Vec<u32>,
+) -> Result<DocToolResult, String> {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return Ok(err_result(&error)),
+    };
+    let result = extract_pages_impl(app, input_path, output_path, pages_to_extract).await;
+    Ok(finish_document_result(&state, session, result))
+}
+
+#[tauri::command]
+pub async fn compress_pdf(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+) -> Result<DocToolResult, String> {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return Ok(err_result(&error)),
+    };
+    let result = compress_pdf_impl(app, input_path, output_path).await;
+    Ok(finish_document_result(&state, session, result))
+}
+
+#[tauri::command]
+pub async fn add_watermark(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+    text: String,
+    opacity: Option<f64>,
+    font_size: Option<f64>,
+) -> Result<DocToolResult, String> {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return Ok(err_result(&error)),
+    };
+    let result = add_watermark_impl(app, input_path, output_path, text, opacity, font_size).await;
+    Ok(finish_document_result(&state, session, result))
+}
+
+#[tauri::command]
+pub async fn rotate_pdf(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+    rotation: i32,
+    pages_to_rotate: Option<Vec<u32>>,
+) -> Result<DocToolResult, String> {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return Ok(err_result(&error)),
+    };
+    let result = rotate_pdf_impl(app, input_path, output_path, rotation, pages_to_rotate).await;
+    Ok(finish_document_result(&state, session, result))
+}
+
+#[tauri::command]
+pub fn pdf_to_text(
+    state: tauri::State<'_, crate::state::AppState>,
+    input_path: String,
+) -> Result<String, String> {
+    let session = state.document_session()?;
+    let mut result = pdf_to_text_impl(input_path);
+    if let Err(error) = state.validate_document_session(session) {
+        use zeroize::Zeroize;
+        if let Ok(value) = &mut result {
+            value.zeroize();
+        }
+        return Err(error);
+    }
+    result
+}
+
+#[tauri::command]
+pub async fn images_to_pdf(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    image_paths: Vec<String>,
+    output_path: String,
+) -> Result<DocToolResult, String> {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return Ok(err_result(&error)),
+    };
+    let result = images_to_pdf_impl(app, image_paths, output_path).await;
+    Ok(finish_document_result(&state, session, result))
+}
+
+#[tauri::command]
+pub fn reorder_pages(
+    state: tauri::State<'_, crate::state::AppState>,
+    input_path: String,
+    output_path: String,
+    new_order: Vec<u32>,
+) -> DocToolResult {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return err_result(&error),
+    };
+    let result = reorder_pages_impl(input_path, output_path, new_order);
+    finish_document_result(&state, session, result)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // Preserve the existing flat IPC payload; State/AppHandle are injected.
+pub async fn add_page_numbers(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+    position: Option<String>,
+    format_str: Option<String>,
+    start_from: Option<u32>,
+    font_size: Option<f64>,
+) -> Result<DocToolResult, String> {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return Ok(err_result(&error)),
+    };
+    let result = add_page_numbers_impl(
+        app,
+        input_path,
+        output_path,
+        position,
+        format_str,
+        start_from,
+        font_size,
+    )
+    .await;
+    Ok(finish_document_result(&state, session, result))
+}
+
+#[tauri::command]
+pub fn redact_pdf(
+    state: tauri::State<'_, crate::state::AppState>,
+    input_path: String,
+    output_path: String,
+    areas: Vec<RedactArea>,
+) -> DocToolResult {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return err_result(&error),
+    };
+    let result = redact_pdf_impl(input_path, output_path, areas);
+    finish_document_result(&state, session, result)
+}
+
+#[tauri::command]
+pub async fn secure_pdf(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+    options: SecurePdfOptions,
+) -> Result<DocToolResult, String> {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return Ok(err_result(&error)),
+    };
+    let result = secure_pdf_impl(app, input_path, output_path, options).await;
+    Ok(finish_document_result(&state, session, result))
+}
+
+#[tauri::command]
+pub async fn unsecure_pdf(
+    state: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+    password: Option<String>,
+) -> Result<DocToolResult, String> {
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(error) => return Ok(err_result(&error)),
+    };
+    let result = unsecure_pdf_impl(app, input_path, output_path, password).await;
+    Ok(finish_document_result(&state, session, result))
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+
+    #[test]
+    fn metadata_preserves_unicode_with_updated_pdf_parser() {
+        let mut doc = Document::new();
+        let mut info = lopdf::Dictionary::new();
+        info.set("Title", lopdf::text_string("Fascicolo — società É"));
+        let id = doc.add_object(info);
+        doc.trailer.set("Info", Object::Reference(id));
+        assert_eq!(
+            extract_info_string(&doc, b"Title").as_deref(),
+            Some("Fascicolo — società É")
+        );
+    }
+
+    #[test]
+    fn pdf_parser_rejects_excessive_nesting_without_aborting() {
+        fn nested_pdf(depth: usize) -> Vec<u8> {
+            let mut pdf = String::from("%PDF-1.7\n");
+            let first = pdf.len();
+            pdf.push_str(&format!(
+                "1 0 obj\n<< /Type /Catalog /Pages 2 0 R /X {}0{} >>\nendobj\n",
+                "[".repeat(depth),
+                "]".repeat(depth)
+            ));
+            let second = pdf.len();
+            pdf.push_str("2 0 obj\n<< /Type /Pages /Count 0 /Kids [] >>\nendobj\n");
+            let xref = pdf.len();
+            pdf.push_str(&format!("xref\n0 3\n0000000000 65535 f \n{first:010} 00000 n \n{second:010} 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"));
+            pdf.into_bytes()
+        }
+        assert!(Document::load_mem(&nested_pdf(2))
+            .unwrap()
+            .catalog()
+            .is_ok());
+        // RUSTSEC-2026-0187: older lopdf could abort on a small hostile PDF.
+        // A tolerant parser may return a document with the bad catalog omitted.
+        if let Ok(document) = Document::load_mem(&nested_pdf(12_000)) {
+            assert!(document.catalog().is_err());
+        }
+    }
+
+    #[test]
+    fn redaction_fails_without_touching_existing_output() {
+        let work = crate::hardening::DocumentWorkspace::new().unwrap();
+        let output = work.join("output.pdf");
+        std::fs::write(&output, b"existing document").unwrap();
+        let result = redact_pdf_impl(
+            "unused.pdf".into(),
+            output.to_string_lossy().into_owned(),
+            vec![],
+        );
+        assert!(!result.success);
+        assert!(result.output_path.is_none());
+        assert_eq!(std::fs::read(output).unwrap(), b"existing document");
+    }
+
+    #[test]
+    fn response_file_rejects_multiline_password_injection() {
+        for password in ["", "secret\n--decrypt", "secret\r--empty", "secret\0value"] {
+            assert!(encryption_arguments(password, true, true, true).is_err());
+        }
+        let arguments = encryption_arguments("@private.txt", true, false, true).unwrap();
+        assert!(arguments.contains("--user-password=\n--owner-password=@private.txt\n"));
+        assert!(arguments.contains("--print=full\n"));
+        assert_eq!(arguments.lines().count(), 8);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_validation_rejects_symlink() {
+        use std::os::unix::fs::symlink;
+        let work = crate::hardening::DocumentWorkspace::new().unwrap();
+        let target = work.join("target.pdf");
+        std::fs::write(&target, b"untouched").unwrap();
+        let link = work.join("link.pdf");
+        symlink(&target, &link).unwrap();
+        assert!(validate_output_path(&link.to_string_lossy()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod workflow_tests {
     use super::*;
     use lopdf::dictionary;
-    use std::fs;
 
-    /// Helper: create a multi-page test PDF with text on each page.
-    fn create_test_pdf(path: &str, num_pages: usize) {
-        let mut doc = Document::with_version("1.5");
+    fn create_pdf(path: &Path, count: u32) {
+        let mut doc = Document::with_version("1.7");
         let pages_id = doc.new_object_id();
         let font_id = doc.add_object(dictionary! {
-            "Type" => "Font",
-            "Subtype" => "Type1",
-            "BaseFont" => "Helvetica",
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica"
         });
-        let font_dict_id = doc.add_object(dictionary! {
-            "F1" => Object::Reference(font_id),
-        });
-
-        let mut page_ids = vec![];
-        for i in 1..=num_pages {
-            let content = format!(
-                "BT /F1 12 Tf 72 750 Td (Pagina {} - Testo di test per documento legale LexFlow) Tj ET",
-                i
-            );
-            let content_id = doc.add_object(Object::Stream(lopdf::Stream::new(
+        let mut kids = Vec::new();
+        for page in 1..=count {
+            let stream = doc.add_object(lopdf::Stream::new(
                 dictionary! {},
-                content.into_bytes(),
-            )));
-
-            let page_id = doc.add_object(dictionary! {
-                "Type" => "Page",
-                "Parent" => Object::Reference(pages_id),
-                "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
-                "Contents" => Object::Reference(content_id),
-                "Resources" => dictionary! {
-                    "Font" => Object::Reference(font_dict_id),
-                },
+                format!("BT /F1 12 Tf 72 700 Td (CASE_SECRET_{page}) Tj ET").into_bytes(),
+            ));
+            let id = doc.add_object(dictionary! {
+                "Type" => "Page", "Parent" => pages_id, "Contents" => stream
             });
-            page_ids.push(page_id);
+            kids.push(Object::Reference(id));
         }
-
-        let kids: Vec<Object> = page_ids.iter().map(|id| Object::Reference(*id)).collect();
         doc.objects.insert(
             pages_id,
             Object::Dictionary(dictionary! {
-                "Type" => "Pages",
-                "Kids" => Object::Array(kids),
-                "Count" => Object::Integer(num_pages as i64),
+                "Type" => "Pages", "Kids" => kids, "Count" => i64::from(count),
+                "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+                "Resources" => dictionary! { "Font" => dictionary! { "F1" => font_id } },
+                "Rotate" => 90,
             }),
         );
-
-        let catalog_id = doc.add_object(dictionary! {
-            "Type" => "Catalog",
-            "Pages" => Object::Reference(pages_id),
-        });
-        doc.trailer.set("Root", Object::Reference(catalog_id));
-        doc.save(path).expect("Failed to create test PDF");
-    }
-
-    fn tmp_path(name: &str) -> String {
-        std::env::temp_dir()
-            .join(format!("lexflow_test_{}", name))
-            .to_string_lossy()
-            .to_string()
-    }
-
-    // ─── 1. PDF Info ───────────────────────────────────────
-    #[test]
-    fn test_pdf_info_reads_metadata() {
-        let src = tmp_path("info_src.pdf");
-        create_test_pdf(&src, 5);
-
-        let info = pdf_info(src.clone()).expect("pdf_info should succeed");
-        assert_eq!(info.pages, 5, "Should detect 5 pages");
-        assert!(!info.encrypted, "Test PDF should not be encrypted");
-        assert!(info.file_size > 0, "File size should be positive");
-        println!("✓ pdf_info: {} pages, {} bytes", info.pages, info.file_size);
-
-        fs::remove_file(&src).ok();
-    }
-
-    // ─── 2. Merge PDFs ────────────────────────────────────
-    #[test]
-    fn test_merge_two_pdfs() {
-        let a = tmp_path("merge_a.pdf");
-        let b = tmp_path("merge_b.pdf");
-        let out = tmp_path("merge_out.pdf");
-        create_test_pdf(&a, 3);
-        create_test_pdf(&b, 2);
-
-        let res = merge_pdfs(vec![a.clone(), b.clone()], out.clone());
-        assert!(res.success, "Merge should succeed: {}", res.message);
-
-        let info = pdf_info(out.clone()).unwrap();
-        assert_eq!(info.pages, 5, "Merged PDF should have 3+2=5 pages");
-        println!("✓ merge_pdfs: 3+2 → {} pages", info.pages);
-
-        fs::remove_file(&a).ok();
-        fs::remove_file(&b).ok();
-        fs::remove_file(&out).ok();
+        let root = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", root);
+        doc.save(path).unwrap();
     }
 
     #[test]
-    fn test_merge_rejects_single_file() {
-        let a = tmp_path("merge_single.pdf");
-        create_test_pdf(&a, 1);
-
-        let res = merge_pdfs(vec![a.clone()], tmp_path("merge_single_out.pdf"));
-        assert!(!res.success, "Merge should reject single file");
-        println!("✓ merge_pdfs: correctly rejects single file");
-
-        fs::remove_file(&a).ok();
+    fn merge_preserves_inherited_page_resources() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("a.pdf");
+        let second = dir.path().join("b.pdf");
+        let output = dir.path().join("merged.pdf");
+        create_pdf(&first, 2);
+        create_pdf(&second, 1);
+        let result = merge_pdfs_impl(
+            vec![first.display().to_string(), second.display().to_string()],
+            output.display().to_string(),
+        );
+        assert!(result.success, "{}", result.message);
+        let merged = load_pdf(output).unwrap();
+        assert_eq!(merged.get_pages().len(), 3);
+        assert!(merged.extract_text(&[3]).unwrap().contains("CASE_SECRET_1"));
+        let third = merged.get_dictionary(merged.get_pages()[&3]).unwrap();
+        assert_eq!(third.get(b"Rotate").unwrap().as_i64().unwrap(), 90);
+        assert!(third.has(b"MediaBox"));
     }
 
-    // ─── 3. Split PDF ─────────────────────────────────────
     #[test]
-    fn test_split_pdf_into_pages() {
-        let src = tmp_path("split_src.pdf");
-        create_test_pdf(&src, 4);
-        let out_dir = tmp_path("split_output");
-        let _ = fs::remove_dir_all(&out_dir);
+    fn split_prunes_content_of_removed_pages() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("source.pdf");
+        let output = dir.path().join("split");
+        create_pdf(&input, 3);
+        let result = split_pdf_impl(input.display().to_string(), output.display().to_string());
+        assert!(result.success, "{}", result.message);
+        for page in 1..=3 {
+            let part = load_pdf(output.join(format!("source_pag{page}.pdf"))).unwrap();
+            assert_eq!(part.get_pages().len(), 1);
+            let text = part.extract_text(&[1]).unwrap();
+            assert!(text.contains(&format!("CASE_SECRET_{page}")));
+            for object in part.objects.values() {
+                if let Ok(stream) = object.as_stream() {
+                    let bytes = stream
+                        .decompressed_content()
+                        .unwrap_or_else(|_| stream.content.clone());
+                    for other in (1..=3).filter(|other| *other != page) {
+                        assert!(!String::from_utf8_lossy(&bytes)
+                            .contains(&format!("CASE_SECRET_{other}")));
+                    }
+                }
+            }
+        }
+    }
 
-        let res = split_pdf(src.clone(), out_dir.clone());
-        assert!(res.success, "Split should succeed: {}", res.message);
+    #[test]
+    fn split_reports_failure_and_preserves_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("source.pdf");
+        create_pdf(&input, 2);
+        let conflict = dir.path().join("source_pag1.pdf");
+        std::fs::write(&conflict, b"existing legal document").unwrap();
+        let result = split_pdf_impl(
+            input.display().to_string(),
+            dir.path().display().to_string(),
+        );
+        assert!(!result.success);
+        assert_eq!(std::fs::read(conflict).unwrap(), b"existing legal document");
+        assert!(!dir.path().join("source_pag2.pdf").exists());
+    }
 
-        // Verify 4 individual files created
-        let stem = PathBuf::from(&src)
-            .file_stem()
+    #[test]
+    fn reorder_keeps_one_copy_of_resources_and_inherited_properties() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("source.pdf");
+        let output = dir.path().join("reordered.pdf");
+        create_pdf(&input, 60);
+        let original_count = load_pdf(&input).unwrap().objects.len();
+        let result = reorder_pages_impl(
+            input.display().to_string(),
+            output.display().to_string(),
+            (1..=60).rev().collect(),
+        );
+        assert!(result.success, "{}", result.message);
+        let reordered = load_pdf(output).unwrap();
+        assert_eq!(reordered.get_pages().len(), 60);
+        assert!(reordered.objects.len() <= original_count);
+        assert!(reordered
+            .extract_text(&[1])
             .unwrap()
-            .to_string_lossy()
-            .to_string();
-        for i in 1..=4 {
-            let page_file = PathBuf::from(&out_dir).join(format!("{}_pag{}.pdf", stem, i));
-            assert!(page_file.exists(), "Page {} file should exist", i);
-            let info = pdf_info(page_file.to_string_lossy().to_string()).unwrap();
-            assert_eq!(info.pages, 1, "Each split file should have 1 page");
-        }
-        println!("✓ split_pdf: 4 pages → 4 files");
-
-        fs::remove_file(&src).ok();
-        fs::remove_dir_all(&out_dir).ok();
+            .contains("CASE_SECRET_60"));
+        assert!(reordered
+            .extract_text(&[60])
+            .unwrap()
+            .contains("CASE_SECRET_1"));
+        let first = reordered.get_dictionary(reordered.get_pages()[&1]).unwrap();
+        assert_eq!(first.get(b"Rotate").unwrap().as_i64().unwrap(), 90);
+        assert!(first.has(b"MediaBox"));
     }
 
-    // ─── 4. Remove Pages ──────────────────────────────────
     #[test]
-    fn test_remove_pages_from_pdf() {
-        let src = tmp_path("remove_src.pdf");
-        let out = tmp_path("remove_out.pdf");
-        create_test_pdf(&src, 6);
-
-        // Remove pages 2, 4, 5
-        let res = remove_pages(src.clone(), out.clone(), vec![2, 4, 5]);
-        assert!(res.success, "Remove should succeed: {}", res.message);
-
-        let info = pdf_info(out.clone()).unwrap();
-        assert_eq!(info.pages, 3, "Should have 6-3=3 pages remaining");
-        println!(
-            "✓ remove_pages: 6 pages, removed 3 → {} remaining",
-            info.pages
+    fn reorder_rejects_duplicates_and_never_overwrites_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("source.pdf");
+        create_pdf(&input, 2);
+        let before = std::fs::read(&input).unwrap();
+        let result = reorder_pages_impl(
+            input.display().to_string(),
+            dir.path().join("bad.pdf").display().to_string(),
+            vec![1, 1],
         );
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    #[test]
-    fn test_remove_all_pages_rejected() {
-        let src = tmp_path("remove_all.pdf");
-        create_test_pdf(&src, 2);
-
-        let res = remove_pages(src.clone(), tmp_path("remove_all_out.pdf"), vec![1, 2]);
-        assert!(!res.success, "Should reject removing all pages");
-        println!("✓ remove_pages: correctly rejects removing all pages");
-
-        fs::remove_file(&src).ok();
-    }
-
-    // ─── 5. Extract Pages ─────────────────────────────────
-    #[test]
-    fn test_extract_specific_pages() {
-        let src = tmp_path("extract_src.pdf");
-        let out = tmp_path("extract_out.pdf");
-        create_test_pdf(&src, 8);
-
-        // Extract pages 1, 3, 7
-        let res = extract_pages(src.clone(), out.clone(), vec![1, 3, 7]);
-        assert!(res.success, "Extract should succeed: {}", res.message);
-
-        let info = pdf_info(out.clone()).unwrap();
-        assert_eq!(info.pages, 3, "Should extract exactly 3 pages");
-        println!(
-            "✓ extract_pages: extracted 3 pages from 8 → {} pages",
-            info.pages
+        assert!(!result.success);
+        let result = reorder_pages_impl(
+            input.display().to_string(),
+            input.display().to_string(),
+            vec![2, 1],
         );
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    // ─── 6. Compress PDF ──────────────────────────────────
-    #[test]
-    fn test_compress_pdf_runs() {
-        let src = tmp_path("compress_src.pdf");
-        let out = tmp_path("compress_out.pdf");
-        create_test_pdf(&src, 10);
-
-        let res = compress_pdf(src.clone(), out.clone());
-        assert!(res.success, "Compress should succeed: {}", res.message);
-
-        let info = pdf_info(out.clone()).unwrap();
-        assert_eq!(info.pages, 10, "Compressed PDF should still have 10 pages");
-        assert!(info.file_size > 0, "Compressed file should not be empty");
-        println!("✓ compress_pdf: {}", res.message);
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    // ─── 7. Watermark ─────────────────────────────────────
-    #[test]
-    fn test_add_watermark_bozza() {
-        let src = tmp_path("wmark_src.pdf");
-        let out = tmp_path("wmark_out.pdf");
-        create_test_pdf(&src, 3);
-
-        let res = add_watermark(
-            src.clone(),
-            out.clone(),
-            "BOZZA".into(),
-            Some(0.2),
-            Some(48.0),
-        );
-        assert!(res.success, "Watermark should succeed: {}", res.message);
-
-        let info = pdf_info(out.clone()).unwrap();
-        assert_eq!(info.pages, 3, "Watermarked PDF should keep all pages");
-
-        // Verify watermark content was added by checking file size increased
-        let src_size = fs::metadata(&src).unwrap().len();
-        let out_size = fs::metadata(&out).unwrap().len();
-        assert!(out_size > src_size, "Watermarked PDF should be larger");
-        println!(
-            "✓ add_watermark: BOZZA added to 3 pages ({} → {} bytes)",
-            src_size, out_size
-        );
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    // ─── 8. Rotate Pages ──────────────────────────────────
-    #[test]
-    fn test_rotate_all_pages_90() {
-        let src = tmp_path("rotate_src.pdf");
-        let out = tmp_path("rotate_out.pdf");
-        create_test_pdf(&src, 3);
-
-        let res = rotate_pdf(src.clone(), out.clone(), 90, None);
-        assert!(res.success, "Rotate should succeed: {}", res.message);
-
-        // Verify rotation was set
-        let doc = Document::load(&out).unwrap();
-        for (_, page_id) in doc.get_pages() {
-            let page = doc.get_object(page_id).unwrap().as_dict().unwrap();
-            let rot = page.get(b"Rotate").unwrap().as_i64().unwrap();
-            assert_eq!(rot, 90, "Each page should be rotated 90°");
-        }
-        println!("✓ rotate_pdf: all 3 pages rotated 90°");
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
+        assert!(!result.success);
+        assert_eq!(std::fs::read(input).unwrap(), before);
     }
 
     #[test]
-    fn test_rotate_specific_pages() {
-        let src = tmp_path("rotate_spec_src.pdf");
-        let out = tmp_path("rotate_spec_out.pdf");
-        create_test_pdf(&src, 5);
-
-        let res = rotate_pdf(src.clone(), out.clone(), 180, Some(vec![2, 4]));
-        assert!(
-            res.success,
-            "Partial rotate should succeed: {}",
-            res.message
-        );
-        println!("✓ rotate_pdf: pages 2,4 rotated 180° in a 5-page PDF");
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
+    fn text_extraction_handles_single_line_pdf_operators() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("source.pdf");
+        create_pdf(&input, 2);
+        let result = pdf_to_text_impl(input.display().to_string()).unwrap();
+        assert!(result.contains("CASE_SECRET_1"));
+        assert!(result.contains("CASE_SECRET_2"));
     }
 
     #[test]
-    fn test_rotate_rejects_invalid_angle() {
-        let src = tmp_path("rotate_bad.pdf");
-        create_test_pdf(&src, 1);
-
-        let res = rotate_pdf(src.clone(), tmp_path("rotate_bad_out.pdf"), 45, None);
-        assert!(!res.success, "Should reject non-90° multiple");
-        println!("✓ rotate_pdf: correctly rejects 45° rotation");
-
-        fs::remove_file(&src).ok();
+    fn input_validation_rejects_directory_and_oversized_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(validate_input_path(&dir.path().display().to_string()).is_err());
+        let input = dir.path().join("oversized.pdf");
+        let file = std::fs::File::create(&input).unwrap();
+        file.set_len(PDF_MAX_INPUT_BYTES + 1).unwrap();
+        assert!(validate_input_path(&input.display().to_string()).is_err());
+        assert!(load_pdf(input).is_err());
     }
+}
 
-    // ─── 9. PDF to Text ───────────────────────────────────
-    #[test]
-    fn test_pdf_to_text_extraction() {
-        let src = tmp_path("text_src.pdf");
-        create_test_pdf(&src, 2);
-
-        let text = pdf_to_text(src.clone()).expect("pdf_to_text should succeed");
-        // The function returns either extracted text or a message about image-only PDF
-        // Our test PDFs have BT/ET text blocks, so text extraction should find something
-        assert!(!text.is_empty(), "Should return non-empty result");
-        // The function prefixes each page with "--- Pagina N ---" if text is found
-        let has_text =
-            text.contains("Pagina") || text.contains("Testo") || text.contains("immagini");
-        assert!(
-            has_text,
-            "Should contain page markers or text content, got: {}",
-            &text[..text.len().min(200)]
-        );
-        println!("✓ pdf_to_text: result {} chars from 2 pages", text.len());
-
-        fs::remove_file(&src).ok();
-    }
-
-    // ─── 10. Reorder Pages (NEW) ──────────────────────────
-    #[test]
-    fn test_reorder_pages_reverse() {
-        let src = tmp_path("reorder_src.pdf");
-        let out = tmp_path("reorder_out.pdf");
-        create_test_pdf(&src, 4);
-
-        // Reverse order: 4,3,2,1
-        let res = reorder_pages(src.clone(), out.clone(), vec![4, 3, 2, 1]);
-        assert!(res.success, "Reorder should succeed: {}", res.message);
-
-        let info = pdf_info(out.clone()).unwrap();
-        assert_eq!(info.pages, 4, "Reordered PDF should still have 4 pages");
-        println!("✓ reorder_pages: reversed 4 pages → {}", res.message);
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
+#[cfg(test)]
+mod session_result_tests {
+    use super::*;
+    use crate::state::{AppState, SecureKey};
+    use zeroize::Zeroizing;
 
     #[test]
-    fn test_reorder_swap_first_last() {
-        let src = tmp_path("reorder_swap_src.pdf");
-        let out = tmp_path("reorder_swap_out.pdf");
-        create_test_pdf(&src, 5);
-
-        // Swap page 1 and 5, keep rest
-        let res = reorder_pages(src.clone(), out.clone(), vec![5, 2, 3, 4, 1]);
-        assert!(res.success, "Swap reorder should succeed: {}", res.message);
-
-        let info = pdf_info(out.clone()).unwrap();
-        assert_eq!(info.pages, 5, "Should have 5 pages");
-        println!("✓ reorder_pages: swapped first/last in 5-page PDF");
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    #[test]
-    fn test_reorder_rejects_wrong_count() {
-        let src = tmp_path("reorder_bad.pdf");
-        create_test_pdf(&src, 3);
-
-        let res = reorder_pages(src.clone(), tmp_path("reorder_bad_out.pdf"), vec![1, 2]);
-        assert!(!res.success, "Should reject wrong page count");
-        println!("✓ reorder_pages: correctly rejects 2 pages for 3-page PDF");
-
-        fs::remove_file(&src).ok();
-    }
-
-    #[test]
-    fn test_reorder_rejects_duplicate_pages() {
-        let src = tmp_path("reorder_dup.pdf");
-        create_test_pdf(&src, 3);
-
-        let res = reorder_pages(src.clone(), tmp_path("reorder_dup_out.pdf"), vec![1, 1, 3]);
-        assert!(!res.success, "Should reject duplicate page numbers");
-        println!("✓ reorder_pages: correctly rejects duplicates [1,1,3]");
-
-        fs::remove_file(&src).ok();
-    }
-
-    // ─── 11. Add Page Numbers (NEW) ───────────────────────
-    #[test]
-    fn test_add_page_numbers_default() {
-        let src = tmp_path("pagenum_src.pdf");
-        let out = tmp_path("pagenum_out.pdf");
-        create_test_pdf(&src, 5);
-
-        let res = add_page_numbers(
-            src.clone(),
-            out.clone(),
-            None,
-            None,
-            None,
-            None, // all defaults: bottom-center, "{n}", start=1, 10pt
+    fn expired_document_session_discards_owner_password_and_keeps_published_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("published.pdf");
+        std::fs::write(&output, b"completed user output").unwrap();
+        let state = AppState::new(dir.path().into(), dir.path().into());
+        *state.vault_dek.lock().unwrap() = Some(SecureKey::new(Zeroizing::new(vec![3; 32])));
+        let session = state.document_session().unwrap();
+        state.lock_vault();
+        let result = finish_document_result(
+            &state,
+            session,
+            DocToolResult {
+                success: true,
+                output_path: Some(output.display().to_string()),
+                message: "PDF creato".into(),
+                details: Some(serde_json::json!({"owner_password": "test-secret"})),
+            },
         );
-        assert!(res.success, "Page numbers should succeed: {}", res.message);
-
-        let info = pdf_info(out.clone()).unwrap();
-        assert_eq!(info.pages, 5, "Should keep all pages");
-
-        // File should be larger (added content streams)
-        let out_size = fs::metadata(&out).unwrap().len();
-        let src_size = fs::metadata(&src).unwrap().len();
-        assert!(out_size > src_size, "Numbered PDF should be larger");
-        println!(
-            "✓ add_page_numbers: default format on 5 pages ({} → {} bytes)",
-            src_size, out_size
-        );
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    #[test]
-    fn test_add_page_numbers_with_format() {
-        let src = tmp_path("pagenum_fmt_src.pdf");
-        let out = tmp_path("pagenum_fmt_out.pdf");
-        create_test_pdf(&src, 3);
-
-        let res = add_page_numbers(
-            src.clone(),
-            out.clone(),
-            Some("top-right".into()),
-            Some("Pag. {n} di {total}".into()),
-            Some(1),
-            Some(9.0),
-        );
-        assert!(
-            res.success,
-            "Formatted page numbers should succeed: {}",
-            res.message
-        );
-        println!("✓ add_page_numbers: 'Pag. N di M' top-right on 3 pages");
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    #[test]
-    fn test_add_page_numbers_start_from_custom() {
-        let src = tmp_path("pagenum_start_src.pdf");
-        let out = tmp_path("pagenum_start_out.pdf");
-        create_test_pdf(&src, 4);
-
-        let res = add_page_numbers(
-            src.clone(),
-            out.clone(),
-            Some("bottom-left".into()),
-            Some("{n}".into()),
-            Some(10),
-            None,
-        );
-        assert!(res.success, "Custom start should succeed: {}", res.message);
-        assert!(
-            res.message.contains("da 10 a 13"),
-            "Should mention numbering 10-13, got: {}",
-            res.message
-        );
-        println!("✓ add_page_numbers: numbered 10-13 on 4 pages");
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    // ─── 12. Redact PDF (NEW) ─────────────────────────────
-    #[test]
-    fn test_redact_single_area() {
-        let src = tmp_path("redact_src.pdf");
-        let out = tmp_path("redact_out.pdf");
-        create_test_pdf(&src, 2);
-
-        let res = redact_pdf(
-            src.clone(),
-            out.clone(),
-            vec![RedactArea {
-                page: 1,
-                x: 50.0,
-                y: 740.0,
-                width: 300.0,
-                height: 20.0,
-            }],
-        );
-        assert!(res.success, "Redact should succeed: {}", res.message);
-
-        let info = pdf_info(out.clone()).unwrap();
-        assert_eq!(info.pages, 2, "Should keep all pages");
-        println!("✓ redact_pdf: censored 1 area on page 1 → {}", res.message);
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    #[test]
-    fn test_redact_multiple_areas_multiple_pages() {
-        let src = tmp_path("redact_multi_src.pdf");
-        let out = tmp_path("redact_multi_out.pdf");
-        create_test_pdf(&src, 3);
-
-        let res = redact_pdf(
-            src.clone(),
-            out.clone(),
-            vec![
-                RedactArea {
-                    page: 1,
-                    x: 50.0,
-                    y: 740.0,
-                    width: 200.0,
-                    height: 15.0,
-                },
-                RedactArea {
-                    page: 1,
-                    x: 50.0,
-                    y: 700.0,
-                    width: 150.0,
-                    height: 15.0,
-                },
-                RedactArea {
-                    page: 2,
-                    x: 100.0,
-                    y: 600.0,
-                    width: 250.0,
-                    height: 20.0,
-                },
-                RedactArea {
-                    page: 3,
-                    x: 72.0,
-                    y: 750.0,
-                    width: 400.0,
-                    height: 18.0,
-                },
-            ],
-        );
-        assert!(res.success, "Multi-redact should succeed: {}", res.message);
-        assert!(
-            res.message.contains("4 aree"),
-            "Should report 4 areas, got: {}",
-            res.message
-        );
-        println!("✓ redact_pdf: 4 areas across 3 pages → {}", res.message);
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&out).ok();
-    }
-
-    #[test]
-    fn test_redact_rejects_invalid_page() {
-        let src = tmp_path("redact_bad.pdf");
-        create_test_pdf(&src, 2);
-
-        let res = redact_pdf(
-            src.clone(),
-            tmp_path("redact_bad_out.pdf"),
-            vec![RedactArea {
-                page: 5,
-                x: 0.0,
-                y: 0.0,
-                width: 100.0,
-                height: 100.0,
-            }],
-        );
-        assert!(!res.success, "Should reject page 5 for 2-page PDF");
-        println!("✓ redact_pdf: correctly rejects invalid page number");
-
-        fs::remove_file(&src).ok();
-    }
-
-    #[test]
-    fn test_redact_rejects_empty_areas() {
-        let src = tmp_path("redact_empty.pdf");
-        create_test_pdf(&src, 1);
-
-        let res = redact_pdf(src.clone(), tmp_path("redact_empty_out.pdf"), vec![]);
-        assert!(!res.success, "Should reject empty redaction list");
-        println!("✓ redact_pdf: correctly rejects empty area list");
-
-        fs::remove_file(&src).ok();
-    }
-
-    // ─── 13. Chained operations (real-world workflow) ──────
-    #[test]
-    fn test_workflow_merge_then_add_numbers_then_watermark() {
-        // Simulate: lawyer merges two documents, adds page numbers, then watermarks BOZZA
-        let a = tmp_path("wf_a.pdf");
-        let b = tmp_path("wf_b.pdf");
-        let merged = tmp_path("wf_merged.pdf");
-        let numbered = tmp_path("wf_numbered.pdf");
-        let final_out = tmp_path("wf_final.pdf");
-
-        create_test_pdf(&a, 3);
-        create_test_pdf(&b, 2);
-
-        // Step 1: Merge
-        let res1 = merge_pdfs(vec![a.clone(), b.clone()], merged.clone());
-        assert!(res1.success, "Merge step failed");
-        let info1 = pdf_info(merged.clone()).unwrap();
-        assert_eq!(info1.pages, 5);
-
-        // Step 2: Add page numbers
-        let res2 = add_page_numbers(
-            merged.clone(),
-            numbered.clone(),
-            Some("bottom-center".into()),
-            Some("Pag. {n} di {total}".into()),
-            Some(1),
-            None,
-        );
-        assert!(res2.success, "Page numbers step failed");
-
-        // Step 3: Add watermark
-        let res3 = add_watermark(
-            numbered.clone(),
-            final_out.clone(),
-            "BOZZA".into(),
-            Some(0.15),
-            Some(60.0),
-        );
-        assert!(res3.success, "Watermark step failed");
-
-        let final_info = pdf_info(final_out.clone()).unwrap();
-        assert_eq!(final_info.pages, 5, "Final document should have 5 pages");
-        println!(
-            "✓ WORKFLOW: merge(3+2) → page numbers → watermark BOZZA = {} pages, {} bytes",
-            final_info.pages, final_info.file_size
-        );
-
-        fs::remove_file(&a).ok();
-        fs::remove_file(&b).ok();
-        fs::remove_file(&merged).ok();
-        fs::remove_file(&numbered).ok();
-        fs::remove_file(&final_out).ok();
-    }
-
-    #[test]
-    fn test_workflow_extract_then_redact() {
-        // Simulate: extract relevant pages from a long doc, then censor personal data
-        let src = tmp_path("wf2_src.pdf");
-        let extracted = tmp_path("wf2_extracted.pdf");
-        let redacted = tmp_path("wf2_redacted.pdf");
-
-        create_test_pdf(&src, 10);
-
-        // Step 1: Extract pages 2, 5, 8
-        let res1 = extract_pages(src.clone(), extracted.clone(), vec![2, 5, 8]);
-        assert!(res1.success, "Extract step failed");
-
-        // Step 2: Redact areas on pages of extracted doc
-        let res2 = redact_pdf(
-            extracted.clone(),
-            redacted.clone(),
-            vec![
-                RedactArea {
-                    page: 1,
-                    x: 72.0,
-                    y: 740.0,
-                    width: 200.0,
-                    height: 16.0,
-                },
-                RedactArea {
-                    page: 3,
-                    x: 72.0,
-                    y: 740.0,
-                    width: 200.0,
-                    height: 16.0,
-                },
-            ],
-        );
-        assert!(res2.success, "Redact step failed");
-
-        let info = pdf_info(redacted.clone()).unwrap();
-        assert_eq!(info.pages, 3, "Redacted doc should have 3 pages");
-        println!(
-            "✓ WORKFLOW: extract(2,5,8 from 10) → redact 2 areas = {} pages",
-            info.pages
-        );
-
-        fs::remove_file(&src).ok();
-        fs::remove_file(&extracted).ok();
-        fs::remove_file(&redacted).ok();
+        assert!(!result.success);
+        assert!(result.details.is_none());
+        assert!(result.output_path.is_none());
+        assert_eq!(std::fs::read(output).unwrap(), b"completed user output");
     }
 }

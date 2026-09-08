@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-09-07T23:19:37.028713+02:00",
+  "four_current_installers_verified": [
+    "macOS/LexFlow-1.0.1-macOS-Apple-Silicon.dmg",
+    "macOS/LexFlow-1.0.1-macOS-Intel.dmg",
+    "Windows/LexFlow_1.0.1_x64-setup.exe",
+    "Android/LexFlow-1.0.1-Android-arm64.apk"
+  ],
+  "source_files_retained_and_matching": 105,
+  "generated_frontend_files_at_build": 27,
+  "installed_mac_signature_and_sha256_verified": true,
+  "known_cleanup_paths_absent": true,
+  "license_registry_unchanged": true,
+  "extra_project_app_bundles": 0
+}

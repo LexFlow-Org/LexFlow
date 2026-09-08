@@ -1,0 +1,2 @@
+{"event": "license_activated", "observed_at": "2026-09-07T09:18:00+02:00", "result": "success", "license_synthetic": true}
+{"event": "capture_positive_control", "observed_at": "2026-09-07T09:18:11+02:00", "datagrams_sent": 3, "loopback_directional_records": 6, "pid": 72475, "result": "pass", "actual_snaplen": 524288}

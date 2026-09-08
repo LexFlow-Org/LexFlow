@@ -13,7 +13,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, CalendarClock,
   CalendarDays, Settings, Lock, ShieldCheck, X, Menu,
-  Clock, Users, Sun, Moon, BarChart3, Activity, FileText
+  Clock, Users, Sun, Moon, BarChart3, FileText
 } from 'lucide-react';
 import logo from '../assets/logo.svg';
 import NotificationCenter from './NotificationCenter';
@@ -28,6 +28,7 @@ const navItemsMobile = [
   { path: '/ore',        label: 'Gestione Ore', icon: Clock },
   { path: '/contatti',   label: 'Contatti & Conflitti', icon: Users },
   { path: '/strumenti',  label: 'Strumenti PDF', icon: FileText },
+  { path: '/report',     label: 'Report', icon: BarChart3 },
   { path: '/settings',   label: 'Impostazioni', icon: Settings },
 ];
 

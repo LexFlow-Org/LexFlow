@@ -15,7 +15,6 @@ use serde_json::{json, Value};
 use sha2::Sha256;
 use std::fs;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::State;
 
 /// Exponential backoff delays in seconds, indexed by (attempts - 3).
 /// First 3 attempts have no delay. After 10 total: DEK wiped from keystore.
@@ -172,10 +171,7 @@ fn compute_backoff_duration(attempts: u32) -> Option<u64> {
 ///    app restarts but IS susceptible to clock manipulation (setting the system clock
 ///    forward to expire the lockout). The HMAC-signed lockout file prevents counter
 ///    reset, so an attacker can at most skip the wait period, not the attempt count.
-pub(crate) fn check_lockout(
-    state: &State<AppState>,
-    sec_dir: &std::path::Path,
-) -> Result<(), Value> {
+pub(crate) fn check_lockout(state: &AppState, sec_dir: &std::path::Path) -> Result<(), Value> {
     let (disk_attempts, disk_locked_until) = lockout_load(sec_dir);
     {
         let mut att = state.failed_attempts.lock().unwrap_or_else(|e| {
@@ -243,11 +239,17 @@ pub(crate) fn check_lockout(
             }));
         }
     }
-    // Check in-memory lockout (Instant-based, within-session)
-    if let Some(until) = *state.locked_until.lock().unwrap_or_else(|e| {
+    check_memory_lockout(state)
+}
+
+fn check_memory_lockout(state: &AppState) -> Result<(), Value> {
+    // Release the deadline mutex before acquiring failed_attempts. An if-let
+    // scrutinee guard lives through its body and inverted the writer's order.
+    let deadline = *state.locked_until.lock().unwrap_or_else(|e| {
         eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
         e.into_inner()
-    }) {
+    });
+    if let Some(until) = deadline {
         if Instant::now() < until {
             let att = *state.failed_attempts.lock().unwrap_or_else(|e| {
                 eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
@@ -264,12 +266,21 @@ pub(crate) fn check_lockout(
     Ok(())
 }
 
-pub(crate) fn record_failed_attempt(state: &State<AppState>, sec_dir: &std::path::Path) {
+/// Caller holds write_mutex throughout credential verification and failure.
+pub(crate) fn record_failed_attempt_locked(state: &AppState, sec_dir: &std::path::Path) {
+    record_failed_attempt_with_cleanup(state, sec_dir, wipe_dek_from_keystore);
+}
+
+fn record_failed_attempt_with_cleanup(
+    state: &AppState,
+    sec_dir: &std::path::Path,
+    cleanup_keystore: impl FnOnce(),
+) {
     let mut att = state.failed_attempts.lock().unwrap_or_else(|e| {
         eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
         e.into_inner()
     });
-    *att += 1;
+    *att = att.saturating_add(1);
 
     // Compute exponential backoff
     let lockout_secs = compute_backoff_duration(*att);
@@ -336,25 +347,11 @@ pub(crate) fn record_failed_attempt(state: &State<AppState>, sec_dir: &std::path
         // Drop the failed_attempts mutex before reaching into other AppState slots
         // to avoid lock-ordering surprises.
         drop(att);
-        wipe_dek_full(state);
+        // Same transaction as the failure count: a concurrent read cannot
+        // restore plaintext cache between key revocation and cache scrubbing.
+        state.lock_vault_locked();
+        cleanup_keystore();
     }
-}
-
-/// SEC-LO-1 (audit): centralised wipe of all DEK / KEK material.
-/// Clears both `vault_key` (legacy) and `vault_dek` (v4) — the `SecureKey` Drop
-/// impl zeroises the underlying bytes — and removes any cached biometric DEK
-/// from the native keystore.
-///
-/// Use this anywhere the vault must transition to "locked" state (lockout
-/// trigger, autolock timeout, explicit user lock, panic-safe paths).
-pub(crate) fn wipe_dek_full(state: &State<AppState>) {
-    if let Ok(mut dek) = state.vault_dek.lock() {
-        *dek = None; // SecureKey Drop zeroises
-    }
-    if let Ok(mut k) = state.vault_key.lock() {
-        *k = None;
-    }
-    wipe_dek_from_keystore();
 }
 
 /// Wipe cached DEK from the native keystore (biometric credentials).
@@ -378,7 +375,7 @@ fn wipe_dek_from_keystore() {
     // need a JNI bridge here to call KeyStore.deleteEntry() with the right alias.
 }
 
-pub(crate) fn clear_lockout(state: &State<AppState>, sec_dir: &std::path::Path) {
+pub(crate) fn clear_lockout(state: &AppState, sec_dir: &std::path::Path) {
     *state.failed_attempts.lock().unwrap_or_else(|e| {
         eprintln!("[lockout] WARN: mutex poisoned, recovering: {}", e);
         e.into_inner()
@@ -406,6 +403,83 @@ mod tests {
         {
             let _ =
                 crate::platform::MACHINE_ID_CACHE.set("test_machine_id_for_lockout".to_string());
+        }
+    }
+
+    #[test]
+    fn lockout_threshold_clears_keys_cache_version_before_fake_keystore_cleanup() {
+        ensure_machine_id();
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("vault"), dir.path().to_path_buf());
+        *state.vault_key.lock().unwrap() = Some(crate::state::SecureKey::new(
+            zeroize::Zeroizing::new(vec![1; 32]),
+        ));
+        *state.vault_dek.lock().unwrap() = Some(crate::state::SecureKey::new(
+            zeroize::Zeroizing::new(vec![2; 32]),
+        ));
+        *state.vault_version.write().unwrap() = 8;
+        *state.vault_cache.write().unwrap() = Some(json!({"client": "Synthetic private record"}));
+        let session = state.document_session().unwrap();
+        *state.failed_attempts.lock().unwrap() = DEK_WIPE_THRESHOLD - 1;
+        let _transaction = state.write_mutex.lock().unwrap();
+        let mut cleanup_called = false;
+        record_failed_attempt_with_cleanup(&state, dir.path(), || {
+            cleanup_called = true;
+            assert!(state.vault_key.lock().unwrap().is_none());
+            assert!(state.vault_dek.lock().unwrap().is_none());
+            assert!(state.vault_cache.read().unwrap().is_none());
+            assert_eq!(*state.vault_version.read().unwrap(), 0);
+            assert!(state.validate_document_session(session).is_err());
+        });
+        assert!(cleanup_called);
+        assert_eq!(lockout_load(dir.path()).0, DEK_WIPE_THRESHOLD);
+    }
+
+    #[test]
+    fn exhausted_attempt_counter_saturates_and_still_revokes_session() {
+        ensure_machine_id();
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("vault"), dir.path().to_path_buf());
+        *state.failed_attempts.lock().unwrap() = u32::MAX;
+        *state.vault_cache.write().unwrap() = Some(json!({"client": "Synthetic"}));
+        let _transaction = state.write_mutex.lock().unwrap();
+        record_failed_attempt_with_cleanup(&state, dir.path(), || {});
+        assert_eq!(*state.failed_attempts.lock().unwrap(), u32::MAX);
+        assert_eq!(lockout_load(dir.path()).0, u32::MAX);
+        assert!(state.vault_cache.read().unwrap().is_none());
+    }
+
+    #[test]
+    fn memory_lockout_check_cannot_deadlock_with_attempt_updates() {
+        use std::sync::{mpsc, Arc, Barrier};
+        let state = Arc::new(AppState::new(Default::default(), Default::default()));
+        *state.locked_until.lock().unwrap() = Some(Instant::now() + Duration::from_secs(60));
+        let barrier = Arc::new(Barrier::new(2));
+        let (done, received) = mpsc::channel();
+        for writer in [false, true] {
+            let state = Arc::clone(&state);
+            let barrier = Arc::clone(&barrier);
+            let done = done.clone();
+            std::thread::spawn(move || {
+                for _ in 0..2_000 {
+                    barrier.wait();
+                    if writer {
+                        let mut attempts = state.failed_attempts.lock().unwrap();
+                        std::thread::yield_now();
+                        let _deadline = state.locked_until.lock().unwrap();
+                        *attempts += 1;
+                    } else {
+                        assert!(check_memory_lockout(&state).is_err());
+                    }
+                }
+                done.send(()).unwrap();
+            });
+        }
+        // Bound completion so a regression fails instead of hanging the suite.
+        for _ in 0..2 {
+            received
+                .recv_timeout(Duration::from_secs(10))
+                .expect("lockout mutex order deadlocked");
         }
     }
 

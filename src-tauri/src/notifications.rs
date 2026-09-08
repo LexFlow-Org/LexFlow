@@ -58,27 +58,108 @@ pub(crate) fn setup_notification_permissions(
 /// Hard cap on the schedule payload coming from the FE (1 MiB is generous —
 /// real schedules with 1000+ items serialize to ~100 KiB).
 const MAX_SCHEDULE_PAYLOAD: usize = 1024 * 1024;
+const MAX_SCHEDULE_ITEMS: usize = 10_000;
+const MAX_REMIND_MINUTES: i64 = 14 * 24 * 60;
 
-/// Read the `hide_notification_details` settings flag without decrypting the
-/// vault. Defaults to false. When true, briefing/reminder titles and bodies
-/// are replaced with a generic placeholder so the OS never sees client names,
-/// case numbers, or court details.
-fn hide_notification_details(data_dir: &std::path::Path) -> bool {
-    let path = data_dir.join(SETTINGS_FILE);
-    if !path.exists() {
+fn valid_schedule_time(value: &Value) -> bool {
+    value.as_str().is_some_and(|text| {
+        text.len() == 5
+            && text.as_bytes()[2] == b':'
+            && chrono::NaiveTime::parse_from_str(text, "%H:%M").is_ok()
+    })
+}
+
+fn valid_notification_schedule(schedule: &Value) -> bool {
+    let Some(object) = schedule.as_object() else {
+        return false;
+    };
+    let Some(briefings) = object.get("briefingTimes").and_then(Value::as_array) else {
+        return false;
+    };
+    let Some(items) = object.get("items").and_then(Value::as_array) else {
+        return false;
+    };
+    if briefings.len() > 24
+        || !briefings.iter().all(valid_schedule_time)
+        || items.len() > MAX_SCHEDULE_ITEMS
+    {
         return false;
     }
-    let dec = match decrypt_local_with_migration(&path) {
-        Some(d) => d,
-        None => return false,
-    };
-    let v: Value = match serde_json::from_slice(&dec) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-    v.get("hide_notification_details")
-        .and_then(|x| x.as_bool())
-        .unwrap_or(false)
+    items.iter().all(|item| {
+        let Some(item) = item.as_object() else {
+            return false;
+        };
+        let valid_date = item
+            .get("date")
+            .and_then(Value::as_str)
+            .is_some_and(|text| {
+                text.len() == 10 && chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").is_ok()
+            });
+        valid_date
+            && item.get("time").is_some_and(valid_schedule_time)
+            && ["id", "title", "category"].iter().all(|field| {
+                item.get(*field)
+                    .is_none_or(|value| value.as_str().is_some_and(|text| text.len() <= 4096))
+            })
+            && item.get("completed").is_none_or(Value::is_boolean)
+            && item.get("remindMinutes").is_none_or(|value| {
+                value.is_null()
+                    || value
+                        .as_i64()
+                        .is_some_and(|minutes| (0..=MAX_REMIND_MINUTES).contains(&minutes))
+            })
+            && item.get("customRemindTime").is_none_or(|value| {
+                value.is_null() || value.as_str() == Some("") || valid_schedule_time(value)
+            })
+    })
+}
+
+fn notifications_enabled_by_settings(settings: &Value) -> bool {
+    settings.as_object().is_some_and(|object| {
+        object
+            .get("notifyEnabled")
+            .is_none_or(|enabled| enabled.as_bool() == Some(true))
+    })
+}
+
+/// Confidential details require explicit opt-in; errors fail closed.
+fn notification_preferences(data_dir: &std::path::Path) -> (bool, bool) {
+    let path = data_dir.join(SETTINGS_FILE);
+    if !path.exists() {
+        return (true, true);
+    }
+    decrypt_local_with_migration(&path)
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .map(|settings| {
+            (
+                notifications_enabled_by_settings(&settings),
+                details_hidden_by_settings(&settings),
+            )
+        })
+        .unwrap_or((false, true))
+}
+
+fn hide_notification_details(data_dir: &std::path::Path) -> bool {
+    notification_preferences(data_dir).1
+}
+
+fn details_hidden_by_settings(settings: &Value) -> bool {
+    settings
+        .get("hide_notification_details")
+        .and_then(Value::as_bool)
+        != Some(false)
+}
+
+/// Scheduled mobile notifications may fire after the vault locks. Keep their
+/// payload generic so the OS queue never stores case/client titles.
+fn redact_scheduled_titles(schedule: &mut Value) {
+    if let Some(items) = schedule.get_mut("items").and_then(Value::as_array_mut) {
+        for item in items {
+            if let Some(object) = item.as_object_mut() {
+                object.insert("title".into(), Value::String("Impegno riservato".into()));
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -87,15 +168,26 @@ pub(crate) fn sync_notification_schedule(
     state: State<AppState>,
     schedule: Value,
 ) -> bool {
+    if !valid_notification_schedule(&schedule) {
+        return false;
+    }
+    let session = match state.document_session() {
+        Ok(session) => session,
+        Err(_) => return false,
+    };
     let dir = state
         .data_dir
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
+    let mut schedule = schedule;
+    if hide_notification_details(&dir) {
+        redact_scheduled_titles(&mut schedule);
+    }
     let key = get_local_encryption_key();
     // SECURITY FIX (Gemini Audit Chunk 14): propagate serialization error instead of unwrap_or_default
     let plaintext = match serde_json::to_vec(&schedule) {
-        Ok(v) => v,
+        Ok(v) => zeroize::Zeroizing::new(v),
         Err(e) => {
             eprintln!(
                 "[LexFlow] sync_notification_schedule serialization failed: {}",
@@ -116,8 +208,15 @@ pub(crate) fn sync_notification_schedule(
     }
     match encrypt_data(&key, &plaintext) {
         Ok(encrypted) => {
-            let written =
-                atomic_write_with_sync(&dir.join(NOTIF_SCHEDULE_FILE), &encrypted).is_ok();
+            let written = {
+                let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+                if state.validate_document_session(session).is_err()
+                    || *state.data_dir.read().unwrap_or_else(|e| e.into_inner()) != dir
+                {
+                    return false;
+                }
+                atomic_write_with_sync(&dir.join(NOTIF_SCHEDULE_FILE), &encrypted).is_ok()
+            };
             if written {
                 // ── TRIGGER: re-sync OS notification queue after data change ──
                 sync_notifications(&app, &dir);
@@ -146,13 +245,21 @@ pub(crate) fn read_notification_schedule(data_dir: &std::path::Path) -> Option<V
     }
     // SECURITY FIX (Gemini Audit): use migration-aware decryption (hostname→machine_id)
     if let Some(decrypted) = decrypt_local_with_migration(&path) {
-        return serde_json::from_slice(&decrypted).ok();
+        if decrypted.len() > MAX_SCHEDULE_PAYLOAD {
+            return None;
+        }
+        return serde_json::from_slice(&decrypted)
+            .ok()
+            .filter(valid_notification_schedule);
     }
     // Migration: old plaintext format → re-encrypt
     // SECURITY FIX (Security Audit): use safe_bounded_read for OOM protection
     if let Ok(raw) = safe_bounded_read(&path, MAX_SETTINGS_FILE_SIZE) {
         if let Ok(text) = std::str::from_utf8(&raw) {
             if let Ok(val) = serde_json::from_str::<Value>(text) {
+                if raw.len() > MAX_SCHEDULE_PAYLOAD || !valid_notification_schedule(&val) {
+                    return None;
+                }
                 let key = get_local_encryption_key();
                 // SECURITY FIX (BE-8 audit): do not silently lose data on
                 // serialization/encryption/write failure. If the migration
@@ -196,26 +303,20 @@ pub(crate) fn read_notification_schedule(data_dir: &std::path::Path) -> Option<V
 ///
 /// SEMANTICS (audit):
 ///   - filter_date is the date whose items are summarised in the briefing.
-///   - period_label is the user-visible word ("oggi", "questo pomeriggio",
-///     "domani") and depends on day_offset, NOT on briefing_hour alone.
-#[cfg(any(target_os = "android", target_os = "ios"))]
-fn briefing_filter_params<'a>(
+///   - dates and labels are relative to the day the briefing actually fires.
+#[cfg(any(test, target_os = "android", target_os = "ios"))]
+fn briefing_filter_params(
     briefing_hour: u32,
-    today: &'a str,
-    tomorrow: &'a str,
-    day_offset_is_zero: bool,
-) -> Option<(&'a str, &'a str, &'a str)> {
-    // For day_offset != 0 we always summarise "tomorrow" of the briefing day.
-    if !day_offset_is_zero {
-        return Some((tomorrow, "00:00", "domani"));
-    }
-    if briefing_hour < 12 {
-        Some((today, "00:00", "oggi"))
+    briefing_date: chrono::NaiveDate,
+) -> Option<(String, &'static str, &'static str)> {
+    let (date, time_from, period) = if briefing_hour < 12 {
+        (briefing_date, "00:00", "oggi")
     } else if briefing_hour < 18 {
-        Some((today, "13:00", "questo pomeriggio"))
+        (briefing_date, "13:00", "questo pomeriggio")
     } else {
-        Some((tomorrow, "00:00", "domani"))
-    }
+        (briefing_date.succ_opt()?, "00:00", "domani")
+    };
+    Some((date.format("%Y-%m-%d").to_string(), time_from, period))
 }
 
 /// Collect the (filtered, sorted) relevant items for a given date/time filter.
@@ -297,17 +398,21 @@ fn format_item_list(relevant_items: &[&Value], total_count: usize) -> String {
 fn compute_remind_time(
     item: &Value,
     item_local: chrono::DateTime<chrono::Local>,
-) -> chrono::DateTime<chrono::Local> {
+) -> Option<chrono::DateTime<chrono::Local>> {
     let item_date = item.get("date").and_then(|d| d.as_str()).unwrap_or("");
     // BUG FIX (audit): require exact "HH:MM" shape — len == 5 AND ':' at index 2.
     let custom_remind_time = item
         .get("customRemindTime")
         .and_then(|v| v.as_str())
         .filter(|s| s.len() == 5 && s.as_bytes().get(2) == Some(&b':'));
-    let remind_min = item
-        .get("remindMinutes")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(30);
+    let remind_min = match item.get("remindMinutes") {
+        None | Some(Value::Null) => 30,
+        Some(value) => value.as_i64()?,
+    };
+    if !(0..=MAX_REMIND_MINUTES).contains(&remind_min) {
+        return None;
+    }
+    let fallback = || item_local.checked_sub_signed(chrono::Duration::try_minutes(remind_min)?);
     if let Some(crt) = custom_remind_time {
         let crt_str = format!("{} {}", item_date, crt);
         chrono::NaiveDateTime::parse_from_str(&crt_str, "%Y-%m-%d %H:%M")
@@ -324,9 +429,9 @@ fn compute_remind_time(
                 }
                 mapped.earliest()
             })
-            .unwrap_or(item_local - chrono::Duration::minutes(remind_min))
+            .or_else(fallback)
     } else {
-        item_local - chrono::Duration::minutes(remind_min)
+        fallback()
     }
 }
 
@@ -412,8 +517,6 @@ fn schedule_all_briefings(
     app: &AppHandle,
     briefing_times: &[Value],
     items: &[Value],
-    today_str: &str,
-    tomorrow_str: &str,
     now: chrono::DateTime<chrono::Local>,
     horizon: chrono::DateTime<chrono::Local>,
     max: i32,
@@ -428,16 +531,8 @@ fn schedule_all_briefings(
             if count >= max {
                 return count;
             }
-            if let Some(sc) = schedule_briefing_aot(
-                app,
-                time_str,
-                day_offset,
-                items,
-                today_str,
-                tomorrow_str,
-                now,
-                horizon,
-            ) {
+            if let Some(sc) = schedule_briefing_aot(app, time_str, day_offset, items, now, horizon)
+            {
                 count += sc;
             }
         }
@@ -477,7 +572,9 @@ fn schedule_all_reminders(
         if item_local > horizon {
             continue;
         }
-        let remind_time = compute_remind_time(item, item_local);
+        let Some(remind_time) = compute_remind_time(item, item_local) else {
+            continue;
+        };
         if remind_time <= now {
             continue;
         }
@@ -516,7 +613,7 @@ fn schedule_grouped_reminder_aot(
     // Use the first item to compute the fire time (all items in group share it)
     let first = group[0];
     let first_local = parse_item_datetime(first)?;
-    let remind_time = compute_remind_time(first, first_local);
+    let remind_time = compute_remind_time(first, first_local)?;
     let offset_dt = chrono_to_offset(remind_time)?;
 
     // Check if any item in the group is critical
@@ -621,19 +718,29 @@ fn schedule_grouped_reminder_aot(
 pub(crate) fn sync_notifications(app: &AppHandle, data_dir: &std::path::Path) {
     use tauri_plugin_notification::NotificationExt;
 
+    // Serialize replacement of the OS queue with preference-triggered cancellation.
+    static QUEUE_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _queue_guard = QUEUE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
     if let Err(e) = app.notification().cancel_all() {
         eprintln!("[LexFlow Sync] cancel_all error (non-critical): {:?}", e);
     } else {
         eprintln!("[LexFlow Sync] All pending notifications cancelled ✓");
     }
 
-    let schedule_data = match read_notification_schedule(&data_dir) {
+    if !notification_preferences(data_dir).0 {
+        return;
+    }
+
+    let mut schedule_data = match read_notification_schedule(&data_dir) {
         Some(v) => v,
         None => {
             eprintln!("[LexFlow Sync] No schedule file");
             return;
         }
     };
+
+    redact_scheduled_titles(&mut schedule_data);
 
     // PERF: borrow arrays instead of cloning (avoids copying all agenda items)
     let empty_arr = Vec::new();
@@ -647,23 +754,11 @@ pub(crate) fn sync_notifications(app: &AppHandle, data_dir: &std::path::Path) {
         .unwrap_or(&empty_arr);
 
     let now = chrono::Local::now();
-    let today_str = now.format("%Y-%m-%d").to_string();
-    let tomorrow_str = (now + chrono::Duration::days(1))
-        .format("%Y-%m-%d")
-        .to_string();
     const MAX_SCHEDULED: i32 = 60;
     let horizon = now + chrono::Duration::days(14);
 
-    let briefing_count = schedule_all_briefings(
-        app,
-        briefing_times,
-        items,
-        &today_str,
-        &tomorrow_str,
-        now,
-        horizon,
-        MAX_SCHEDULED,
-    );
+    let briefing_count =
+        schedule_all_briefings(app, briefing_times, items, now, horizon, MAX_SCHEDULED);
     let reminder_count =
         schedule_all_reminders(app, &items, now, horizon, briefing_count, MAX_SCHEDULED);
     let total = briefing_count + reminder_count;
@@ -694,8 +789,6 @@ fn schedule_briefing_aot(
     time_str: &str,
     day_offset: i64,
     items: &[Value],
-    today_str: &str,
-    tomorrow_str: &str,
     now: chrono::DateTime<chrono::Local>,
     horizon: chrono::DateTime<chrono::Local>,
 ) -> Option<i32> {
@@ -724,14 +817,10 @@ fn schedule_briefing_aot(
         .next()
         .and_then(|h| h.parse().ok())
         .unwrap_or(8);
-    // BUG FIX (audit L676): pass today_str and the briefing's own date_str
-    // consistently; the period label is derived from day_offset, not by
-    // a re-call with swapped arguments.
-    let _ = today_str;
     let (filter_date, time_from, period_label) =
-        briefing_filter_params(briefing_hour, &date_str, tomorrow_str, day_offset == 0)?;
+        briefing_filter_params(briefing_hour, target_date)?;
     let (title, body_str) =
-        build_briefing_notification(items, filter_date, time_from, period_label);
+        build_briefing_notification(items, &filter_date, time_from, period_label);
     let notif_id = hash_notification_id(&format!("briefing-{}-{}", date_str, time_str));
     let sched = tauri_plugin_notification::Schedule::At {
         date: offset_dt,
@@ -780,22 +869,7 @@ pub(crate) async fn desktop_cron_job(app: AppHandle) {
         // the OS lockscreen / notification center never reveals confidential
         // case data while the user is away.
         let app_state = app.state::<AppState>();
-        let unlocked = app_state
-            .vault_dek
-            .lock()
-            .map(|k| k.is_some())
-            .unwrap_or_else(|e| {
-                eprintln!("[LexFlow Cron] vault_dek mutex poisoned: {}", e);
-                e.into_inner().is_some()
-            })
-            || app_state
-                .vault_key
-                .lock()
-                .map(|k| k.is_some())
-                .unwrap_or_else(|e| {
-                    eprintln!("[LexFlow Cron] vault_key mutex poisoned: {}", e);
-                    e.into_inner().is_some()
-                });
+        let session = app_state.document_session().ok();
 
         let data_dir = app_state
             .data_dir
@@ -805,7 +879,11 @@ pub(crate) async fn desktop_cron_job(app: AppHandle) {
 
         // SEC: read settings flag (best effort) — when set, we suppress
         // titles/bodies even when the vault is unlocked.
-        let hide_details = !unlocked || hide_notification_details(&data_dir);
+        let (enabled, hide_preferences) = notification_preferences(&data_dir);
+        if !enabled {
+            continue;
+        }
+        let hide_details = session.is_none() || hide_preferences;
 
         let schedule_data = match read_notification_schedule(&data_dir) {
             Some(v) => v,
@@ -842,29 +920,6 @@ pub(crate) async fn desktop_cron_job(app: AppHandle) {
             briefing_times.len(),
             items.len()
         );
-        // Log next fire times for items so we can diagnose mismatches
-        if !items.is_empty() {
-            for (idx, item) in items.iter().enumerate().take(5) {
-                if let Some(item_local) = parse_item_datetime(item) {
-                    let remind_time = compute_remind_time(item, item_local);
-                    let fire_min = remind_time.format("%Y-%m-%d %H:%M").to_string();
-                    let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("?");
-                    eprintln!(
-                        "[LexFlow Cron]   item[{}] \"{}\" event={} fire={}{}",
-                        idx,
-                        title,
-                        item_local.format("%Y-%m-%d %H:%M"),
-                        fire_min,
-                        if fire_min == current_minute {
-                            " ← MATCH!"
-                        } else {
-                            ""
-                        }
-                    );
-                }
-            }
-        }
-
         // Check briefings
         for bt in briefing_times {
             let time_str = match bt.as_str() {
@@ -875,12 +930,20 @@ pub(crate) async fn desktop_cron_job(app: AppHandle) {
             if briefing_key != current_minute {
                 continue;
             }
-            fire_desktop_briefing(&app, time_str, items, &today, &tomorrow, hide_details);
+            fire_desktop_briefing(
+                &app,
+                time_str,
+                items,
+                &today,
+                &tomorrow,
+                hide_details,
+                session,
+            );
             eprintln!("[LexFlow Cron] ✓ Briefing fired: {}", briefing_key);
         }
 
         // Check per-item reminders — GROUP by fire minute to avoid notification spam
-        fire_grouped_desktop_reminders(&app, items, &current_minute, hide_details);
+        fire_grouped_desktop_reminders(&app, items, &current_minute, hide_details, session);
     }
 }
 
@@ -894,6 +957,7 @@ fn fire_desktop_briefing(
     today: &str,
     tomorrow: &str,
     hide_details: bool,
+    session: Option<crate::state::DocumentSession>,
 ) {
     let briefing_hour: u32 = time_str
         .split(':')
@@ -909,14 +973,14 @@ fn fire_desktop_briefing(
     };
     if hide_details {
         // PII-safe fallback: no titles, no bodies — just a generic alert.
-        fire_urgent_desktop_notification(app, "LexFlow", "Hai un impegno");
+        fire_urgent_desktop_notification(app, "LexFlow", "Hai un impegno", session);
         return;
     }
     let (title, body_str) =
         build_briefing_notification(items, filter_date, time_from, period_label);
 
     // Briefings are always time-sensitive (bypass DND)
-    fire_urgent_desktop_notification(app, &title, &body_str);
+    fire_urgent_desktop_notification(app, &title, &body_str, session);
 }
 
 /// Fire GROUPED desktop reminder notifications for a given minute.
@@ -933,6 +997,7 @@ fn fire_grouped_desktop_reminders(
     items: &[Value],
     current_minute: &str,
     hide_details: bool,
+    session: Option<crate::state::DocumentSession>,
 ) {
     // Collect all items whose remind time matches this minute
     let mut matching: Vec<&Value> = Vec::new();
@@ -950,7 +1015,9 @@ fn fire_grouped_desktop_reminders(
             Some(t) => t,
             None => continue,
         };
-        let remind_time = compute_remind_time(item, item_local);
+        let Some(remind_time) = compute_remind_time(item, item_local) else {
+            continue;
+        };
         let fire_minute = remind_time.format("%Y-%m-%d %H:%M").to_string();
         if fire_minute != current_minute {
             continue;
@@ -978,7 +1045,7 @@ fn fire_grouped_desktop_reminders(
 
     // PII-safe fallback when vault is locked or user opted in.
     if hide_details {
-        fire_urgent_desktop_notification(app, "LexFlow", "Hai un impegno");
+        fire_urgent_desktop_notification(app, "LexFlow", "Hai un impegno", session);
         eprintln!(
             "[LexFlow Cron] ✓ Reminder fired (PII-safe, {} events suppressed)",
             matching.len()
@@ -1002,7 +1069,9 @@ fn fire_grouped_desktop_reminders(
             Some(t) => t,
             None => return, // Shouldn't happen (already filtered), but be safe
         };
-        let remind_time = compute_remind_time(item, item_local);
+        let Some(remind_time) = compute_remind_time(item, item_local) else {
+            return;
+        };
         let item_title = item
             .get("title")
             .and_then(|t| t.as_str())
@@ -1014,8 +1083,8 @@ fn fire_grouped_desktop_reminders(
         } else {
             "LexFlow — Promemoria"
         };
-        fire_urgent_desktop_notification(app, notif_title, &body);
-        eprintln!("[LexFlow Cron] ✓ Reminder fired (1 event): {}", item_title);
+        fire_urgent_desktop_notification(app, notif_title, &body, session);
+        eprintln!("[LexFlow Cron] Reminder fired (1 event)");
     } else {
         // Multiple events → grouped notification
         let notif_title = if any_critical {
@@ -1048,7 +1117,7 @@ fn fire_grouped_desktop_reminders(
         }
         let body = lines.join("\n");
 
-        fire_urgent_desktop_notification(app, &notif_title, &body);
+        fire_urgent_desktop_notification(app, &notif_title, &body, session);
         eprintln!(
             "[LexFlow Cron] ✓ Grouped reminder fired: {} events in one notification",
             total
@@ -1068,16 +1137,216 @@ fn fire_grouped_desktop_reminders(
 /// Fire a desktop notification on macOS / Windows / Linux.
 /// Used by the desktop cron job for ALL events (briefings, reminders).
 /// Uses tauri_plugin_notification via run_on_main_thread.
+#[cfg(any(test, not(any(target_os = "android", target_os = "ios"))))]
+fn notification_delivery_content<'a>(
+    state: &AppState,
+    session: Option<crate::state::DocumentSession>,
+    hide_details: bool,
+    title: &'a str,
+    body: &'a str,
+) -> (&'a str, &'a str) {
+    if hide_details
+        || session.is_none_or(|session| state.validate_document_session(session).is_err())
+    {
+        ("LexFlow", "Hai un impegno")
+    } else {
+        (title, body)
+    }
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn fire_urgent_desktop_notification(app: &AppHandle, title: &str, body: &str) {
-    let t = title.to_string();
-    let b = body.to_string();
+fn fire_urgent_desktop_notification(
+    app: &AppHandle,
+    title: &str,
+    body: &str,
+    session: Option<crate::state::DocumentSession>,
+) {
+    let t = zeroize::Zeroizing::new(title.to_string());
+    let b = zeroize::Zeroizing::new(body.to_string());
     let app_clone = app.clone();
     let _ = app.run_on_main_thread(move || {
         use tauri_plugin_notification::NotificationExt;
-        if let Err(e) = app_clone.notification().builder().title(&t).body(&b).show() {
+        let state = app_clone.state::<AppState>();
+        let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = state
+            .data_dir
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let (enabled, hide_details) = notification_preferences(&dir);
+        if !enabled {
+            return;
+        }
+        // The callback may run after autolock, another unlock, or a preference change.
+        let (title, body) = notification_delivery_content(&state, session, hide_details, &t, &b);
+        if let Err(e) = app_clone
+            .notification()
+            .builder()
+            .title(title)
+            .body(body)
+            .show()
+        {
             eprintln!("[LexFlow] Cron notification failed: {:?}", e);
         }
     });
-    eprintln!("[LexFlow] ✓ Notification sent: {}", title);
+}
+
+#[cfg(test)]
+mod privacy_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn future_briefings_use_their_delivery_date_including_year_rollover() {
+        let scheduled_today = chrono::NaiveDate::from_ymd_opt(2026, 12, 30).unwrap();
+        let delivery_day = scheduled_today.succ_opt().unwrap();
+        assert_eq!(
+            briefing_filter_params(8, delivery_day).unwrap(),
+            ("2026-12-31".into(), "00:00", "oggi")
+        );
+        assert_eq!(
+            briefing_filter_params(14, delivery_day).unwrap(),
+            ("2026-12-31".into(), "13:00", "questo pomeriggio")
+        );
+        assert_eq!(
+            briefing_filter_params(19, delivery_day).unwrap(),
+            ("2027-01-01".into(), "00:00", "domani")
+        );
+    }
+
+    #[test]
+    fn notification_schedule_rejects_malformed_or_unbounded_reminders() {
+        let valid = json!({"briefingTimes":["08:30"],"items":[{
+            "id":"synthetic", "title":"Impegno sintetico", "date":"2026-09-08",
+            "time":"09:00", "remindMinutes":30, "customRemindTime":null
+        }]});
+        assert!(valid_notification_schedule(&valid));
+        for bad in [
+            json!(i64::MAX),
+            json!(i64::MIN),
+            json!(-1),
+            json!(20161),
+            json!("30"),
+            json!(0.5),
+        ] {
+            let mut schedule = valid.clone();
+            schedule["items"][0]["remindMinutes"] = bad;
+            assert!(!valid_notification_schedule(&schedule));
+        }
+        let mut invalid = valid.clone();
+        invalid["items"][0]["date"] = json!("2026-02-31");
+        assert!(!valid_notification_schedule(&invalid));
+        invalid = valid.clone();
+        invalid["briefingTimes"] = json!(["25:00"]);
+        assert!(!valid_notification_schedule(&invalid));
+        invalid = valid.clone();
+        invalid["items"] = json!(vec![valid["items"][0].clone(); MAX_SCHEDULE_ITEMS + 1]);
+        assert!(!valid_notification_schedule(&invalid));
+        assert!(!valid_notification_schedule(
+            &json!({"items":[],"briefingTimes":"08:30"})
+        ));
+    }
+
+    #[test]
+    fn extreme_reminder_minutes_never_panic_even_with_custom_time() {
+        let base = json!({"date":"2026-09-08", "time":"09:00"});
+        let item_local = parse_item_datetime(&base).unwrap();
+        for minutes in [i64::MIN, -1, MAX_REMIND_MINUTES + 1, i64::MAX] {
+            for custom in [json!(null), json!("08:30")] {
+                let mut item = base.clone();
+                item["remindMinutes"] = json!(minutes);
+                item["customRemindTime"] = custom;
+                assert!(compute_remind_time(&item, item_local).is_none());
+            }
+        }
+        assert_eq!(
+            (item_local - compute_remind_time(&base, item_local).unwrap()).num_minutes(),
+            30
+        );
+        let mut custom = base.clone();
+        custom["customRemindTime"] = json!("08:00");
+        assert_eq!(
+            (item_local - compute_remind_time(&custom, item_local).unwrap()).num_minutes(),
+            60
+        );
+    }
+
+    #[test]
+    fn disabled_notifications_and_late_delivery_fail_closed() {
+        assert!(notifications_enabled_by_settings(&json!({})));
+        assert!(!notifications_enabled_by_settings(
+            &json!({"notifyEnabled":false})
+        ));
+        assert!(!notifications_enabled_by_settings(
+            &json!({"notifyEnabled":"true"})
+        ));
+        let directory = tempfile::tempdir().unwrap();
+        let state = AppState::new(directory.path().into(), directory.path().into());
+        *state.vault_dek.lock().unwrap() = Some(crate::state::SecureKey::new(
+            zeroize::Zeroizing::new(vec![4; 32]),
+        ));
+        let session = state.document_session().unwrap();
+        let confidential = ("LexFlow — promemoria", "Cliente sintetico riservato");
+        assert_eq!(
+            notification_delivery_content(
+                &state,
+                Some(session),
+                false,
+                confidential.0,
+                confidential.1
+            ),
+            confidential
+        );
+        assert_eq!(
+            notification_delivery_content(
+                &state,
+                Some(session),
+                true,
+                confidential.0,
+                confidential.1
+            ),
+            ("LexFlow", "Hai un impegno")
+        );
+        state.lock_vault();
+        for reunlock in [false, true] {
+            if reunlock {
+                *state.vault_dek.lock().unwrap() = Some(crate::state::SecureKey::new(
+                    zeroize::Zeroizing::new(vec![4; 32]),
+                ));
+            }
+            assert_eq!(
+                notification_delivery_content(
+                    &state,
+                    Some(session),
+                    false,
+                    confidential.0,
+                    confidential.1
+                ),
+                ("LexFlow", "Hai un impegno")
+            );
+        }
+    }
+
+    #[test]
+    fn details_are_hidden_unless_explicitly_enabled() {
+        assert!(details_hidden_by_settings(&json!({})));
+        assert!(details_hidden_by_settings(
+            &json!({"hide_notification_details": "false"})
+        ));
+        assert!(details_hidden_by_settings(
+            &json!({"hide_notification_details": true})
+        ));
+        assert!(!details_hidden_by_settings(
+            &json!({"hide_notification_details": false})
+        ));
+    }
+
+    #[test]
+    fn scheduled_notifications_preserve_timing_without_case_titles() {
+        let mut schedule = json!({"items": [{"title": "Cliente riservato Rossi", "date": "2026-09-06", "time": "09:00", "category": "udienza"}]});
+        redact_scheduled_titles(&mut schedule);
+        assert_eq!(schedule["items"][0]["title"], "Impegno riservato");
+        assert_eq!(schedule["items"][0]["time"], "09:00");
+        assert!(!schedule.to_string().contains("Rossi"));
+    }
 }

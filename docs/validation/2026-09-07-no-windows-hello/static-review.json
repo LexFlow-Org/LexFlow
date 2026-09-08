@@ -1,0 +1,10 @@
+{
+  "reviewer": "independent code review",
+  "serious_findings": [],
+  "windows_biometric_save_and_read_paths_removed": true,
+  "legacy_cleanup_scoped_to_current_user_lexflow_bio_and_marker": true,
+  "no_windows_lock_order_cycle_identified": true,
+  "windows_frontend_uses_master_password": true,
+  "mac_android_behavior_unchanged": true,
+  "native_windows_execution": false
+}

@@ -1,39 +1,17 @@
+import { useSessionState } from '../hooks/useSessionState';
 import { useState, useEffect, useRef } from 'react';
 import { Bell, X, Clock, AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
 import * as api from '../tauri-api';
 
-const STORAGE_KEY = 'lexflow_notifications';
 const MAX_NOTIFICATIONS = 50;
-
-const loadNotifications = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveNotifications = (list) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    /* storage quota or unavailable — silent */
-  }
-};
 
 export default function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState(loadNotifications);
+  const [notifications, setNotifications] = useSessionState('notifications', []);
   const panelRef = useRef(null);
   const previousFocusRef = useRef(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
-
-  // Persist on every change
-  useEffect(() => {
-    saveNotifications(notifications);
-  }, [notifications]);
 
   // Listen for notification events from Tauri backend (with cancellation flag)
   useEffect(() => {
@@ -45,6 +23,7 @@ export default function NotificationCenter() {
         const { listen } = await import('@tauri-apps/api/event');
         if (cancelled) return;
         unlisten = await listen('show-notification', (event) => {
+          if (cancelled) return;
           const notif = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             title: event.payload?.title || 'Notifica',
@@ -69,23 +48,18 @@ export default function NotificationCenter() {
       cancelled = true;
       if (unlisten) unlisten();
     };
-  }, []);
+  }, [setNotifications]);
 
   // Wipe notifications on vault lock (privacy)
   useEffect(() => {
     if (typeof api.onVaultLocked !== 'function') return undefined;
     const off = api.onVaultLocked(() => {
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch {
-        /* ignore */
-      }
       setNotifications([]);
     });
     return () => {
       if (typeof off === 'function') off();
     };
-  }, []);
+  }, [setNotifications]);
 
   // Close on click outside
   useEffect(() => {
@@ -173,7 +147,7 @@ export default function NotificationCenter() {
           role="dialog"
           aria-modal="false"
           aria-labelledby="notif-center-title"
-          className="absolute left-0 bottom-12 w-80 max-h-96 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50"
+          className="absolute left-0 bottom-12 w-80 max-w-[calc(100vw-2rem)] max-h-96 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
             <h3 id="notif-center-title" className="text-sm font-bold text-[var(--text)]">Notifiche</h3>

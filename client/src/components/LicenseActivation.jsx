@@ -27,6 +27,8 @@ export default function LicenseActivation({ children }) {
   const [lockoutSeconds, setLockoutSeconds] = useState(0); // countdown brute-force
   const [lockoutEndAt, setLockoutEndAt] = useState(null);    // ms timestamp (drives countdown)
   const [gracePeriod, setGracePeriod] = useState(null); // { inGrace: bool, days: number }
+  const [needsLicenseProof, setNeedsLicenseProof] = useState(false);
+  const [statusReason, setStatusReason] = useState('');
   const inputRef = useRef(null);
   const toastTimer = useRef(null);
 
@@ -35,6 +37,8 @@ export default function LicenseActivation({ children }) {
     (async () => {
       try {
         const status = await api.checkLicense();
+        setNeedsLicenseProof(status.needsLicenseProof === true);
+        if (!status.activated && !status.needsLicenseProof) setStatusReason(status.reason || '');
         if (status.tampered) {
           setToast({
             type: 'error',
@@ -110,7 +114,14 @@ export default function LicenseActivation({ children }) {
   }
 
   // ── Attivazione ───────────────────────────────────────────────────────────
-  function handleActivationResponse(response) {
+  function handleActivationResponse(response, receivedAt) {
+    if (response.needsRenewal) {
+      setNeedsLicenseProof(false);
+      setLicense('');
+      setShowKey(false);
+      setStatusReason('La licenza originale è verificata ma scaduta. Inserisci il codice di rinnovo.');
+      return;
+    }
     if (response.success) {
       // Clear license key from state IMMEDIATELY — don't keep secrets in memory
       // through the 1800ms transition timeout.
@@ -121,16 +132,19 @@ export default function LicenseActivation({ children }) {
       const parts = [response.client, cleanName ? `${title} ${cleanName}` : ''].filter(Boolean);
       setToast({
         type: 'success',
-        text: 'Licenza attivata con successo',
+        text: needsLicenseProof ? 'Licenza verificata con successo' : 'Licenza attivata con successo',
         detail: parts.length ? `Registrata a: ${parts.join(' — ')}` : undefined,
       });
       setTimeout(() => setIsActivated(true), 1800);
       return;
     }
 
+    if (response.needsLicenseProof) setNeedsLicenseProof(true);
+    if (response.activationPending) setStatusReason(response.error || 'Attivazione da completare. Riavvia LexFlow per riprovare.');
+
     if (response.locked) {
       const secs = Math.max(1, Math.round(response.remaining || 300));
-      setLockoutEndAt(Date.now() + secs * 1000);
+      setLockoutEndAt(receivedAt + secs * 1000);
       const mm = String(Math.floor(secs / 60)).padStart(2, '0');
       const ss = String(secs % 60).padStart(2, '0');
       setToast({
@@ -146,7 +160,7 @@ export default function LicenseActivation({ children }) {
     setToast({
       type: 'error',
       text: isBurned ? 'Chiave già utilizzata' : errMsg,
-      detail: isBurned ? 'Questa licenza è monouso e risulta già attivata. Non può essere riutilizzata su nessun dispositivo. Contatta il supporto per ottenere una nuova chiave.' : undefined,
+      detail: isBurned ? 'Questo codice risulta già utilizzato e non può avviare una nuova attivazione. Se stai aggiornando LexFlow, conserva i dati dell’app e verifica l’attivazione esistente con il supporto.' : undefined,
     });
     triggerShake();
   }
@@ -174,7 +188,8 @@ export default function LicenseActivation({ children }) {
 
     try {
       const response = await api.activateLicense(key);
-      handleActivationResponse(response);
+      // eslint-disable-next-line react-hooks/purity -- runs only after this form submit request resolves
+      handleActivationResponse(response, Date.now());
     } catch {
       setToast({ type: 'error', text: 'Errore di comunicazione con il sistema.' });
     } finally {
@@ -239,10 +254,14 @@ export default function LicenseActivation({ children }) {
             <KeyRound size={24} strokeWidth={1.5} />
           </div>
           <div>
-            <h1 className="lic-title">Attivazione LexFlow</h1>
-            <p className="lic-subtitle">Inserisci la chiave di licenza per sbloccare il software</p>
+            <h1 className="lic-title">{needsLicenseProof ? 'Verifica della licenza esistente' : 'Attivazione LexFlow'}</h1>
+            <p className="lic-subtitle">{needsLicenseProof
+              ? 'Per completare l’aggiornamento, reinserisci il codice originale su questo computer. Conferma l’attivazione già salvata: non serve una nuova licenza.'
+              : 'Inserisci la chiave di licenza per sbloccare il software'}</p>
           </div>
         </div>
+
+        {statusReason && <p className="lic-hint" role="status">{statusReason}</p>}
 
         {/* Form */}
         <form onSubmit={handleActivate} className="lic-form">
@@ -295,7 +314,7 @@ export default function LicenseActivation({ children }) {
             ) : (
               <>
                 <ShieldCheck size={16} />
-                Attiva Licenza
+                {needsLicenseProof ? 'Verifica licenza esistente' : 'Attiva Licenza'}
               </>
             )}
           </button>

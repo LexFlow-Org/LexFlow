@@ -1,0 +1,47 @@
+LexFlow 1.0.1 — pacchetti locali del 6 settembre 2026
+
+File da inviare al destinatario, scegliendo il suo sistema:
+
+macOS/LexFlow-1.0.1-macOS-Apple-Silicon.dmg
+  Mac con chip Apple Silicon (serie M), macOS 11+ con Safari/WebKit 16.4+.
+
+macOS/LexFlow-1.0.1-macOS-Intel.dmg
+  Mac con processore Intel, macOS 11+ con Safari/WebKit 16.4+.
+  Apri il DMG e trascina l’app in Applicazioni.
+  Firma locale ad hoc verificata; non notarizzata da Apple.
+
+Windows/LexFlow_1.0.1_x64-setup.exe
+  Windows x64; esegui l’installer NSIS.
+  Include qpdf, Typst e WebView2 Fixed: non deve scaricare il runtime.
+  Privo di firma Authenticode LexFlow. Il sistema può indicare editore sconosciuto.
+
+Android/LexFlow-1.0.1-Android-arm64.apk
+  Android 7+ ARM64 con Android System WebView Chromium 111+.
+  APK release firmato, senza permesso Internet; pagine 16 KB verificate.
+  Accesso con password; biometria e funzioni che richiedono qpdf/Typst non disponibili.
+  Non comprende dispositivi solo 32 bit o x86.
+
+Aggiorna i componenti WebView del sistema prima dell’uso offline.
+La versione iPhone/iPad non è inclusa. Windows ARM non è stato collaudato.
+
+Prima di usare archivi professionali, collauda con dati fittizi creazione,
+salvataggio, blocco/sblocco, riavvio, backup ed esportazione sul dispositivo.
+I pacchetti sono stati compilati e verificati strutturalmente; non sostituisce
+il collaudo completo su hardware di destinazione o la misura del traffico di rete.
+
+Per l’attivazione serve il codice licenza fornito separatamente. Non inviare
+chiavi private, registri delle licenze o cartelle degli archivi insieme all’app.
+Prima di aggiornare un archivio esistente, crea una copia completa con l’app
+chiusa: il formato V8 non è leggibile dalle versioni precedenti.
+
+Il vault è locale e cifrato. Allegati esterni ed export restano file separati;
+cartelle iCloud/OneDrive e altre applicazioni possono sincronizzarli.
+Le istruzioni e le ricevute di verifica specifiche sono nelle tre sottocartelle.
+SHA256SUMS.txt e i file .sha256 sono controlli di integrità degli installer:
+non sono applicazioni e non contengono una chiave di licenza. Per installare
+apri il DMG, l’EXE o l’APK adatto al dispositivo.
+
+La versione 1.0.1 richiede una nuova licenza: rifiuta le firme precedenti e
+le attivazioni salvate con la vecchia chiave. Aggiorna le copie già installate.
+Le vecchie app offline non possono essere revocate a distanza. Su Android
+installa l’aggiornamento sopra la versione precedente, senza disinstallarla.

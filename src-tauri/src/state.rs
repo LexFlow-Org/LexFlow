@@ -4,33 +4,42 @@
 
 use serde_json::Value;
 use std::path::PathBuf;
-use std::sync::{Mutex, RwLock};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, RwLock,
+};
 use std::time::Instant;
-use tauri::State;
 use zeroize::{Zeroize, Zeroizing};
 
 /// Wraps a cryptographic key with Zeroizing + mlock (prevents swap to disk).
 /// On drop: munlock + zeroize automatically.
-pub struct SecureKey(pub(crate) Zeroizing<Vec<u8>>);
+pub struct SecureKey(pub(crate) Zeroizing<Vec<u8>>, u64);
+
+// Non-secret identity for this in-memory key allocation, not a cryptographic key.
+// A new unlock receives a new identity even if the DEK bytes are unchanged.
+static KEY_INSTANCE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, Copy)]
+pub(crate) struct DocumentSession(u64);
 
 impl SecureKey {
     pub(crate) fn new(key: Zeroizing<Vec<u8>>) -> Self {
         // mlock the buffer to prevent it from being swapped to disk
-        if !crate::security::mlock_buffer(key.as_ptr(), key.len()) {
+        if !crate::security::mlock_buffer_slice(&key) {
             eprintln!(
                 "[SECURITY] WARNING: mlock failed — key may be swappable to disk. \
                        Check RLIMIT_MEMLOCK (ulimit -l)."
             );
         }
-        Self(key)
+        Self(key, KEY_INSTANCE_SEQUENCE.fetch_add(1, Ordering::Relaxed))
     }
 }
 
 impl Drop for SecureKey {
     fn drop(&mut self) {
-        // munlock before Zeroizing zeros the memory
-        crate::security::munlock_buffer(self.0.as_ptr(), self.0.len());
-        // Zeroizing handles the actual zeroing on its own Drop
+        // Wipe the locked allocation before making its pages swappable again.
+        self.0.as_mut_slice().zeroize();
+        crate::security::munlock_buffer_slice(&self.0);
     }
 }
 
@@ -73,23 +82,71 @@ impl AppState {
             autolock_condvar: Mutex::new(None),
         }
     }
-}
 
-/// Invalidate the vault cache (call after every write).
-/// SECURITY: serialize the old cache to bytes, zeroize them, then drop.
-/// This best-effort scrubs plaintext from heap before deallocation.
-pub(crate) fn invalidate_vault_cache(state: &State<AppState>) {
-    let mut guard = state.vault_cache.write().unwrap_or_else(|e| e.into_inner());
-    if let Some(old) = guard.take() {
-        // Best-effort: serialize to bytes and zeroize before drop
-        if let Ok(mut bytes) = serde_json::to_vec(&old) {
-            zeroize::Zeroize::zeroize(&mut bytes);
+    /// Authorize document IPC without cloning key material or holding a lock
+    /// across a native dialog, CPU work, or a sidecar await.
+    pub(crate) fn document_session(&self) -> Result<DocumentSession, String> {
+        self.vault_dek
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .map(|key| DocumentSession(key.1))
+            .ok_or_else(|| "Archivio bloccato. Sbloccalo per usare i documenti.".into())
+    }
+
+    /// Reject completion from an earlier session, including lock then re-unlock.
+    pub(crate) fn validate_document_session(&self, session: DocumentSession) -> Result<(), String> {
+        let current = self.document_session()?;
+        if current.0 != session.0 {
+            return Err("Sessione cambiata durante l'operazione. Riprova dopo lo sblocco.".into());
         }
-        drop(old);
+        Ok(())
+    }
+
+    /// Serialize session teardown with vault reads/writes so a completing read
+    /// cannot repopulate plaintext after the session has been locked.
+    pub(crate) fn lock_vault(&self) {
+        let _guard = self.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+        self.lock_vault_locked();
+    }
+
+    /// Caller holds write_mutex, including authentication failure and reset.
+    pub(crate) fn lock_vault_locked(&self) {
+        *self.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *self.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .vault_version
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = 0;
+        invalidate_vault_cache(self);
     }
 }
 
-pub(crate) fn get_vault_key(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>>, String> {
+/// Wipe owned JSON strings, including object keys, before releasing the cache.
+/// Serializing a copy and wiping that copy does not erase the original strings.
+pub(crate) fn scrub_json(value: &mut Value) {
+    match value {
+        Value::String(text) => text.zeroize(),
+        Value::Array(items) => items.iter_mut().for_each(scrub_json),
+        Value::Object(object) => {
+            for (mut key, mut value) in std::mem::take(object) {
+                key.zeroize();
+                scrub_json(&mut value);
+            }
+        }
+        _ => {}
+    }
+    *value = Value::Null;
+}
+
+pub(crate) fn invalidate_vault_cache(state: &AppState) {
+    let mut guard = state.vault_cache.write().unwrap_or_else(|e| e.into_inner());
+    if let Some(mut old) = guard.take() {
+        scrub_json(&mut old);
+    }
+}
+
+pub(crate) fn get_vault_key(state: &AppState) -> Result<Zeroizing<Vec<u8>>, String> {
     state
         .vault_key
         .lock()
@@ -110,7 +167,7 @@ pub(crate) fn get_vault_key(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>
 /// call sites without forcing a CI -D warnings failure. New code MUST use
 /// `with_vault_dek`. Existing call sites should migrate over time.
 #[allow(dead_code)]
-pub(crate) fn get_vault_dek(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>>, String> {
+pub(crate) fn get_vault_dek(state: &AppState) -> Result<Zeroizing<Vec<u8>>, String> {
     state
         .vault_dek
         .lock()
@@ -123,17 +180,14 @@ pub(crate) fn get_vault_dek(state: &State<AppState>) -> Result<Zeroizing<Vec<u8>
 /// Run a closure with a borrow of the mlock'd DEK without cloning the bytes.
 /// This is the preferred accessor: the key buffer never leaves its mlock'd page.
 #[allow(dead_code)]
-pub(crate) fn with_vault_dek<R>(
-    state: &State<AppState>,
-    f: impl FnOnce(&[u8]) -> R,
-) -> Result<R, String> {
+pub(crate) fn with_vault_dek<R>(state: &AppState, f: impl FnOnce(&[u8]) -> R) -> Result<R, String> {
     let dek = state.vault_dek.lock().unwrap_or_else(|e| e.into_inner());
     let key = dek.as_ref().ok_or_else(|| "Locked".to_string())?;
     Ok(f(&key.0))
 }
 
 /// Get the vault format version (2 or 4).
-pub(crate) fn get_vault_version(state: &State<AppState>) -> u32 {
+pub(crate) fn get_vault_version(state: &AppState) -> u32 {
     *state
         .vault_version
         .read()
@@ -171,5 +225,63 @@ pub(crate) fn notify_autolock_condvar(state: &AppState) {
     {
         let (_lock, cvar) = &**pair;
         cvar.notify_one();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn locking_clears_both_keys_version_and_cached_records() {
+        let state = AppState::new(PathBuf::new(), PathBuf::new());
+        *state.vault_key.lock().unwrap() = Some(SecureKey::new(Zeroizing::new(vec![1; 32])));
+        *state.vault_dek.lock().unwrap() = Some(SecureKey::new(Zeroizing::new(vec![2; 32])));
+        *state.vault_version.write().unwrap() = 7;
+        *state.vault_cache.write().unwrap() = Some(json!({"practices": [{"client": "Private"}]}));
+        state.lock_vault();
+        assert!(state.vault_key.lock().unwrap().is_none());
+        assert!(state.vault_dek.lock().unwrap().is_none());
+        assert_eq!(*state.vault_version.read().unwrap(), 0);
+        assert!(state.vault_cache.read().unwrap().is_none());
+    }
+
+    #[test]
+    fn scrubbing_replaces_nested_json_without_serializing_copies() {
+        let mut value = json!({"private key": ["secret", {"nested": "client"}], "number": 42});
+        scrub_json(&mut value);
+        assert_eq!(value, Value::Null);
+    }
+}
+
+#[cfg(test)]
+mod document_session_tests {
+    use super::*;
+
+    #[test]
+    fn document_access_requires_unlocked_dek() {
+        let state = AppState::new(PathBuf::new(), PathBuf::new());
+        assert!(state.document_session().is_err());
+        // A legacy KEK alone does not authorize the current document UI.
+        *state.vault_key.lock().unwrap() = Some(SecureKey::new(Zeroizing::new(vec![1; 32])));
+        assert!(state.document_session().is_err());
+        *state.vault_dek.lock().unwrap() = Some(SecureKey::new(Zeroizing::new(vec![2; 32])));
+        let session = state.document_session().unwrap();
+        assert!(state.validate_document_session(session).is_ok());
+    }
+
+    #[test]
+    fn document_result_cannot_cross_lock_and_new_unlock() {
+        let state = AppState::new(PathBuf::new(), PathBuf::new());
+        *state.vault_dek.lock().unwrap() = Some(SecureKey::new(Zeroizing::new(vec![2; 32])));
+        let earlier = state.document_session().unwrap();
+        state.lock_vault();
+        assert!(state.validate_document_session(earlier).is_err());
+        // Unlock with the exact same DEK bytes is still a different session.
+        *state.vault_dek.lock().unwrap() = Some(SecureKey::new(Zeroizing::new(vec![2; 32])));
+        assert!(state.validate_document_session(earlier).is_err());
+        let current = state.document_session().unwrap();
+        assert!(state.validate_document_session(current).is_ok());
     }
 }

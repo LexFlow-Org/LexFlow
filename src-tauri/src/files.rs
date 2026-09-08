@@ -5,10 +5,7 @@
 use crate::state::AppState;
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde_json::{json, Value};
-use std::fs;
-use std::sync::OnceLock;
-use std::time::Instant;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -27,13 +24,9 @@ const LIST_FOLDER_MAX_ENTRIES: usize = 10_000;
 /// Max length per Typst text field (64 KiB) before truncation.
 const TYPST_FIELD_MAX_BYTES: usize = 64 * 1024;
 
-/// Min interval between successive `warm_swift` invocations (60 s).
-const WARM_SWIFT_MIN_INTERVAL_SECS: u64 = 60;
-
 // ─── Open path (with security sanitization) ─────────────────
 
-#[tauri::command]
-pub(crate) fn open_path(app: AppHandle, path: String) {
+fn open_path_impl(app: AppHandle, path: String) {
     #[cfg(not(target_os = "android"))]
     {
         let p = std::path::Path::new(&path);
@@ -87,8 +80,7 @@ pub(crate) fn open_path(app: AppHandle, path: String) {
 
 // ─── File/folder selection dialogs ──────────────────────────
 
-#[tauri::command]
-pub(crate) async fn select_file(
+async fn select_file_impl(
     app: AppHandle,
     extensions: Option<Vec<String>>,
 ) -> Result<Option<Value>, String> {
@@ -154,8 +146,7 @@ fn allowed_read_prefixes(app: &AppHandle) -> Vec<std::path::PathBuf> {
 /// - Restricts to an allowlist of directory prefixes (Documents, Desktop,
 ///   Downloads, app data_dir, temp_dir).
 /// - Caps the file size at `READ_FILE_MAX_BYTES` via `safe_bounded_read`.
-#[tauri::command]
-pub(crate) fn read_file_base64(app: AppHandle, path: String) -> Result<String, String> {
+fn read_file_base64_impl(app: AppHandle, path: String) -> Result<String, String> {
     let p = std::path::PathBuf::from(&path);
     if !p.is_absolute() {
         return Err("percorso relativo non consentito".into());
@@ -214,8 +205,7 @@ pub(crate) fn read_file_base64(app: AppHandle, path: String) -> Result<String, S
 }
 
 /// Select multiple files at once (for merge, batch operations).
-#[tauri::command]
-pub(crate) async fn select_files(
+async fn select_files_impl(
     app: AppHandle,
     extensions: Option<Vec<String>>,
 ) -> Result<Vec<String>, String> {
@@ -242,8 +232,7 @@ pub(crate) async fn select_files(
         .collect())
 }
 
-#[tauri::command]
-pub(crate) async fn select_folder(app: AppHandle) -> Result<Option<String>, String> {
+async fn select_folder_impl(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
     #[cfg(not(target_os = "android"))]
@@ -265,8 +254,7 @@ pub(crate) async fn select_folder(app: AppHandle) -> Result<Option<String>, Stri
 
 // ─── PDF save/write ─────────────────────────────────────────
 
-#[tauri::command]
-pub(crate) async fn select_pdf_save_path(
+async fn select_pdf_save_path_impl(
     app: AppHandle,
     default_name: String,
 ) -> Result<Option<String>, String> {
@@ -302,8 +290,7 @@ pub(crate) async fn select_pdf_save_path(
     }
 }
 
-#[tauri::command]
-pub(crate) async fn write_pdf_to_path(
+async fn write_pdf_to_path_impl(
     app: AppHandle,
     path: String,
     data: Vec<u8>,
@@ -383,40 +370,16 @@ pub(crate) async fn write_pdf_to_path(
         if safe_ext != "pdf" {
             return Err("Solo file .pdf consentiti".into());
         }
-        use std::io::Write;
-        // FIX-S7: open with create_new(true) so we never silently overwrite an
-        // existing file. The dialog already asks the user about overwriting.
-        let mut opts = fs::OpenOptions::new();
-        opts.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o600);
-        }
-        let mut file = match opts.open(&safe_path) {
-            Ok(f) => f,
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                // Caller (the dialog) is expected to ask for confirmation before
-                // calling us. If a file already exists at the canonical path we
-                // refuse rather than truncate silently.
-                return Err(format!(
-                    "File già esistente: {}",
-                    safe_path.to_string_lossy()
-                ));
-            }
-            Err(e) => return Err(format!("Create failed: {}", e)),
-        };
-        file.write_all(&data)
-            .map_err(|e| format!("Write failed: {}", e))?;
-        file.sync_all().map_err(|e| format!("Sync failed: {}", e))?;
+        // A failed write must not leave a partial PDF under the final name.
+        // Staging also preserves the existing no-overwrite/symlink protection.
+        crate::hardening::publish_new_bytes(&data, &safe_path)?;
     }
     Ok(true)
 }
 
 // ─── List folder contents ───────────────────────────────────
 
-#[tauri::command]
-pub(crate) fn list_folder_contents(path: String) -> Result<Value, String> {
+fn list_folder_contents_impl(path: String) -> Result<Value, String> {
     let p = std::path::PathBuf::from(&path);
     if !p.is_absolute() {
         return Err("Percorso relativo non consentito".into());
@@ -510,33 +473,13 @@ pub(crate) fn list_folder_contents(path: String) -> Result<Value, String> {
     }
 }
 
-// ─── Warm Swift (macOS biometric) ───────────────────────────
-
-/// FIX-S13: rate-limit `warm_swift` so it can be invoked at most once per
-/// `WARM_SWIFT_MIN_INTERVAL_SECS` to avoid spawning swift processes in a loop.
-static WARM_SWIFT_LAST: OnceLock<std::sync::Mutex<Option<Instant>>> = OnceLock::new();
-
+// Compatibility IPC: old clients used this to warm a runtime Swift compiler.
+// Biometric detection is now compiled into the app; preserve the command name.
 #[tauri::command]
 pub(crate) fn warm_swift() -> Result<bool, String> {
-    let cell = WARM_SWIFT_LAST.get_or_init(|| std::sync::Mutex::new(None));
-    {
-        let mut last = cell.lock().unwrap_or_else(|e| e.into_inner());
-        let now = Instant::now();
-        if let Some(t) = *last {
-            if now.duration_since(t).as_secs() < WARM_SWIFT_MIN_INTERVAL_SECS {
-                // Still within the cooldown — return Ok(true) without spawning.
-                return Ok(true);
-            }
-        }
-        *last = Some(now);
-    }
     #[cfg(target_os = "macos")]
     {
-        use std::process::Command;
-        match Command::new("/usr/bin/swift").arg("-version").output() {
-            Ok(_) => Ok(true),
-            Err(e) => Err(e.to_string()),
-        }
+        Ok(crate::bio::check_bio())
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -553,7 +496,8 @@ fn escape_typst(input: &str) -> String {
     let mut out = String::with_capacity(input.len() + 16);
     for ch in input.chars() {
         match ch {
-            '#' | '$' | '*' | '@' | '[' | ']' | '\\' | '_' | '~' | '<' | '>' | '{' | '}' | '"' => {
+            '`' | '#' | '$' | '*' | '@' | '[' | ']' | '\\' | '_' | '~' | '<' | '>' | '{' | '}'
+            | '"' => {
                 out.push('\\');
                 out.push(ch);
             }
@@ -619,8 +563,7 @@ pub(crate) struct TypstPracticeData {
     diary: Option<Vec<TypstDiaryEntry>>,
 }
 
-#[tauri::command]
-pub(crate) async fn generate_typst_pdf(
+async fn generate_typst_pdf_impl(
     app: AppHandle,
     data: TypstPracticeData,
 ) -> Result<Vec<u8>, String> {
@@ -736,16 +679,10 @@ pub(crate) async fn generate_typst_pdf(
         .replace("__DEADLINES_CONTENT__", &deadlines_content)
         .replace("__DIARY_CONTENT__", &diary_content);
 
-    let temp_dir = std::env::temp_dir();
-    let run_id = format!("{:016x}", rand::random::<u64>());
-    let file_typst = temp_dir.join(format!("lexflow_app_{}.typ", run_id));
-    let file_pdf = temp_dir.join(format!("lexflow_app_{}.pdf", run_id));
+    let work = crate::hardening::DocumentWorkspace::new()?;
+    let file_typst = work.join("report.typ");
+    let file_pdf = work.join("report.pdf");
 
-    // TODO(audit:BE-11-S11): replace std::fs write + random run_id with
-    // `tempfile::NamedTempFile::new_in(&temp_dir)` once the `tempfile` crate is
-    // added to Cargo.toml. The current path uses a 64-bit random suffix and
-    // O_CREAT|O_EXCL semantics inside `secure_write`, mitigating the race for
-    // now, but a real tempfile API would be safer.
     crate::io::secure_write(&file_typst, document.as_bytes())
         .map_err(|e| format!("Cannot write temp .typ: {}", e))?;
 
@@ -771,23 +708,18 @@ pub(crate) async fn generate_typst_pdf(
         .spawn()
         .map_err(|e| format!("Impossibile avviare Typst: {}", e))?;
 
-    let mut stderr_output = String::new();
+    let mut succeeded = false;
     while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stderr(line) => {
-                stderr_output.push_str(&String::from_utf8_lossy(&line));
+        if let CommandEvent::Terminated(payload) = event {
+            if payload.code != Some(0) {
+                return Err("Generazione PDF non riuscita.".to_string());
             }
-            CommandEvent::Terminated(payload) if payload.code != Some(0) => {
-                let _ = crate::security::secure_delete_file(&file_typst);
-                let _ = crate::security::secure_delete_file(&file_pdf);
-                return Err(format!(
-                    "Typst compilation failed (exit {}): {}",
-                    payload.code.unwrap_or(-1),
-                    stderr_output
-                ));
-            }
-            _ => {}
+            succeeded = true;
         }
+    }
+
+    if !succeeded {
+        return Err("Generazione PDF interrotta.".to_string());
     }
 
     // TODO(audit:BE-11-S12): wrap pdf_bytes in `Zeroizing<Vec<u8>>` before
@@ -801,11 +733,160 @@ pub(crate) async fn generate_typst_pdf(
     Ok(pdf_bytes)
 }
 
+// ─── Authenticated file IPC ──────────────────────────────
+
+#[tauri::command]
+pub(crate) fn open_path(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    path: String,
+) -> Result<(), String> {
+    let session = state.document_session()?;
+    open_path_impl(app, path);
+    state.validate_document_session(session)
+}
+
+#[tauri::command]
+pub(crate) async fn select_file(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    extensions: Option<Vec<String>>,
+) -> Result<Option<Value>, String> {
+    let session = state.document_session()?;
+    let mut result = select_file_impl(app, extensions).await;
+    if let Err(error) = state.validate_document_session(session) {
+        if let Ok(Some(value)) = &mut result {
+            crate::state::scrub_json(value);
+        }
+        return Err(error);
+    }
+    result
+}
+
+#[tauri::command]
+pub(crate) fn read_file_base64(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    path: String,
+) -> Result<String, String> {
+    let session = state.document_session()?;
+    let mut result = read_file_base64_impl(app, path);
+    if let Err(error) = state.validate_document_session(session) {
+        use zeroize::Zeroize;
+        if let Ok(value) = &mut result {
+            value.zeroize();
+        }
+        return Err(error);
+    }
+    result
+}
+
+#[tauri::command]
+pub(crate) async fn select_files(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    extensions: Option<Vec<String>>,
+) -> Result<Vec<String>, String> {
+    let session = state.document_session()?;
+    let mut result = select_files_impl(app, extensions).await;
+    if let Err(error) = state.validate_document_session(session) {
+        use zeroize::Zeroize;
+        if let Ok(value) = &mut result {
+            value.zeroize();
+        }
+        return Err(error);
+    }
+    result
+}
+
+#[tauri::command]
+pub(crate) async fn select_folder(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<Option<String>, String> {
+    let session = state.document_session()?;
+    let mut result = select_folder_impl(app).await;
+    if let Err(error) = state.validate_document_session(session) {
+        use zeroize::Zeroize;
+        if let Ok(value) = &mut result {
+            value.zeroize();
+        }
+        return Err(error);
+    }
+    result
+}
+
+#[tauri::command]
+pub(crate) async fn select_pdf_save_path(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    default_name: String,
+) -> Result<Option<String>, String> {
+    let session = state.document_session()?;
+    let mut result = select_pdf_save_path_impl(app, default_name).await;
+    if let Err(error) = state.validate_document_session(session) {
+        use zeroize::Zeroize;
+        if let Ok(value) = &mut result {
+            value.zeroize();
+        }
+        return Err(error);
+    }
+    result
+}
+
+#[tauri::command]
+pub(crate) async fn write_pdf_to_path(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    path: String,
+    data: Vec<u8>,
+) -> Result<bool, String> {
+    let session = state.document_session()?;
+    let result = write_pdf_to_path_impl(app, path, data).await;
+    state.validate_document_session(session)?;
+    result
+}
+
+#[tauri::command]
+pub(crate) fn list_folder_contents(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Value, String> {
+    let session = state.document_session()?;
+    let mut result = list_folder_contents_impl(path);
+    if let Err(error) = state.validate_document_session(session) {
+        if let Ok(value) = &mut result {
+            crate::state::scrub_json(value);
+        }
+        return Err(error);
+    }
+    result
+}
+
+#[tauri::command]
+pub(crate) async fn generate_typst_pdf(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    data: TypstPracticeData,
+) -> Result<Vec<u8>, String> {
+    let session = state.document_session()?;
+    let mut result = generate_typst_pdf_impl(app, data).await;
+    if let Err(error) = state.validate_document_session(session) {
+        use zeroize::Zeroize;
+        if let Ok(value) = &mut result {
+            value.zeroize();
+        }
+        return Err(error);
+    }
+    result
+}
+
 // ─── Platform info commands ─────────────────────────────────
 
 #[tauri::command]
 pub(crate) fn window_close(app: AppHandle, state: State<AppState>) {
-    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    state.lock_vault();
+    let _ = app.emit("lf-lock", ());
     #[cfg(not(target_os = "android"))]
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();

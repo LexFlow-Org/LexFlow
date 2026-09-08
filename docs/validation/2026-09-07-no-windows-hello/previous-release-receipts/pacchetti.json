@@ -1,0 +1,56 @@
+{
+  "application": "LexFlow",
+  "version": "1.0.1",
+  "date": "2026-09-07",
+  "android_version_code": 253,
+  "artifacts": [
+    {
+      "file": "macOS/LexFlow-1.0.1-macOS-Apple-Silicon.dmg",
+      "bytes": 31018209,
+      "sha256": "376369c34358d8069ac10f03497c51d89e90fc94f317aed48fa745c8a7692222"
+    },
+    {
+      "file": "macOS/LexFlow-1.0.1-macOS-Intel.dmg",
+      "bytes": 33507993,
+      "sha256": "b45686c13f73813d01646c09283e20d1607aaa9cc9b5948fd56ad6e8d051110e"
+    },
+    {
+      "file": "Windows/LexFlow_1.0.1_x64-setup.exe",
+      "bytes": 305764375,
+      "sha256": "a6d543a59f60b084521d1f12dc415cd5294c45cd77262721aa36f2a8b404916a"
+    },
+    {
+      "file": "Android/LexFlow-1.0.1-Android-arm64.apk",
+      "bytes": 13019705,
+      "sha256": "cc9d24a85cb40a5716a0fe45cea31d855092217b077a43538b769ab2736c2445"
+    }
+  ],
+  "license_public_key_sha256": "4ff69b87240948576d916234273c2468e0906c1468e190f2b9a2ac3a5230672f",
+  "same_private_issuer_and_android_signer_preserved": true,
+  "rust_tests": 428,
+  "frontend_tests": 58,
+  "mac_signature": "ad hoc, not notarized",
+  "windows_authenticode_signed": false,
+  "mac_biometrics_available_with_current_signature": false,
+  "physical_windows_android_and_intel_tests_completed": false,
+  "android_emulator_full_suite_passed": false,
+  "android_emulator_known_issues": [
+    "Wry timeout crash reproduced under software renderer; cause unresolved",
+    "Rendering artifacts observed"
+  ],
+  "network_capture_applies_to_previous_mac_binary": true,
+  "profile_restored_after_validation": true,
+  "installed_app_updated": true,
+  "updated_at": "2026-09-07T23:11:34.487520+02:00",
+  "source_freeze_sha256": "701b1f62ae0956e3fa9140512afd1ec886834be4c314747a8dea14f88dfbe9d6",
+  "source_files_checked": 132,
+  "settings_toggle_geometry_fixed": true,
+  "settings_visual_geometric_checks": 120,
+  "settings_visual_interaction_profiles": 24,
+  "latest_biometric_targeted_tests": 8,
+  "rust_full_suite_428_precedes_status_diagnostic": true,
+  "installed_app_main_sha256": "84d3937fda76e98490ee51f7e0a86395490b01d9d3c10604fc2901ce3f6f5c80",
+  "license_registry_modified": false,
+  "license_registry_real_record_count_verified": false,
+  "android_253_runtime_tested": false
+}

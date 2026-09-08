@@ -1,0 +1,50 @@
+{
+  "date": "2026-09-07",
+  "tested_artifact": "installed Apple Silicon 1.0.1 from 2026-09-06; not rebuilt candidate",
+  "binary_sha256": "cd2299e5bcde461881893dad7e255eb1063edb6034da9feee1dfd2d09f5e57fe",
+  "captures": [
+    {
+      "capture": "network-20260907-091607.pcapng",
+      "log": "network-20260907-091607.log",
+      "filter": "proc=lexflow or eproc=lexflow or proc=qpdf or eproc=qpdf or proc=typst or eproc=typst or proc=lexflow-probe or eproc=lexflow-probe",
+      "duration_seconds": 900.047,
+      "exit_code": 0,
+      "full_device_traffic_captured": false,
+      "requested_snapshot_bytes": 128,
+      "actual_snapshot_bytes": 524288,
+      "kernel_dropped_packets": 353,
+      "app_or_sidecar_packet_records": 0,
+      "positive_control_loopback_datagrams": 3,
+      "positive_control_directional_records": 6
+    },
+    {
+      "capture": "network-20260907-093403.pcapng",
+      "log": "network-20260907-093403.log",
+      "filter": "proc=lexflow or eproc=lexflow or proc=qpdf or eproc=qpdf or proc=typst or eproc=typst or proc=lexflow-probe or eproc=lexflow-probe",
+      "duration_seconds": 755.934,
+      "exit_code": 0,
+      "requested_snapshot_bytes": 128,
+      "actual_snapshot_bytes": 524288,
+      "kernel_dropped_packets": 0,
+      "capture_buffer_kib": 16384,
+      "full_device_traffic_captured": false,
+      "app_or_sidecar_packet_records": 0,
+      "positive_control_loopback_datagrams": 3,
+      "positive_control_directional_records": 6
+    }
+  ],
+  "zero_drop_capture_scope": "Mostly foreground idle and native backup save dialog/export. Activation/search occurred mainly in first capture with 353 drops. Not a proof for every app workflow or OS helper.",
+  "resources": {
+    "samples": 990,
+    "rss_peak_bytes": 487587840,
+    "scope": "Main native process only; WebKit helper memory excluded"
+  },
+  "ui_observation": {
+    "launch_to_first_accessibility_state_seconds": 0.862,
+    "last_id_search_10000_records_seconds": 1.358,
+    "samples": 1,
+    "precision_limit": "Includes CUA operations and accessibility observation; not isolated engine timings or repeated cold launches"
+  },
+  "profile_restored": true,
+  "native_backup_import_dialog_tested": false
+}

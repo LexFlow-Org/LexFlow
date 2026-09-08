@@ -1,3 +1,5 @@
+import { useSessionState } from '../hooks/useSessionState';
+import { getSessionGeneration } from '../utils/sessionData';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { Clock, Play, Square, Plus, Trash2, ChevronLeft, ChevronRight, Edit3, Check, X, DollarSign, Receipt, Download, Briefcase, FileText } from 'lucide-react';
@@ -6,11 +8,11 @@ import toast from 'react-hot-toast';
 let _jsPDF = null;
 async function getJsPDF() {
   if (!_jsPDF) {
-    const [mod] = await Promise.all([
+    const [mod, tableMod] = await Promise.all([
       import('jspdf'),
       import('jspdf-autotable'),
     ]);
-    _jsPDF = mod.default;
+    _jsPDF = { jsPDF: mod.jsPDF, autoTable: tableMod.autoTable };
   }
   return _jsPDF;
 }
@@ -18,7 +20,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import ModalOverlay from '../components/ModalOverlay';
 import PracticeCombobox from '../components/PracticeCombobox';
 import * as api from '../tauri-api';
-import { genId } from '../utils/helpers';
+import { genId, toDateStr } from '../utils/helpers';
 
 /* ======== Helpers ======== */
 
@@ -29,21 +31,11 @@ function fmtDuration(min) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-// FIX-1 Local-date string for week-boundary calculations (avoid UTC shift bug).
-function localDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 const DAYS_IT = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 const MONTHS_IT = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
 // FIX-16 extract workday minutes constant
 const WORKDAY_MINUTES = 8 * 60;
-// Stale-timer hydration: warn if running > N hours
-const MAX_TIMER_HOURS = 12;
 
 /* ======== Billing helpers ======== */
 
@@ -69,31 +61,13 @@ const STATUS_COLORS = {
 /* ======== Main Component ======== */
 export default function TimeTrackingPage({ practices }) {
   const [activeTab, setActiveTab] = useState('ore');
+  const sessionGeneration = useRef(getSessionGeneration());
+  const billingRef = useRef({ logs: [], invoices: [] });
+  const saveQueueRef = useRef(Promise.resolve());
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTimer, setActiveTimer] = useState(() => {
-    try {
-      const saved = sessionStorage.getItem('lexflow_active_timer');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed?.startedAt) {
-          // FIX-4 Stale-timer hydration sanity check
-          const elapsedMin = (Date.now() - parsed.startedAt) / 60000;
-          if (elapsedMin > MAX_TIMER_HOURS * 60) {
-            const discard = window.confirm(
-              `Hai un timer attivo da oltre ${MAX_TIMER_HOURS} ore. Scartarlo?`
-            );
-            if (discard) {
-              sessionStorage.removeItem('lexflow_active_timer');
-              return null;
-            }
-          }
-          return parsed;
-        }
-      }
-    } catch { /* ignore */ }
-    return null;
-  });
+  const [loadError, setLoadError] = useState(false);
+  const [activeTimer, setActiveTimer] = useSessionState('activeTimer', null);
   const [elapsed, setElapsed] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -109,28 +83,36 @@ export default function TimeTrackingPage({ practices }) {
   const [timerPracticeId, setTimerPracticeId] = useState('');
   const [timerDescription, setTimerDescription] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [logData, invData] = await Promise.all([
-          api.loadTimeLogs().catch(() => []),
-          api.loadInvoices().catch(() => []),
-        ]);
-        setLogs(logData || []);
-        setInvoices(invData || []);
-      } catch (e) { console.error(e); }
-      setLoading(false);
-    })();
+  const loadBilling = useCallback(() => Promise.all([api.loadTimeLogs(), api.loadInvoices()])
+    .then(([logData, invData]) => {
+      if (sessionGeneration.current !== getSessionGeneration()) return;
+      if (!Array.isArray(logData) || !Array.isArray(invData)) throw new Error('Formato ore/parcelle non valido');
+      billingRef.current = { logs: logData, invoices: invData };
+      setLogs(logData);
+      setInvoices(invData);
+    }).catch(() => setLoadError(true)).finally(() => setLoading(false)), []);
+  useEffect(() => { loadBilling(); }, [loadBilling]);
+
+  const updateBilling = useCallback((field, update) => {
+    const operation = saveQueueRef.current.then(async () => {
+      if (sessionGeneration.current !== getSessionGeneration()) throw new Error('Vault bloccato');
+      const next = update(billingRef.current[field]);
+      await (field === 'logs' ? api.saveTimeLogs(next) : api.saveInvoices(next));
+      if (sessionGeneration.current !== getSessionGeneration()) throw new Error('Vault bloccato');
+      billingRef.current[field] = next;
+      (field === 'logs' ? setLogs : setInvoices)(next);
+    });
+    saveQueueRef.current = operation.catch(() => {});
+    return operation;
   }, []);
+
 
   useEffect(() => {
     if (activeTimer) {
-      sessionStorage.setItem('lexflow_active_timer', JSON.stringify(activeTimer));
       intervalRef.current = setInterval(() => {
         setElapsed(Math.floor((Date.now() - activeTimer.startedAt) / 1000));
       }, 1000);
     } else {
-      sessionStorage.removeItem('lexflow_active_timer');
       clearInterval(intervalRef.current);
     }
     return () => clearInterval(intervalRef.current);
@@ -146,7 +128,7 @@ export default function TimeTrackingPage({ practices }) {
     toast.success('Timer avviato');
   };
 
-  // FIX-3 inflight ref + FIX-10 optimistic save with rollback + FIX-1 localDateStr
+  // FIX-3 inflight ref + FIX-10 optimistic save with rollback + FIX-1 toDateStr
   const stopTimer = useCallback(async () => {
     if (stopInFlightRef.current) return;
     if (!activeTimer) return;
@@ -163,59 +145,38 @@ export default function TimeTrackingPage({ practices }) {
         id: genId(),
         practiceId: activeTimer.practiceId,
         description: activeTimer.description || '',
-        date: localDateStr(new Date()),
+        date: toDateStr(new Date()),
         minutes,
         createdAt: new Date().toISOString(),
       };
-      const prevLogs = logs;
-      const updated = [newLog, ...logs];
-      setLogs(updated);
       try {
-        await api.saveTimeLogs(updated);
+        await updateBilling('logs', current => [newLog, ...current]);
         toast.success(`Registrate ${fmtDuration(minutes)}`);
-      } catch (e) {
-        // FIX-10 rollback on BE failure
-        setLogs(prevLogs);
+      } catch {
         toast.error('Errore salvataggio ore');
-        console.error(e);
+        return; // Keep the timer so failed saves can be retried.
       }
       setActiveTimer(null);
     } finally {
       stopInFlightRef.current = false;
       setStopBusy(false);
     }
-  }, [activeTimer, logs]);
+  }, [activeTimer, setActiveTimer, updateBilling]);
 
-  // FIX-10 Optimistic save with rollback
   const saveLog = async (log) => {
-    const isNew = !logs.some(l => l.id === log.id);
-    const prev = logs;
-    const updated = isNew ? [log, ...logs] : logs.map(l => l.id === log.id ? log : l);
-    setLogs(updated);
     try {
-      await api.saveTimeLogs(updated);
-      toast.success(isNew ? 'Registrazione aggiunta' : 'Registrazione aggiornata');
-    } catch (e) {
-      setLogs(prev);
-      toast.error('Errore salvataggio registrazione');
-      console.error(e);
-    }
-    setShowAddModal(false); setEditingLog(null);
+      await updateBilling('logs', current => current.some(l => l.id === log.id)
+        ? current.map(l => l.id === log.id ? log : l) : [log, ...current]);
+      toast.success('Registrazione salvata');
+      setShowAddModal(false); setEditingLog(null);
+    } catch { toast.error('Errore salvataggio registrazione'); }
   };
 
-  // FIX-10 Optimistic delete with rollback
   const deleteLog = async (id) => {
-    const prev = logs;
-    const updated = logs.filter(l => l.id !== id);
-    setLogs(updated);
     try {
-      await api.saveTimeLogs(updated);
+      await updateBilling('logs', current => current.filter(l => l.id !== id));
       toast.success('Registrazione eliminata');
-    } catch (e) {
-      setLogs(prev);
-      toast.error('Errore eliminazione');
-      console.error(e);
-    }
+    } catch { toast.error('Errore eliminazione'); }
   };
 
   const confirmDeleteLog = (id) => {
@@ -225,36 +186,20 @@ export default function TimeTrackingPage({ practices }) {
     });
   };
 
-  // FIX-10 Optimistic invoice save with rollback
   const saveInvoice = async (inv) => {
-    const isNew = !invoices.some(i => i.id === inv.id);
-    const prev = invoices;
-    const updated = isNew ? [inv, ...invoices] : invoices.map(i => i.id === inv.id ? inv : i);
-    setInvoices(updated);
     try {
-      await api.saveInvoices(updated);
-      toast.success(isNew ? 'Parcella creata' : 'Parcella aggiornata');
-    } catch (e) {
-      setInvoices(prev);
-      toast.error('Errore salvataggio parcella');
-      console.error(e);
-    }
-    setShowCreateInvoice(false); setEditingInvoice(null);
+      await updateBilling('invoices', current => current.some(i => i.id === inv.id)
+        ? current.map(i => i.id === inv.id ? inv : i) : [inv, ...current]);
+      toast.success('Parcella salvata');
+      setShowCreateInvoice(false); setEditingInvoice(null);
+    } catch { toast.error('Errore salvataggio parcella'); }
   };
 
-  // FIX-10 Optimistic invoice delete with rollback
   const deleteInvoice = async (id) => {
-    const prev = invoices;
-    const updated = invoices.filter(i => i.id !== id);
-    setInvoices(updated);
     try {
-      await api.saveInvoices(updated);
+      await updateBilling('invoices', current => current.filter(i => i.id !== id));
       toast.success('Parcella eliminata');
-    } catch (e) {
-      setInvoices(prev);
-      toast.error('Errore eliminazione parcella');
-      console.error(e);
-    }
+    } catch { toast.error('Errore eliminazione parcella'); }
   };
 
   const confirmDeleteInvoice = (id) => {
@@ -267,7 +212,7 @@ export default function TimeTrackingPage({ practices }) {
   // Stable "now" reference to avoid re-render churn for daily-bucket comparison
   const now = new Date();
 
-  // FIX-9 memoize week derivation; FIX-1 use localDateStr for boundaries
+  // FIX-9 memoize week derivation; FIX-1 use toDateStr for boundaries
   const { weekDays, weekLogs, totalWeekMin } = useMemo(() => {
     const _now = new Date();
     const sow = new Date(_now);
@@ -279,8 +224,8 @@ export default function TimeTrackingPage({ practices }) {
       d.setDate(sow.getDate() + i);
       return d;
     });
-    const start = localDateStr(days[0]);
-    const end = localDateStr(days[6]);
+    const start = toDateStr(days[0]);
+    const end = toDateStr(days[6]);
     const filtered = (logs || []).filter(l => l.date >= start && l.date <= end);
     const total = filtered.reduce((s, l) => s + (l.minutes || 0), 0);
     return { weekDays: days, weekLogs: filtered, totalWeekMin: total };
@@ -317,7 +262,7 @@ export default function TimeTrackingPage({ practices }) {
   };
 
   const generatePDF = async (inv) => {
-    const jsPDF = await getJsPDF();
+    const { jsPDF, autoTable } = await getJsPDF();
     const doc = new jsPDF();
     const gold = [212, 169, 64];
     doc.setFillColor(...gold);
@@ -349,7 +294,7 @@ export default function TimeTrackingPage({ practices }) {
       `\u20AC ${(it.total || 0).toFixed(2)}`,
     ]);
     const totals = calcTotals(inv.items || []);
-    doc.autoTable({
+    autoTable(doc, {
       startY: y,
       head: [['Descrizione', 'Qt\u00E0', 'Prezzo', 'Importo']],
       body: tableBody,
@@ -373,6 +318,11 @@ export default function TimeTrackingPage({ practices }) {
     if (result?.success) toast.success('PDF salvato');
   };
 
+  if (loadError) return <div role="alert" className="p-6 space-y-4">
+    <p>Impossibile leggere ore e parcelle. Riprova prima di modificarle.</p>
+    <button className="btn-primary" onClick={() => { setLoading(true); setLoadError(false); void loadBilling(); }}>Riprova</button>
+  </div>;
+
   if (loading) {
     return (<div className="flex items-center justify-center h-full"><Clock className="animate-spin text-primary" size={32} /></div>);
   }
@@ -388,6 +338,7 @@ export default function TimeTrackingPage({ practices }) {
           <div>
             <h1 className="text-2xl font-bold text-text tracking-tight">Gestione Ore</h1>
             <p className="text-xs text-text-dim">Registra ore e gestisci parcelle</p>
+            <p className="text-xs text-text-dim mt-1">Ferma e salva il timer prima di bloccare o chiudere il vault: i timer in corso restano solo in memoria.</p>
           </div>
         </div>
         {/* FIX-14 WAI-ARIA tablist pattern */}
@@ -531,10 +482,10 @@ export default function TimeTrackingPage({ practices }) {
 
           <div className="grid grid-cols-7 gap-2 mb-4">
             {weekDays.map(d => {
-              const ds = localDateStr(d);
+              const ds = toDateStr(d);
               const dayLogs = weekLogs.filter(l => l.date === ds);
               const dayMin = dayLogs.reduce((s, l) => s + (l.minutes || 0), 0);
-              const isToday = ds === localDateStr(now);
+              const isToday = ds === toDateStr(now);
               const isFuture = d > now && !isToday;
               const isSelected = selectedDay === ds;
               const dayName = DAYS_IT[d.getDay()];
@@ -572,8 +523,8 @@ export default function TimeTrackingPage({ practices }) {
               let sectionLabel;
               if (selectedDay) {
                 const selDate = new Date(selectedDay + 'T12:00:00');
-                // FIX-1 localDateStr
-                const todayStr = localDateStr(now);
+                // FIX-1 toDateStr
+                const todayStr = toDateStr(now);
                 if (selectedDay === todayStr) {
                   sectionLabel = 'Oggi';
                 } else {
@@ -688,8 +639,8 @@ export default function TimeTrackingPage({ practices }) {
                     </div>
                     <span className="text-sm font-bold text-primary tabular-nums">{'\u20AC'} {totals.total.toFixed(2)}</span>
                     {/* FIX-13 group-focus-within for keyboard reveal */}
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                      <button onClick={() => generatePDF(inv)} aria-label={`Scarica PDF parcella ${inv.number || ''}`} className="p-1.5 hover:bg-card-hover rounded-lg text-text-dim" title="Scarica PDF"><Download size={14} /></button>
+                    <div className="flex gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                      <button onClick={() => generatePDF(inv).catch(() => toast.error('Impossibile esportare la parcella. Riprova.'))} aria-label={`Scarica PDF parcella ${inv.number || ''}`} className="p-1.5 hover:bg-card-hover rounded-lg text-text-dim" title="Scarica PDF"><Download size={14} /></button>
                       <button onClick={() => setEditingInvoice(inv)} aria-label={`Modifica parcella ${inv.number || ''}`} className="p-1.5 hover:bg-card-hover rounded-lg text-text-dim"><Edit3 size={14} /></button>
                       <button onClick={() => confirmDeleteInvoice(inv.id)} aria-label={`Elimina parcella ${inv.number || ''}`} className="p-1.5 hover:bg-danger-soft rounded-lg text-text-dim hover:text-danger"><Trash2 size={14} /></button>
                     </div>
@@ -730,10 +681,11 @@ TimeTrackingPage.defaultProps = { practices: [] };
 /* ======== ManualLogModal ======== */
 function ManualLogModal({ practices, initial, onSave, onClose }) {
   const isEdit = !!initial?.id;
+  const [recordId] = useState(() => initial?.id || genId());
   const safePractices = practices || [];
   const [practiceId, setPracticeId] = useState(initial?.practiceId || safePractices[0]?.id || '');
   const [description, setDescription] = useState(initial?.description || '');
-  const [date, setDate] = useState(initial?.date || localDateStr(new Date()));
+  const [date, setDate] = useState(initial?.date || toDateStr(new Date()));
   const [hours, setHours] = useState(initial ? String(Math.floor((initial.minutes || 0) / 60)) : '');
   const [mins, setMins] = useState(initial ? String((initial.minutes || 0) % 60) : '');
 
@@ -745,7 +697,7 @@ function ManualLogModal({ practices, initial, onSave, onClose }) {
     const totalMin = rawH * 60 + rawM;
     if (totalMin < 1) { toast.error('Inserisci almeno 1 minuto'); return; }
     onSave({
-      id: initial?.id || genId(), practiceId, description, date, minutes: totalMin,
+      id: recordId, practiceId, description, date, minutes: totalMin,
       createdAt: initial?.createdAt || new Date().toISOString(),
     });
   };
@@ -810,12 +762,13 @@ ManualLogModal.propTypes = {
 
 /* ======== InvoiceModal ======== */
 function InvoiceModal({ practices, timeLogs, invoices, editMode, initial, onSave, onClose }) {
+  const [recordId] = useState(() => initial?.id || genId('inv_'));
   // FIX-7 invoice number from max(existing) + 1 (avoids collisions when last is deleted)
   const nextNumberSeed = String(
     Math.max(0, ...(invoices || []).map(i => Number.parseInt(i.number, 10) || 0)) + 1
   ).padStart(3, '0');
   const [number, setNumber] = useState(initial?.number || nextNumberSeed);
-  const [invDate, setInvDate] = useState(initial?.date || localDateStr(new Date()));
+  const [invDate, setInvDate] = useState(initial?.date || toDateStr(new Date()));
   const [practiceId, setPracticeIdRaw] = useState(initial?.practiceId || '');
   const [clientName, setClientName] = useState(initial?.clientName || '');
   const [practiceName, setPracticeName] = useState(initial?.practiceName || '');
@@ -849,7 +802,7 @@ function InvoiceModal({ practices, timeLogs, invoices, editMode, initial, onSave
   const handleSave = (e) => {
     e.preventDefault();
     onSave({
-      id: initial?.id || genId('inv_'), number, date: invDate, practiceId,
+      id: recordId, number, date: invDate, practiceId,
       clientName, practiceName, status, items,
       createdAt: initial?.createdAt || new Date().toISOString(),
     });

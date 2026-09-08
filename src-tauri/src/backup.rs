@@ -60,6 +60,9 @@ fn harden_dir_0700(_p: &std::path::Path) {}
 /// Create an encrypted snapshot of the vault.
 /// The backup is a direct copy of vault.lex — already encrypted.
 pub(crate) fn create_backup(data_dir: &std::path::Path) -> Result<String, String> {
+    if crate::vault_engine::is_split_vault(data_dir) {
+        return Err("Sbloccare il database per completare la migrazione prima del backup.".into());
+    }
     let vault_path = data_dir.join(VAULT_FILE);
     if !vault_path.exists() {
         return Err("Nessun vault da backuppare".into());
@@ -190,13 +193,14 @@ fn rotate_backups(bak_dir: &std::path::Path) -> Result<(), String> {
 
 #[tauri::command]
 pub(crate) fn trigger_backup(state: State<AppState>) -> Result<String, String> {
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let dir = state
         .data_dir
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let name = create_backup(&dir)?;
-    let _ = crate::audit::append_audit_log(&state, &format!("Backup automatico: {}", name));
+    let _ = crate::audit::append_audit_log_locked(&state, &format!("Backup automatico: {}", name));
     Ok(name)
 }
 

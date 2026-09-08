@@ -1,0 +1,21 @@
+[
+  "src-tauri/src/lockout.rs",
+  "src-tauri/src/constants.rs",
+  "src-tauri/src/bio.rs",
+  "src-tauri/src/import_export.rs",
+  "src-tauri/src/audit.rs",
+  "src-tauri/src/vault_engine.rs",
+  "src-tauri/src/lib.rs",
+  "src-tauri/src/backup.rs",
+  "src-tauri/src/files.rs",
+  "src-tauri/src/state.rs",
+  "src-tauri/src/hardening.rs",
+  "src-tauri/src/csv_export.rs",
+  "src-tauri/src/license.rs",
+  "src-tauri/src/notifications.rs",
+  "src-tauri/src/search.rs",
+  "src-tauri/src/settings.rs",
+  "src-tauri/src/platform.rs",
+  "src-tauri/src/vault.rs",
+  "src-tauri/src/setup.rs"
+]

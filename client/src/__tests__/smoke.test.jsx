@@ -116,16 +116,12 @@ describe('Component imports (smoke test)', () => {
     expect(mod.default).toBeDefined();
   });
 
-  it('PdfRedactViewer imports without error', async () => {
-    const mod = await import('../components/PdfRedactViewer');
-    expect(mod.default).toBeDefined();
-  });
 });
 
 describe('Hooks (smoke test)', () => {
-  it('useDebouncedCallback imports without error', async () => {
+  it('useDebounce imports without error', async () => {
     const mod = await import('../hooks/useDebounce');
-    expect(mod.useDebouncedCallback).toBeDefined();
+    expect(mod.useDebounce).toBeDefined();
   });
 
   it('useVirtualList imports without error', async () => {

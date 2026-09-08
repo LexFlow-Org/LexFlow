@@ -1,0 +1,30 @@
+[
+  {
+    "test": "notifications::privacy_tests::scheduled_notifications_preserve_timing_without_case_titles",
+    "exit_code": 0
+  },
+  {
+    "test": "vault_engine::tests::test_constant_time_hex_eq",
+    "exit_code": 0
+  },
+  {
+    "test": "vault_engine_tests::dynamic_tests::dyn_hmac_verify_is_constant_time",
+    "exit_code": 0
+  },
+  {
+    "test": "vault_engine_tests::extreme_tests::hack_timing_attack_password_verification",
+    "exit_code": 0
+  },
+  {
+    "test": "vault_engine_tests::tests::apt02b_error_timing_no_early_exit",
+    "exit_code": 0
+  },
+  {
+    "test": "vault_engine_tests::tests::atk01_hmac_timing_constant",
+    "exit_code": 0
+  },
+  {
+    "test": "vault_engine_tests::tests::atk01b_argon2_constant_time",
+    "exit_code": 0
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "capture": "/private/tmp/lexflow-validation-2026-09-07/macos/network-20260907-093403.pcapng",
+  "log": "/private/tmp/lexflow-validation-2026-09-07/macos/network-20260907-093403.log",
+  "filter": "proc=lexflow or eproc=lexflow or proc=qpdf or eproc=qpdf or proc=typst or eproc=typst or proc=lexflow-probe or eproc=lexflow-probe",
+  "duration_seconds": 755.934,
+  "exit_code": 0,
+  "requested_snapshot_bytes": 128,
+  "actual_snapshot_bytes": 524288,
+  "kernel_dropped_packets": 0,
+  "capture_buffer_kib": 16384,
+  "full_device_traffic_captured": false
+}

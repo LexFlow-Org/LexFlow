@@ -1,0 +1,193 @@
+{
+  "application": "LexFlow",
+  "version": "1.0.1",
+  "minimum_macos": "11.0",
+  "minimum_webkit": "16.4",
+  "signing": "ad hoc; hardened runtime; not Apple-notarized",
+  "packages": [
+    {
+      "file": "LexFlow-1.0.1-macOS-Apple-Silicon.dmg",
+      "bytes": 31020518,
+      "sha256": "d309259a92fba34f5dc2c4fa3a055357159470714693415621ccdd97e3023f3a",
+      "architecture": "arm64",
+      "version": "1.0.1",
+      "checks": [
+        "hdiutil verify",
+        "mounted read-only",
+        "codesign --verify --deep --strict",
+        "correct single CPU slice in all three executables",
+        "system dynamic libraries only",
+        "qpdf and Typst --version",
+        "new public license key embedded",
+        "issuer-bound activation code embedded",
+        "no private key files",
+        "staging removed and image detached"
+      ],
+      "binaries": {
+        "lexflow": {
+          "sha256": "cd2299e5bcde461881893dad7e255eb1063edb6034da9feee1dfd2d09f5e57fe",
+          "size_bytes": 10024848,
+          "architectures": [
+            "arm64"
+          ]
+        },
+        "qpdf": {
+          "sha256": "4efe6940716439ccad8afe455a8502cdc4ff8375e167f77ea9f85387626584d1",
+          "size_bytes": 4018000,
+          "architectures": [
+            "arm64"
+          ],
+          "version": "qpdf version 12.4.1"
+        },
+        "typst": {
+          "sha256": "ecf5d3209a0feedf9bf41fdb09dcc016f011381faca1867f0cd017d7ec654d45",
+          "size_bytes": 44786384,
+          "architectures": [
+            "arm64"
+          ],
+          "version": "typst 0.15.1 (9dfd3a08)"
+        }
+      }
+    },
+    {
+      "file": "LexFlow-1.0.1-macOS-Intel.dmg",
+      "bytes": 33517414,
+      "sha256": "f50033489da93a82c30192f6962ba4e0023e0113636f3ac9201059c6400114f1",
+      "architecture": "x86_64",
+      "version": "1.0.1",
+      "checks": [
+        "hdiutil verify",
+        "mounted read-only",
+        "codesign --verify --deep --strict",
+        "correct single CPU slice in all three executables",
+        "system dynamic libraries only",
+        "qpdf and Typst --version",
+        "new public license key embedded",
+        "old public license key bytes absent",
+        "issuer-bound activation code embedded",
+        "no private key files",
+        "staging removed and image detached"
+      ],
+      "binaries": {
+        "lexflow": {
+          "sha256": "652597ae47b1719706f839065b1f94fb462a76653f0286b0715faa870acf3488",
+          "size_bytes": 11490528,
+          "architectures": [
+            "x86_64"
+          ],
+          "public_key_encoding": "x86_64 movabs immediates verified: four adjacent 8-byte stack slots reconstruct the new public key"
+        },
+        "qpdf": {
+          "sha256": "6f1558d0b63551fa2f96bec9770c60230491779c1d6a18884ea314bfca3faee2",
+          "size_bytes": 4234368,
+          "architectures": [
+            "x86_64"
+          ],
+          "version": "qpdf version 12.4.1"
+        },
+        "typst": {
+          "sha256": "fb7adec87f2c597480e2753fe222eee334f8e41a1e024ddcfdf6360977c14eba",
+          "size_bytes": 47962848,
+          "architectures": [
+            "x86_64"
+          ],
+          "version": "typst 0.15.1 (9dfd3a08)"
+        }
+      }
+    }
+  ],
+  "qpdf_provenance": {
+    "qpdf_version": "12.4.1",
+    "jpeg_version": "3.2.0",
+    "macos_deployment_target": "11.0",
+    "architectures": [
+      "arm64",
+      "x86_64"
+    ],
+    "qpdf_crypto": "native; OS secure random ON; insecure random OFF",
+    "linkage": "libqpdf and libjpeg static; only Apple libz, libc++, libSystem dynamic",
+    "jpeg_simd": false,
+    "jpeg_simd_note": "Portable C build; no additional assembler installed",
+    "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+    "sdk": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+    "sources": [
+      {
+        "file": "qpdf-12.4.1.tar.gz",
+        "url": "https://github.com/qpdf/qpdf/releases/download/v12.4.1/qpdf-12.4.1.tar.gz",
+        "sha256": "f045aa277be2356ff53a89a8622945958291177d2483afc20ede7c8a8cd3873c",
+        "published_digest": "sha256:f045aa277be2356ff53a89a8622945958291177d2483afc20ede7c8a8cd3873c",
+        "published_at": "2026-08-27T23:56:39Z"
+      },
+      {
+        "file": "libjpeg-turbo-3.2.0.tar.gz",
+        "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz",
+        "sha256": "6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e",
+        "published_digest": "sha256:6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e",
+        "published_at": "2026-06-30T19:23:27Z"
+      }
+    ],
+    "binaries": {
+      "qpdf-aarch64-apple-darwin": {
+        "sha256": "ba22e940b5e3315c60c5c726c89f0c2945cc60959a6a1b6666d60b1ce4ba0251",
+        "bytes": 4022680,
+        "architectures": [
+          "arm64"
+        ],
+        "dependency_check": "scripts/verify-macos-sidecars.py verify() PASS"
+      },
+      "qpdf-x86_64-apple-darwin": {
+        "sha256": "a865b679d09b9b2c0693dd25fdb32ab0e503b6cc7e425939c2f6137ccd34a615",
+        "bytes": 4182824,
+        "architectures": [
+          "x86_64"
+        ],
+        "dependency_check": "scripts/verify-macos-sidecars.py verify() PASS"
+      },
+      "qpdf-universal-apple-darwin": {
+        "sha256": "8e322a6112fa5a428ec88692eb67161d1df055167f21565abdc42e924ec59f47",
+        "bytes": 8216984,
+        "architectures": [
+          "arm64",
+          "x86_64"
+        ],
+        "dependency_check": "scripts/verify-macos-sidecars.py verify() PASS"
+      }
+    },
+    "tests": {
+      "arm64": {
+        "version": "qpdf version 12.4.1",
+        "native_crypto": "native",
+        "checks": [
+          "input PDF valid",
+          "AES-256 response-file encryption",
+          "encrypted flag",
+          "encrypted PDF valid",
+          "password-file decryption",
+          "decrypted flag",
+          "decrypted PDF valid",
+          "one page preserved",
+          "original text preserved",
+          "two-page merge"
+        ]
+      },
+      "x86_64": {
+        "version": "qpdf version 12.4.1",
+        "native_crypto": "native",
+        "checks": [
+          "input PDF valid",
+          "AES-256 response-file encryption",
+          "encrypted flag",
+          "encrypted PDF valid",
+          "password-file decryption",
+          "decrypted flag",
+          "decrypted PDF valid",
+          "one page preserved",
+          "original text preserved",
+          "two-page merge"
+        ]
+      }
+    }
+  },
+  "main_application_launched": false,
+  "license_public_key_sha256": "4ff69b87240948576d916234273c2468e0906c1468e190f2b9a2ac3a5230672f"
+}

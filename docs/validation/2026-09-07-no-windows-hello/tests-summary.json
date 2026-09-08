@@ -1,0 +1,13 @@
+{
+  "frontend_tests_passed": 60,
+  "frontend_tests_seconds": 3.5,
+  "frontend_lint_errors": 0,
+  "frontend_lint_preexisting_warnings": 1,
+  "frontend_build_passed": true,
+  "rust_bio_tests_passed": 13,
+  "rust_bio_tests_seconds": 13.6,
+  "new_windows_removal_tests": 7,
+  "other_rust_tests_filtered_out": 424,
+  "native_windows_credential_api_tested": false,
+  "real_vaults_or_keychain_used_by_tests": false
+}

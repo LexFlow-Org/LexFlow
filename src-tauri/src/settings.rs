@@ -34,13 +34,13 @@ pub(crate) fn get_settings(state: State<AppState>, app: AppHandle) -> Value {
     };
     let key = get_local_encryption_key();
     if let Ok(dec) = decrypt_data(&key, &file_data) {
-        return serde_json::from_slice(&dec).unwrap_or(json!({}));
+        return parse_settings_document(&dec).unwrap_or(json!({}));
     }
     #[cfg(not(target_os = "android"))]
     {
         // V3→V4 and V2→V4 migration handled by decrypt_local_with_migration
         if let Some(dec) = decrypt_local_with_migration(&path) {
-            return serde_json::from_slice(&dec).unwrap_or(json!({}));
+            return parse_settings_document(&dec).unwrap_or(json!({}));
         }
     }
     // Migration: old plaintext format
@@ -112,7 +112,7 @@ pub(crate) fn get_settings(state: State<AppState>, app: AppHandle) -> Value {
 /// Validate the high-level shape of the settings document. Permissive but
 /// enough to reject obviously wrong inputs (arrays, scalar JSON, bogus types
 /// for known critical keys). Used by the plaintext->encrypted migration and
-/// (best-effort) by save_settings.
+/// by encrypted reads and save_settings.
 fn is_valid_settings_schema(v: &Value) -> bool {
     let obj = match v.as_object() {
         Some(o) => o,
@@ -120,13 +120,8 @@ fn is_valid_settings_schema(v: &Value) -> bool {
     };
     // Spot-check known critical keys when present.
     if let Some(am) = obj.get("autolockMinutes") {
-        if !am.is_u64() && !am.is_i64() {
+        if !am.as_u64().is_some_and(|n| (1..=1440).contains(&n)) {
             return false;
-        }
-        if let Some(n) = am.as_u64() {
-            if n == 0 || n > 1440 {
-                return false;
-            }
         }
     }
     if let Some(ne) = obj.get("notifyEnabled") {
@@ -142,11 +137,20 @@ fn is_valid_settings_schema(v: &Value) -> bool {
     true
 }
 
+fn parse_settings_document(bytes: &[u8]) -> Option<Value> {
+    let settings = serde_json::from_slice(bytes).ok()?;
+    is_valid_settings_schema(&settings).then_some(settings)
+}
+
 /// Hard cap on settings payload — 64 KiB is plenty for legitimate settings.
 const MAX_SETTINGS_SIZE: usize = 64 * 1024;
 
 #[tauri::command]
-pub(crate) fn save_settings(state: State<AppState>, settings: Value) -> Result<bool, String> {
+pub(crate) fn save_settings(
+    state: State<AppState>,
+    app: AppHandle,
+    settings: Value,
+) -> Result<bool, String> {
     // VALIDATION-SETTINGS-1: schema + size cap before disk write.
     if !is_valid_settings_schema(&settings) {
         return Err("Settings non valide: schema rifiutato".into());
@@ -169,6 +173,38 @@ pub(crate) fn save_settings(state: State<AppState>, settings: Value) -> Result<b
     let plaintext = Zeroizing::new(serialized);
     let encrypted = encrypt_data(&key, &plaintext)?;
     atomic_write_with_sync(&path, &encrypted)
-        .map(|_| true)
-        .map_err(|e| format!("Impossibile salvare le impostazioni su disco: {}", e))
+        .map_err(|e| format!("Impossibile salvare le impostazioni su disco: {}", e))?;
+    if let Some(data_dir) = path.parent() {
+        crate::notifications::sync_notifications(&app, data_dir);
+    }
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_autolock_values_are_rejected_on_save_and_encrypted_read() {
+        for minutes in [
+            json!(-1),
+            json!(i64::MIN),
+            json!(0),
+            json!(1441),
+            json!(1.5),
+            json!("5"),
+        ] {
+            let settings = json!({"autolockMinutes": minutes});
+            assert!(!is_valid_settings_schema(&settings));
+            assert!(parse_settings_document(&serde_json::to_vec(&settings).unwrap()).is_none());
+        }
+        for minutes in [1, 5, 1440] {
+            let settings = json!({"autolockMinutes": minutes, "notifyEnabled": false});
+            assert_eq!(
+                parse_settings_document(&serde_json::to_vec(&settings).unwrap()),
+                Some(settings)
+            );
+        }
+        assert_eq!(parse_settings_document(b"{}"), Some(json!({})));
+    }
 }

@@ -1,6 +1,7 @@
 /* LexFlow — Tauri API Bridge v3.6.0 (ESM) */
 // SECURITY: Pure ES module — no window.api global.
-// withGlobalTauri=false + CSP script-src 'self' = XSS cannot access invoke().
+// CSP and scoped native commands are the security boundary. Module imports
+// reduce accidental exposure, but do not make injected JavaScript harmless.
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { isPermissionGranted as notifPermGranted } from '@tauri-apps/plugin-notification';
@@ -22,11 +23,9 @@ function safeInvoke(cmd, args = {}) {
   });
 }
 
-// SECURITY: Pre-hash passwords in the frontend before sending over IPC.
-// This ensures the plaintext password never crosses the Tauri bridge —
-// only the SHA-256 hash is sent. The backend uses this hash as input to
-// Argon2id (which accepts any byte string). This mitigates the serde
-// deserialization copy issue where plaintext lingers in heap memory.
+// The password-derived digest is still a credential equivalent and must be
+// protected like a password. Pre-hashing preserves the existing vault format;
+// it does not provide an independent security boundary around the IPC bridge.
 async function hashPwd(pwd) {
   const encoder = new TextEncoder();
   const data = encoder.encode(pwd);
@@ -42,7 +41,9 @@ export const vaultExists = () => safeInvoke('vault_exists');
 export const unlockVault = async (pwd) => safeInvoke('unlock_vault', { password: await hashPwd(pwd) });
 export const lockVault = () => safeInvoke('lock_vault');
 export const resetVault = async (password) => safeInvoke('reset_vault', { password: await hashPwd(password) });
-export const exportVault = async (pwd) => safeInvoke('export_vault', { pwd: await hashPwd(pwd) });
+export const exportVault = async (pwd, currentPassword) => safeInvoke('export_vault', {
+  pwd: await hashPwd(pwd), currentPassword: await hashPwd(currentPassword),
+});
 export const importVault = async (pwd) => safeInvoke('import_vault', { pwd: await hashPwd(pwd) });
 export const changePassword = async (currentPassword, newPassword) =>
   safeInvoke('change_password', { currentPassword: await hashPwd(currentPassword), newPassword: await hashPwd(newPassword) });
@@ -50,6 +51,7 @@ export const verifyVaultPassword = async (pwd) => safeInvoke('verify_vault_passw
 
 // Biometrics — saveBio stores the HASHED password in keychain
 export const checkBio = () => safeInvoke('check_bio');
+export const checkBioStatus = () => safeInvoke('check_bio_status');
 export const hasBioSaved = () => safeInvoke('has_bio_saved');
 export const saveBio = async (pwd) => safeInvoke('save_bio', { pwd: await hashPwd(pwd) });
 export const clearBio = () => safeInvoke('clear_bio');
@@ -81,20 +83,16 @@ export const warmSwift = () => safeInvoke('warm_swift');
 export const getVaultHealth = () => safeInvoke('get_vault_health');
 
 // PERF: Index-only reads (v4) — instant list rendering without decrypting records
-export const getVaultIndex = () => safeInvoke('get_vault_index');
-export const loadRecordDetail = (recordId) => safeInvoke('load_record_detail', { recordId });
 export const loadRecordHistory = (recordId) => safeInvoke('load_record_history', { recordId });
 
 // Full-text search (v4 — trigram fuzzy + BM25 ranking)
 export const searchVault = (query, limit = 50) => safeInvoke('search_vault', { query, limit });
-export const rebuildSearchIndex = () => safeInvoke('rebuild_search_index');
 
 // Audit log
 export const getAuditLog = () => safeInvoke('get_audit_log');
 
 // Backup
 export const triggerBackup = () => safeInvoke('trigger_backup');
-export const getBackupList = () => safeInvoke('get_backup_list');
 
 // CSV Export
 export const exportTimeLogsCsv = () => safeInvoke('export_time_logs_csv');
@@ -126,7 +124,6 @@ export const saveSettings = (settings) => safeInvoke('save_settings', { settings
 
 // Files
 export const selectFile = async (extensions) => (await safeInvoke('select_file', { extensions })) || null;
-export const readFileBase64 = (path) => safeInvoke('read_file_base64', { path });
 export const selectFiles = async (extensions) => (await safeInvoke('select_files', { extensions })) || [];
 export const selectFolder = async () => (await safeInvoke('select_folder')) || null;
 export const openPath = (path) => safeInvoke('open_path', { path });
@@ -155,7 +152,7 @@ export const exportPDF = async (arrayBuffer, defaultName) => {
 };
 
 // Typst PDF generation — sends practice data to Rust, Typst sidecar compiles to PDF
-export const generateTypstPdf = async (practiceData) => {
+const generateTypstPdf = async (practiceData) => {
   const pdfBytes = await safeInvoke('generate_typst_pdf', { data: practiceData });
   if (!pdfBytes || pdfBytes.length === 0) {
     throw new Error('Typst ha generato un PDF vuoto');
@@ -231,7 +228,6 @@ export const addPageNumbers = (inputPath, outputPath, position, formatStr, start
     startFrom: clampPositive(startFrom),
     fontSize: clampPositive(fontSize),
   });
-export const redactPdf = (inputPath, outputPath, redactions) => safeInvoke('redact_pdf', { inputPath, outputPath, redactions });
 export const securePdf = (inputPath, outputPath, options) => safeInvoke('secure_pdf', { inputPath, outputPath, options });
 export const unsecurePdf = (inputPath, outputPath, password) => safeInvoke('unsecure_pdf', { inputPath, outputPath, password });
 
@@ -244,7 +240,6 @@ export const getPlatform = () => safeInvoke('get_platform');
 export const windowMinimize = () => safeInvoke('window_minimize');
 export const windowMaximize = () => safeInvoke('window_maximize');
 export const windowClose = () => safeInvoke('window_close');
-export const showMainWindow = () => safeInvoke('show_main_window');
 
 // Security & Content Protection
 export const setContentProtection = (enabled) =>
@@ -255,64 +250,50 @@ export const setAutolockMinutes = (minutes) => {
   const n = Math.min(1440, Math.max(1, Math.floor(Number(minutes) || 5)));
   return safeInvoke('set_autolock_minutes', { minutes: n });
 };
-export const getAutolockMinutes = () => safeInvoke('get_autolock_minutes');
 
 // Recovery key
 export const generateRecoveryKey = () => safeInvoke('generate_recovery_key');
 export const unlockWithRecovery = (recoveryKey) => safeInvoke('unlock_with_recovery', { recoveryKey });
 
-// SECURITY: Clipboard with auto-clear after 30 seconds
-// FIX-T10: only wipe if our text is STILL on the clipboard (don't trash a
-// new copy the user just made). Also wipe early on window blur.
-let _secureCopyState = null;
-export const secureCopy = async (text) => {
-  // Cancel any pending wipe to avoid wiping user's new copy
-  if (_secureCopyState?.timeoutId) {
-    clearTimeout(_secureCopyState.timeoutId);
-  }
-  if (_secureCopyState?.onBlur) {
-    window.removeEventListener('blur', _secureCopyState.onBlur);
-  }
-  _secureCopyState = null;
-
+// Best-effort clipboard expiry. If a background WebView denies clipboard access,
+// retain the deadline and retry on focus instead of silently cancelling the wipe.
+let secureCopyState = null;
+let clipboardQueue = Promise.resolve();
+function disposeCopy(state) {
+  clearTimeout(state.timeoutId);
+  window.removeEventListener('blur', state.onBlur);
+  window.removeEventListener('focus', state.onFocus);
+  if (secureCopyState === state) secureCopyState = null;
+}
+async function wipeCopy(state) {
+  if (secureCopyState !== state) return;
   try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    return false;
-  }
-
-  const expectedText = text;
-
-  const wipeIfUnchanged = async () => {
-    try {
-      const current = await navigator.clipboard.readText();
-      if (current === expectedText) {
-        await navigator.clipboard.writeText('');
-      }
-    } catch {
-      /* clipboard read may fail in some contexts (no permission, blurred) */
-    }
-  };
-
-  const onBlur = async () => {
-    if (_secureCopyState?.text !== expectedText) return;
-    await wipeIfUnchanged();
-    if (_secureCopyState?.timeoutId) clearTimeout(_secureCopyState.timeoutId);
-    window.removeEventListener('blur', onBlur);
-    _secureCopyState = null;
-  };
-
-  const timeoutId = setTimeout(async () => {
-    await wipeIfUnchanged();
-    if (_secureCopyState?.onBlur) {
-      window.removeEventListener('blur', _secureCopyState.onBlur);
-    }
-    _secureCopyState = null;
-  }, 30000);
-
-  _secureCopyState = { text: expectedText, timeoutId, onBlur };
-  window.addEventListener('blur', onBlur, { once: false });
-  return true;
+    const current = await navigator.clipboard.readText();
+    if (secureCopyState !== state) return;
+    if (current === state.text) await navigator.clipboard.writeText('');
+    disposeCopy(state);
+  } catch { /* retry when the WebView regains clipboard access */ }
+}
+export const clearSecureClipboard = async () => {
+  if (!secureCopyState) return;
+  secureCopyState.expired = true;
+  await wipeCopy(secureCopyState);
+};
+export const secureCopy = (text) => {
+  const operation = clipboardQueue.then(async () => {
+    try { await navigator.clipboard.writeText(text); } catch { return false; }
+    if (secureCopyState) disposeCopy(secureCopyState);
+    const state = { text, expired: false };
+    state.onBlur = () => { state.expired = true; void wipeCopy(state); };
+    state.onFocus = () => { if (state.expired) void wipeCopy(state); };
+    state.timeoutId = setTimeout(() => { state.expired = true; void wipeCopy(state); }, 30000);
+    secureCopyState = state;
+    window.addEventListener('blur', state.onBlur);
+    window.addEventListener('focus', state.onFocus);
+    return true;
+  });
+  clipboardQueue = operation.catch(() => {});
+  return operation;
 };
 
 // Listeners (return unsubscribe fn)
@@ -328,10 +309,6 @@ export const onVaultLocked = (cb) => {
   const p = listen('lf-vault-locked', () => cb()).catch(() => null);
   return () => { p.then(fn => fn?.()); };
 };
-export const onVaultWarning = (cb) => {
-  const p = listen('lf-vault-warning', () => cb()).catch(() => null);
-  return () => { p.then(fn => fn?.()); };
-};
 // SECURITY FIX (Audit 2026-03-04): listen for backend settings-corrupted event.
 // Fired when get_settings() detects a corrupted settings file and falls back to {}.
 // payload: { backup_path: string, timestamp: string }
@@ -340,27 +317,11 @@ export const onSettingsCorrupted = (cb) => {
   return () => { p.then(fn => fn?.()); };
 };
 
-// SECURITY FIX (Audit 2026-03-11): listen for notification-permission-denied event.
-// Fired by setup_notification_permissions when the OS has denied notification permission.
-// The frontend can use this to show an in-app banner guiding the user to System Settings.
-export const onNotificationPermissionDenied = (cb) => {
-  const p = listen('notification-permission-denied', () => cb()).catch(() => null);
-  return () => { p.then(fn => fn?.()); };
-};
-
 // macOS TCC location warning: fired when the app is running from a non-standard
 // path (Downloads, DMG, AppTranslocation).  The frontend shows a dismissable
 // banner guiding the user to move the app to /Applications.
 export const onTccLocationWarning = (cb) => {
   const p = listen('lf-tcc-location-warning', (e) => cb(e.payload)).catch(() => null);
-  return () => { p.then(fn => fn?.()); };
-};
-
-// GOD TIER: Actionable notification callback.
-// Fired when the backend sends a notification with action buttons (Windows) or
-// when the cron job fires a reminder. The frontend can show in-app action UI.
-export const onNotificationAction = (cb) => {
-  const p = listen('notification-action', (e) => cb(e.payload)).catch(() => null);
   return () => { p.then(fn => fn?.()); };
 };
 

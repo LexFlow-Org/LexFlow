@@ -1,0 +1,17 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): true
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=LexFlow Local Distribution, OU=Release, O=LexFlow, C=IT
+Signer #1 certificate SHA-256 digest: bab0ab7ef4395793afb278b688233d177c4545c4c49748a0a10409447544eaf5
+Signer #1 certificate SHA-1 digest: 31b781e2ad1e71b27f5c36db7fdfe4df6b17caee
+Signer #1 certificate MD5 digest: c818db0c83458fc7e68af1f359a44ec3
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 4096
+Signer #1 public key SHA-256 digest: dc43ef7d8519830f5cbb634fe4a87202b4e74176671c979dc5bdab1b2417f7c7
+Signer #1 public key SHA-1 digest: 5605cd82c9bf078f6fc59606b8cf2e7e812bc8fc
+Signer #1 public key MD5 digest: 85f7b2875ea04fca2ffc746b2c432b04

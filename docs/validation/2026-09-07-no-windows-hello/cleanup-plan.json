@@ -1,0 +1,23 @@
+{
+  "scratch": [
+    "/private/tmp/lexflow-nohello-windows-2026-09-07",
+    "/private/tmp/lexflow-nohello-native-target",
+    "/private/tmp/lexflow-nohello-npm-cache",
+    "/private/tmp/lexflow-nohello-npm-client-cache"
+  ],
+  "generated": [
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/node_modules",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/client/node_modules",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/client/dist",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen"
+  ],
+  "preserve": [
+    "all project source",
+    "license generator and encrypted registry",
+    "private license issuer",
+    "Android signing keys",
+    "installed Mac app and all user profiles",
+    "exactly four current release installers",
+    "validation reports and manifests"
+  ]
+}

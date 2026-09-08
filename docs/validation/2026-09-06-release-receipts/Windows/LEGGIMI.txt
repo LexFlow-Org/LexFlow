@@ -1,0 +1,34 @@
+LexFlow 1.0.1 — Windows x64
+
+Pacchetto: LexFlow_1.0.1_x64-setup.exe
+Installer NSIS reale, compilato su macOS con cargo-xwin.
+Questa versione incorpora il nuovo emittente delle licenze. Le licenze
+firmate con la coppia precedente non sono valide in questa versione.
+La verifica statica conferma versione PE 1.0.1.0 e nuova chiave pubblica;
+l’attivazione non è stata eseguita su un sistema Windows in questa sessione.
+Include Typst 0.15.1, qpdf 12.4.1 e le DLL del relativo archivio ufficiale,
+font, template, licenze e Microsoft WebView2 FixedVersionRuntime 152.0.4191.62.
+WebView2 è incluso: l'installer non deve scaricarlo da Internet.
+Il runtime fisso deve essere aggiornato con una nuova distribuzione dell'app.
+L'installer configura i permessi di lettura/esecuzione richiesti da WebView2
+su Windows 10 solo sulla cartella del runtime e si ferma se non riesce.
+Il relativo hook è stato compilato; i comandi icacls non sono stati eseguiti
+su questo Mac e devono essere verificati nel collaudo Windows.
+
+Verifica integrità da PowerShell, nella cartella del pacchetto:
+Get-FileHash .\LexFlow_1.0.1_x64-setup.exe -Algorithm SHA256
+Confrontare il risultato con SHA256SUMS-1.0.1.txt.
+
+Il pacchetto è privo di firma Authenticode LexFlow. Windows può segnalarlo
+come applicazione di editore sconosciuto. Non è stato installato o eseguito
+su Windows durante questa preparazione: prima della consegna definitiva,
+collaudare su Windows con dati sintetici, anche senza connessione, avvio,
+vault, esportazione PDF, backup e disinstallazione. Non usare un archivio
+legale reale come prima prova. I controlli statici non attestano assenza di
+traffico del runtime o del sistema operativo.
+
+BUILD-VERIFICATION-1.0.1.json riporta build, verifiche effettuate e provenienza
+con impronte degli archivi ufficiali. MSI non è offerto: manca un percorso equivalente verificato per i permessi del runtime.
+Per ricompilare NSIS su Windows usare scripts/build-windows.ps1 -Bundle nsis
+nel progetto, da Developer PowerShell con Visual Studio C++ Build Tools,
+Node.js/npm e Rust. Sono necessari download durante la compilazione.

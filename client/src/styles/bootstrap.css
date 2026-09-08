@@ -1,0 +1,7 @@
+/* Loaded before the theme module; keep these colors aligned with index.css. */
+html:not([data-theme="light"]) body { background: #1c1d26; color: #edeef6; }
+html[data-theme="light"] body { background: #d0d1d5; color: #1c1d22; }
+
+/* Reveal the first complete React paint without shifting the initial layout. */
+#root { opacity: 0; }
+#root.app-mounted { opacity: 1; transition: opacity 0.15s ease; }

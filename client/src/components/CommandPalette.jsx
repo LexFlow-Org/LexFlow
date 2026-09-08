@@ -26,18 +26,23 @@ const TYPE_COLORS = {
 };
 
 export default function CommandPalette({ isOpen, onClose, onNavigate }) {
+  return isOpen ? <OpenCommandPalette onClose={onClose} onNavigate={onNavigate} /> : null;
+}
+
+function OpenCommandPalette({ onClose, onNavigate }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [response, setResponse] = useState({ query: '', results: [] });
+  const searchQuery = query.trim();
+  const hasQuery = searchQuery.length >= 2;
+  const loading = hasQuery && response.query !== searchQuery;
+  const results = hasQuery && !loading ? response.results : [];
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
   const dialogRef = useRef(null);
-  const debounceRef = useRef(null);
   const previousFocusRef = useRef(null);
 
   // Body scroll lock + focus capture/restore
   useEffect(() => {
-    if (!isOpen) return undefined;
     previousFocusRef.current = document.activeElement;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -49,61 +54,44 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
         try { prev.focus(); } catch { /* ignore */ }
       }
     };
-  }, [isOpen]);
+  }, []);
 
-  // Focus input when opened
   useEffect(() => {
-    if (isOpen) {
-      setQuery('');
-      setResults([]);
-      setSelectedIndex(0);
-      const id = setTimeout(() => inputRef.current?.focus(), 50);
-      return () => clearTimeout(id);
-    }
-    return undefined;
-  }, [isOpen]);
+    const id = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(id);
+  }, []);
 
-  // Global shortcut Cmd+K / Ctrl+K + ESC
+  // App owns Cmd/Ctrl+K; registering it twice cancels the parent toggle.
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        if (isOpen) onClose();
-        else onClose('toggle'); // parent handles toggle
-      }
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [onClose]);
 
-  // Debounced search
-  const doSearch = useCallback(async (q) => {
-    if (!q || q.length < 2) {
-      setResults([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await api.searchVault(q, 20);
-      setResults(res || []);
-      setSelectedIndex(0);
-    } catch (e) {
-      console.warn('[CommandPalette] search error:', e);
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Responses are tagged with their query: old results cannot be selected
+  // while a new search is pending. Unmounting closes and clears the session.
+  useEffect(() => {
+    if (!hasQuery) return;
+    let cancelled = false;
+    const timeout = setTimeout(async () => {
+      try {
+        const res = await api.searchVault(searchQuery, 20);
+        if (!cancelled) setResponse({ query: searchQuery, results: res || [] });
+      } catch {
+        if (!cancelled) setResponse({ query: searchQuery, results: [] });
+      }
+    }, 150);
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [searchQuery, hasQuery]);
 
   const handleInputChange = (e) => {
-    const val = e.target.value;
-    setQuery(val);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSearch(val), 150);
+    setQuery(e.target.value);
+    setSelectedIndex(0);
   };
 
   const handleSelect = useCallback((result) => {
@@ -146,8 +134,6 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
       first.focus();
     }
   };
-
-  if (!isOpen) return null;
 
   const highlightedId = results.length > 0 ? `cmd-option-${selectedIndex}` : undefined;
 
@@ -203,7 +189,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
             </div>
           )}
 
-          {!loading && query.length >= 2 && results.length === 0 && (
+          {!loading && hasQuery && results.length === 0 && (
             <div className="px-4 py-8 text-center text-sm text-[var(--text-dim)]">
               Nessun risultato per &quot;{query}&quot;
             </div>
@@ -250,7 +236,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }) {
             </ul>
           )}
 
-          {!loading && query.length < 2 && (
+          {!loading && !hasQuery && (
             <div className="px-4 py-6 text-center text-sm text-[var(--text-dim)]">
               <p>Digita almeno 2 caratteri per cercare</p>
               <div className="flex items-center justify-center gap-4 mt-3 text-xs">

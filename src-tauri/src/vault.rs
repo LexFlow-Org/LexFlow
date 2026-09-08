@@ -3,19 +3,16 @@
 //  Supports both v2 (legacy monolithic) and v4 (per-record)
 // ═══════════════════════════════════════════════════════════
 
-use crate::audit::append_audit_log;
+use crate::audit::{append_audit_log_locked, prepare_audit_key_rotation};
 use crate::constants::*;
 use crate::crypto::{decrypt_data, encrypt_data};
-#[allow(unused_imports)] // Used in new code paths, incremental adoption
-use crate::error::LexFlowError;
-use crate::io::{atomic_write_with_sync, secure_write};
-use crate::lockout::{check_lockout, clear_lockout, record_failed_attempt};
+use crate::io::atomic_write_with_sync;
+use crate::lockout::{check_lockout, clear_lockout, record_failed_attempt_locked};
 use crate::state::{
     get_vault_dek, get_vault_key, get_vault_version, invalidate_vault_cache, zeroize_password,
     AppState, SecureKey,
 };
 use crate::vault_engine;
-use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde_json::{json, Value};
 use std::fs;
 use std::time::Instant;
@@ -26,14 +23,19 @@ use zeroize::Zeroizing;
 
 /// Read full vault data as a JSON value.
 /// PERF: returns cached data if available, avoiding re-decryption.
-pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, String> {
-    // TODO(audit:M-4): readers can observe a half-written V6 split vault
-    // (header.enc updated but records still being flushed) because reads do
-    // not take state.write_mutex. Serializing reads with writes via
-    // `let _g = state.write_mutex.lock()...` would close this window at the
-    // cost of read concurrency. Defer until the perf trade-off is evaluated;
-    // V6 writers SHOULD use atomic_write_with_sync for each file, which
-    // limits the window to inter-file ordering.
+pub(crate) fn read_vault_internal(state: &AppState) -> Result<Value, String> {
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+    read_vault_locked(state)
+}
+
+/// Caller must hold write_mutex for a consistent read/modify/write transaction.
+pub(crate) fn read_vault_locked(state: &AppState) -> Result<Value, String> {
+    // Authentication precedes cache access, including after an automatic lock.
+    if get_vault_version(state) >= 4 {
+        get_vault_dek(state)?;
+    } else {
+        get_vault_key(state)?;
+    }
     // PERF: check cache first
     if let Some(cached) = state
         .vault_cache
@@ -71,7 +73,7 @@ pub(crate) fn read_vault_internal(state: &State<AppState>) -> Result<Value, Stri
 }
 
 /// v4: read vault by decrypting index + all records, reassemble into monolithic JSON.
-fn read_vault_engine(state: &State<AppState>) -> Result<Value, String> {
+fn read_vault_engine(state: &AppState) -> Result<Value, String> {
     let dek = get_vault_dek(state)?;
     let dir = state
         .data_dir
@@ -79,81 +81,77 @@ fn read_vault_engine(state: &State<AppState>) -> Result<Value, String> {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    // V6+: prefer split vault format (vault-data/) over monolithic vault.lex
-    let vault = if vault_engine::is_split_vault(&dir) {
-        vault_engine::read_split_vault(&dir, &dek)?
-    } else {
-        let path = dir.join(VAULT_FILE);
-        if !path.exists() {
-            return Ok(json!({"practices":[], "agenda":[]}));
-        }
-        let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-        vault_engine::deserialize_vault(&raw)?
-    };
+    let vault = vault_engine::read_authenticated_snapshot(&dir, &dek)?;
 
     let index = vault_engine::decrypt_index(&dek, &vault.index)?;
-
     let mut result =
         json!({"practices":[], "agenda":[], "contacts":[], "timeLogs":[], "invoices":[]});
     for idx_entry in &index {
-        if let Some(record_entry) = vault.records.get(&idx_entry.id) {
-            match vault_engine::read_current_version(record_entry, &dek) {
-                Ok(plaintext) => {
-                    let val: Option<Value> = rmp_serde::from_slice(&plaintext)
-                        .ok()
-                        .or_else(|| serde_json::from_slice(&plaintext).ok());
-                    match val {
-                        Some(v) => {
-                            if let Some(arr) = result
-                                .get_mut(&idx_entry.field)
-                                .and_then(|v| v.as_array_mut())
-                            {
-                                arr.push(v);
-                            }
-                        }
-                        None => {
-                            // FIX-9 (audit:L-2): log to forensic audit trail so
-                            // the user has a paper trail; the next write will
-                            // DROP this record from the index unless restored.
-                            eprintln!(
-                                "[vault] WARN: record {} corrupted (neither msgpack nor JSON), skipping (will be DROPPED on next save unless restored)",
-                                idx_entry.id
-                            );
-                            let _ = append_audit_log(
-                                state,
-                                &format!(
-                                    "Record corrotto saltato (parse fallito): {} — verrà rimosso al prossimo salvataggio se non ripristinato",
-                                    idx_entry.id
-                                ),
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    // FIX-9 (audit:L-2): persist a forensic record of the loss.
-                    eprintln!(
-                        "[vault] WARN: record {} corrupted ({}), skipping (will be DROPPED on next save unless restored)",
-                        idx_entry.id, e
-                    );
-                    let _ = append_audit_log(
-                        state,
-                        &format!(
-                            "Record corrotto saltato (decrypt fallito): {} — {}",
-                            idx_entry.id, e
-                        ),
-                    );
-                }
-            }
-        }
+        let record_entry = vault.records.get(&idx_entry.id).ok_or_else(|| {
+            format!(
+                "Record mancante: {}. Salvataggio interrotto per preservare i dati.",
+                idx_entry.id
+            )
+        })?;
+        let plaintext = vault_engine::read_current_version(record_entry, &dek)?;
+        let value = decode_indexed_record(&plaintext, idx_entry)?;
+        let array = result
+            .get_mut(&idx_entry.field)
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "Categoria del record non riconosciuta; dati conservati.".to_string())?;
+        array.push(value);
     }
     Ok(result)
+}
+
+fn decode_indexed_record(
+    plaintext: &[u8],
+    index: &vault_engine::IndexEntry,
+) -> Result<Value, String> {
+    let value = vault_engine::decode_record_object(plaintext)?;
+    let id = value
+        .as_object()
+        .and_then(|record| record.get("id"))
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .ok_or("Struttura del record non valida; dati conservati.")?;
+    if format!("{}_{}", index.field, id) != index.id {
+        return Err("Identificativo del record non coerente con l'indice; dati conservati.".into());
+    }
+    Ok(value)
+}
+
+#[cfg(test)]
+mod record_format_tests {
+    use super::*;
+
+    #[test]
+    fn indexed_legacy_json_uses_fallback_and_keeps_identity_check() {
+        let index = vault_engine::IndexEntry {
+            id: "practices_synthetic-1".into(),
+            field: "practices".into(),
+            title: String::new(),
+            tags: vec![],
+            updated_at: String::new(),
+            summary: None,
+        };
+        let record = json!({"id":"synthetic-1", "client":"Cliente sintetico"});
+        for encoded in [
+            serde_json::to_vec(&record).unwrap(),
+            rmp_serde::to_vec_named(&record).unwrap(),
+        ] {
+            assert_eq!(decode_indexed_record(&encoded, &index).unwrap(), record);
+        }
+        let wrong_id = serde_json::to_vec(&json!({"id":"different"})).unwrap();
+        assert!(decode_indexed_record(&wrong_id, &index).is_err());
+    }
 }
 
 /// Write full vault data.
 /// In v4: diffs against existing records, encrypts only changed ones.
 /// In v2: encrypts the monolithic blob as before.
 /// PERF: invalidates cache after successful write.
-pub(crate) fn write_vault_internal(state: &State<AppState>, data: &Value) -> Result<(), String> {
+pub(crate) fn write_vault_internal(state: &AppState, data: &Value) -> Result<(), String> {
     // PERF: invalidate cache before write (so concurrent reads don't get stale data)
     invalidate_vault_cache(state);
 
@@ -183,26 +181,57 @@ pub(crate) fn write_vault_internal(state: &State<AppState>, data: &Value) -> Res
 }
 
 /// v4: write vault by encrypting individual records and updating the index.
-fn write_vault_engine(state: &State<AppState>, data: &Value) -> Result<(), String> {
+fn write_vault_engine(state: &AppState, data: &Value) -> Result<(), String> {
     let dek = get_vault_dek(state)?;
     let dir = state
         .data_dir
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let path = dir.join(VAULT_FILE);
+    let mut vault = vault_engine::read_authenticated_snapshot(&dir, &dek)?;
 
-    // Load existing vault: try V6 split first, then monolithic
-    let mut vault = if vault_engine::is_split_vault(&dir) {
-        vault_engine::read_split_vault(&dir, &dek)?
-    } else if path.exists() {
-        let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-        vault_engine::deserialize_vault(&raw)?
-    } else {
-        return Err("Nessun database trovato.".into());
-    };
+    update_vault_records(&mut vault, &dek, data)?;
 
+    vault_engine::write_canonical_vault(&dir, &mut vault, &dek)
+}
+
+/// Build the complete encrypted snapshot in memory before touching disk.
+/// Shared by normal saves and import so a failed import preserves the old vault.
+pub(crate) fn update_vault_records(
+    vault: &mut vault_engine::VaultData,
+    dek: &[u8],
+    data: &Value,
+) -> Result<(), String> {
     let fields = ["practices", "agenda", "contacts", "timeLogs", "invoices"];
+    if !data.is_object() {
+        return Err("Il database deve essere un oggetto; dati conservati.".into());
+    }
+    let next_write_count = vault
+        .rotation
+        .writes
+        .checked_add(1)
+        .ok_or("Contatore scritture esaurito; dati conservati.")?;
+    // Validate every domain before mutating the in-memory snapshot. A corrupt
+    // old record in another domain must never disappear on the next save.
+    let mut ids = std::collections::HashSet::new();
+    for field in fields {
+        if let Some(value) = data.get(field) {
+            let items = value
+                .as_array()
+                .ok_or("Categoria del database non valida; dati conservati.")?;
+            for item in items {
+                let id = item
+                    .as_object()
+                    .and_then(|record| record.get("id"))
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                    .ok_or("Identificativo del record non valido; dati conservati.")?;
+                if !ids.insert(format!("{}_{}", field, id)) {
+                    return Err("Identificativo del record duplicato; dati conservati.".into());
+                }
+            }
+        }
+    }
     let mut new_index: Vec<vault_engine::IndexEntry> = Vec::new();
     let mut new_records = std::collections::BTreeMap::new();
 
@@ -215,9 +244,6 @@ fn write_vault_engine(state: &State<AppState>, data: &Value) -> Result<(), Strin
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                if id.is_empty() {
-                    continue;
-                }
                 let record_key = format!("{}_{}", field, id);
                 // V7: serialize with MessagePack (30-40% smaller than JSON).
                 // Wrap in Zeroizing so the plaintext bytes are scrubbed on drop
@@ -230,7 +256,7 @@ fn write_vault_engine(state: &State<AppState>, data: &Value) -> Result<(), Strin
                     // Check if content changed by comparing plaintext.
                     // `read_current_version` now returns Zeroizing<Vec<u8>> — compare
                     // via the deref'd slice (Zeroizing has no direct PartialEq with Vec).
-                    if let Ok(old_plain) = vault_engine::read_current_version(&existing, &dek) {
+                    if let Ok(old_plain) = vault_engine::read_current_version(&existing, dek) {
                         if old_plain.as_slice() == item_bytes.as_slice() {
                             // Unchanged — keep existing entry
                             new_records.insert(record_key.clone(), existing);
@@ -261,7 +287,7 @@ fn write_vault_engine(state: &State<AppState>, data: &Value) -> Result<(), Strin
                 };
 
                 // Encrypt and append new version
-                vault_engine::append_record_version(&mut entry, &dek, &item_bytes)?;
+                vault_engine::append_record_version(&mut entry, dek, &item_bytes)?;
                 new_records.insert(record_key.clone(), entry);
 
                 let title = vault_engine::extract_record_title_pub(item, field);
@@ -284,11 +310,13 @@ fn write_vault_engine(state: &State<AppState>, data: &Value) -> Result<(), Strin
     }
 
     vault.records = new_records;
-    vault.index = vault_engine::encrypt_index(&dek, &new_index)?;
-    vault.rotation.writes += 1;
+    vault.index = vault_engine::encrypt_index(dek, &new_index)?;
+    vault.rotation.writes = next_write_count;
+    if vault.version >= 8 {
+        vault_engine::seal_snapshot_manifest(vault, dek)?;
+    }
 
-    // V6: write as split files (header + index + individual records)
-    vault_engine::write_split_vault(&dir, &vault, &dek)
+    Ok(())
 }
 
 // ─── Password validation ────────────────────────────────────
@@ -359,18 +387,14 @@ fn validate_password_strength(password: &str) -> Result<(), Value> {
 
 /// Create a brand new v4 vault and store DEK in state.
 fn init_new_vault_engine(
-    state: &State<AppState>,
+    state: &AppState,
     password: &str,
     dir: &std::path::Path,
 ) -> Result<(), Value> {
     validate_password_strength(password)?;
 
-    let (vault, dek) = vault_engine::create_vault(password).map_err(
+    let (mut vault, dek) = vault_engine::create_vault(password).map_err(
         |_e| json!({"success": false, "error": format!("Impossibile creare il database sicuro. Riprova o contatta il supporto.")}),
-    )?;
-
-    let serialized = vault_engine::serialize_vault(&vault).map_err(
-        |_e| json!({"success": false, "error": format!("Errore interno durante il salvataggio. Riprova.")}),
     )?;
 
     // FIX-11 (audit:L-8): store DEK in state BEFORE the disk write, so an
@@ -383,7 +407,7 @@ fn init_new_vault_engine(
         .write()
         .unwrap_or_else(|e| e.into_inner()) = vault_engine::CURRENT_VAULT_VERSION;
 
-    if let Err(_e) = atomic_write_with_sync(&dir.join(VAULT_FILE), &serialized) {
+    if let Err(_e) = vault_engine::write_canonical_vault(dir, &mut vault, &dek) {
         // Roll back state to avoid a "DEK in memory, no disk vault" mismatch.
         *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
         *state
@@ -418,17 +442,31 @@ fn validate_vault_array(data: &Value, field_name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn load_vault_field(state: &State<AppState>, field: &str) -> Result<Value, String> {
+fn load_vault_field(state: &AppState, field: &str) -> Result<Value, String> {
     let vault = read_vault_internal(state)?;
     Ok(vault.get(field).cloned().unwrap_or(json!([])))
 }
 
-fn save_vault_field(state: &State<AppState>, field: &str, data: Value) -> Result<bool, String> {
+fn save_vault_field(state: &AppState, field: &str, data: Value) -> Result<bool, String> {
     validate_vault_array(&data, field)?;
+    let count = data.as_array().map_or(0, Vec::len);
     let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
-    let mut vault = read_vault_internal(state)?;
+    let mut vault = read_vault_locked(state)?;
     vault[field] = data;
     write_vault_internal(state, &vault)?;
+    let event = match field {
+        "practices" => format!("Salvati {} fascicoli", count),
+        "contacts" => format!("Salvati {} contatti", count),
+        "agenda" => "Aggiornata agenda".into(),
+        "timeLogs" => "Aggiornate ore lavorate".into(),
+        "invoices" => "Aggiornate fatture".into(),
+        _ => "Database aggiornato".into(),
+    };
+    if append_audit_log_locked(state, &event).is_err() {
+        // Data is already committed. Report a diagnostic without falsely
+        // presenting a failed save or attaching the event to a new session.
+        eprintln!("[audit] Vault saved; audit event could not be recorded.");
+    }
     Ok(true)
 }
 
@@ -441,17 +479,9 @@ pub(crate) fn vault_exists(state: State<AppState>) -> bool {
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    // v4 vault exists if vault.lex starts with V4 magic, or v2 if salt exists
-    // LOW FIX: only read first 10 bytes (magic prefix), not entire vault
-    let vault_path = dir.join(VAULT_FILE);
-    if vault_path.exists() {
-        if let Ok(data) = crate::io::safe_bounded_read(&vault_path, 10) {
-            if data.starts_with(vault_engine::VAULT_MAGIC)
-                || data.starts_with(vault_engine::VAULT_MAGIC_V4)
-            {
-                return true;
-            }
-        }
+    // Existence is not a bounded full-file read: valid vaults exceed 10 bytes.
+    if dir.join(VAULT_FILE).is_file() {
+        return true;
     }
     // V6 split migration: vault.lex renamed to .v4-backup — check split vault
     if vault_engine::is_split_vault(&dir) {
@@ -466,7 +496,7 @@ pub(crate) fn vault_exists(state: State<AppState>) -> bool {
 /// Internal unlock used by both the Tauri command and bio_unlock_vault.
 /// Takes password by value to allow zeroization.
 #[allow(dead_code)] // Used by bio.rs on desktop; unused on Android where bio path differs
-pub(crate) fn unlock_vault_with_password(state: &State<AppState>, password: String) -> Value {
+pub(crate) fn unlock_vault_with_password(state: &AppState, password: String) -> Value {
     unlock_vault_inner(state, password)
 }
 
@@ -480,7 +510,9 @@ pub(crate) async fn unlock_vault(
     Ok(unlock_vault_inner(&state, password))
 }
 
-fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
+fn unlock_vault_inner(state: &AppState, password: String) -> Value {
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+    invalidate_vault_cache(state);
     let dir = state
         .data_dir
         .read()
@@ -493,6 +525,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
         .clone();
 
     if let Err(locked_json) = check_lockout(state, &sec_dir) {
+        zeroize_password(password);
         return locked_json;
     }
 
@@ -526,7 +559,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = Instant::now();
         zeroize_password(password);
-        let _ = append_audit_log(state, "Nuovo Vault v4 creato");
+        let _ = append_audit_log_locked(state, "Nuovo Vault v4 creato");
         return json!({"success": true, "isNew": true});
     }
 
@@ -544,51 +577,14 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
 
         if version >= 4 {
             // Open v4 vault directly
-            match vault_engine::open_vault(&password, &raw) {
-                Ok((vault, dek)) => {
-                    // FIX-2 (audit:HIGH-2): anti-rollback counter is now ENFORCING.
-                    // The on-disk sidecar counter records the highest writes value
-                    // ever observed. If a freshly opened vault reports a LOWER
-                    // counter, an attacker may have substituted an older snapshot;
-                    // refuse to unlock.
-                    //
-                    // Acceptable cases (counter equal or higher than disk):
-                    //   - First open after install: stored = 0
-                    //   - Normal monotonic progression
-                    //   - Counter reset by user (handled via reset_vault, which
-                    //     wipes the entire dir)
-                    let counter_path = sec_dir.join(".vault-writes-counter");
-                    let stored_counter = fs::read_to_string(&counter_path)
-                        .ok()
-                        .and_then(|s| s.trim().parse::<u64>().ok())
-                        .unwrap_or(0);
-
-                    if vault.rotation.writes < stored_counter {
-                        // ROLLBACK DETECTED — refuse to operate.
-                        eprintln!(
-                            "[SECURITY] ROLLBACK DETECTED: vault.writes={} < stored={} — refusing to unlock",
-                            vault.rotation.writes, stored_counter
-                        );
-                        let _ = append_audit_log(
-                            state,
-                            &format!(
-                                "ROLLBACK rilevato: vault.writes={} < disco={}",
-                                vault.rotation.writes, stored_counter
-                            ),
-                        );
+            match vault_engine::open_current_vault(&dir, &password) {
+                Ok((mut vault, dek)) => {
+                    if let Err(error) = enforce_vault_watermark(&sec_dir, vault.rotation.writes) {
+                        eprintln!("[SECURITY] Vault unlock refused: {error}");
+                        let _ =
+                            append_audit_log_locked(state, &format!("Sblocco rifiutato: {error}"));
                         zeroize_password(password);
-                        return json!({
-                            "success": false,
-                            "error": "Possibile rollback del database rilevato (contatore scritture regredito). Per sicurezza lo sblocco è stato rifiutato. Contatta il supporto."
-                        });
-                    }
-
-                    if vault.rotation.writes > stored_counter {
-                        // Normal forward progression: update the high-water mark.
-                        let _ = atomic_write_with_sync(
-                            &counter_path,
-                            vault.rotation.writes.to_string().as_bytes(),
-                        );
+                        return json!({"success": false, "error": error});
                     }
 
                     *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
@@ -598,10 +594,29 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                         .write()
                         .unwrap_or_else(|e| e.into_inner()) = vault_engine::CURRENT_VAULT_VERSION;
 
-                    // V6: migrate monolithic vault to split format if needed
-                    if !vault_engine::is_split_vault(&dir) {
-                        if let Err(e) = vault_engine::migrate_to_split(&dir, &vault, &dek) {
-                            eprintln!("[LexFlow] V6 split migration failed (non-fatal): {}", e);
+                    // Commit the verified latest data before switching storage layouts.
+                    // Legacy split files remain untouched for explicit recovery.
+                    if !vault_engine::has_canonical_vault(&dir) {
+                        if let Err(e) =
+                            vault_engine::upgrade_canonical_header(&mut vault, &password)
+                        {
+                            *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                            *state
+                                .vault_version
+                                .write()
+                                .unwrap_or_else(|e| e.into_inner()) = 0;
+                            zeroize_password(password);
+                            return json!({"success": false, "error": e});
+                        }
+                        if let Err(e) = vault_engine::write_canonical_vault(&dir, &mut vault, &dek)
+                        {
+                            *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                            *state
+                                .vault_version
+                                .write()
+                                .unwrap_or_else(|e| e.into_inner()) = 0;
+                            zeroize_password(password);
+                            return json!({"success": false, "error": e});
                         }
                     }
 
@@ -619,11 +634,20 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                             }
                         };
                         if !kek.is_empty() {
-                            let mut vault_mut = vault;
-                            match vault_engine::rotate_dek(&mut vault_mut, &kek) {
+                            match vault_engine::rotate_dek(&mut vault, &kek) {
                                 Ok(new_dek) => {
-                                    // Write rotated vault (V6 split)
-                                    if vault_engine::write_split_vault(&dir, &vault_mut, &dek)
+                                    // Persist audit-key access under both DEKs before
+                                    // committing the replacement vault. A crash on
+                                    // either side of the commit preserves its audit.
+                                    let audit_ready =
+                                        prepare_audit_key_rotation(&dir, &dek, &new_dek);
+                                    if let Err(error) = &audit_ready {
+                                        eprintln!("[LexFlow] Key rotation deferred: audit preparation failed: {error}");
+                                    }
+                                    if audit_ready.is_ok()
+                                        && vault_engine::write_canonical_vault(
+                                            &dir, &mut vault, &new_dek,
+                                        )
                                         .is_ok()
                                     {
                                         // Update DEK in state
@@ -632,7 +656,7 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                                             .lock()
                                             .unwrap_or_else(|e| e.into_inner()) =
                                             Some(SecureKey::new(new_dek));
-                                        let _ = append_audit_log(
+                                        let _ = append_audit_log_locked(
                                             state,
                                             "Rotazione DEK automatica completata",
                                         );
@@ -654,11 +678,11 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
                         .lock()
                         .unwrap_or_else(|e| e.into_inner()) = Instant::now();
                     zeroize_password(password);
-                    let _ = append_audit_log(state, "Sblocco Vault v4");
+                    let _ = append_audit_log_locked(state, "Sblocco Vault v4");
                     return json!({"success": true, "isNew": false});
                 }
                 Err(e) => {
-                    record_failed_attempt(state, &sec_dir);
+                    record_failed_attempt_locked(state, &sec_dir);
                     zeroize_password(password);
                     return json!({"success": false, "error": e});
                 }
@@ -675,113 +699,155 @@ fn unlock_vault_inner(state: &State<AppState>, password: String) -> Value {
     json!({"success": false, "error": "Nessun database trovato."})
 }
 
+/// Password and recovery unlock enforce the same local high-water mark.
+/// This detects ordinary older snapshots; it does not provide trusted hardware
+/// rollback prevention against an attacker who controls all local files.
+fn enforce_vault_watermark(
+    security_directory: &std::path::Path,
+    writes: u64,
+) -> Result<(), String> {
+    let counter_path = security_directory.join(".vault-writes-counter");
+    let stored = match fs::symlink_metadata(&counter_path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(_) => return Err("Impossibile verificare il contatore locale del database.".into()),
+        Ok(_) => {
+            let bytes = crate::io::safe_bounded_read(&counter_path, 64)
+                .map_err(|_| "Impossibile leggere il contatore locale del database.")?;
+            std::str::from_utf8(&bytes)
+                .ok()
+                .and_then(|text| text.trim().parse::<u64>().ok())
+                .ok_or("Contatore locale del database non valido. I dati sono conservati.")?
+        }
+    };
+    if writes < stored {
+        return Err("Possibile rollback del database rilevato (contatore scritture regredito). Per sicurezza lo sblocco è stato rifiutato. Contatta il supporto.".into());
+    }
+    if writes > stored {
+        atomic_write_with_sync(&counter_path, writes.to_string().as_bytes()).map_err(|_| {
+            "Impossibile aggiornare il contatore locale. Controlla i permessi e riprova lo sblocco."
+        })?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) fn lock_vault(state: State<AppState>) -> bool {
-    // Zero both v2 key and v4 DEK + clear cache
-    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    *state
-        .vault_version
-        .write()
-        .unwrap_or_else(|e| e.into_inner()) = 0;
-    // SECURITY: clear plaintext cache on lock
-    invalidate_vault_cache(&state);
+    state.lock_vault();
     true
 }
 
 #[tauri::command]
 pub(crate) fn reset_vault(state: State<AppState>, password: String) -> Value {
+    reset_vault_inner(&state, password)
+}
+
+fn reset_vault_inner(state: &AppState, password: String) -> Value {
     let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+    let sec_dir = state
+        .security_dir
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    if let Err(locked_json) = check_lockout(state, &sec_dir) {
+        zeroize_password(password);
+        return locked_json;
+    }
     let dir = state
         .data_dir
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let vault_path = dir.join(VAULT_FILE);
-    let backup_path = dir.join("vault.lex.v4-backup");
-    let split = vault_engine::is_split_vault(&dir);
-    let monolithic = vault_path.exists();
-
-    // FIX-1 (audit:CRIT-5): require password verification before destructive reset
-    // when ANY recognizable vault layout exists. On V6 split-vault we verify via
-    // the .v4-backup monolithic file (kept by migrate_to_split for this purpose);
-    // if no verifiable artifact remains, REFUSE to wipe rather than silently
-    // accepting any password.
-    if monolithic {
-        // Verify password against monolithic vault.lex
-        match crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
-            Ok(data) => {
-                if vault_engine::open_vault(&password, &data).is_err() {
-                    zeroize_password(password);
-                    return json!({"success": false, "error": "Password non corretta. Riprova."});
-                }
-            }
-            Err(_) => {
-                zeroize_password(password);
-                return json!({"success": false, "error": "Impossibile leggere il database per la verifica della password."});
-            }
-        }
-    } else if split {
-        // V6 split layout: header.enc is encrypted with the DEK (chicken-and-egg
-        // for direct password verification). Use the .v4-backup monolithic file
-        // kept by migrate_to_split; if absent, refuse to operate.
-        if backup_path.exists() {
-            match crate::io::safe_bounded_read(&backup_path, 500 * 1024 * 1024) {
-                Ok(data) => {
-                    if vault_engine::open_vault(&password, &data).is_err() {
-                        zeroize_password(password);
-                        return json!({"success": false, "error": "Password non corretta. Riprova."});
-                    }
-                }
-                Err(_) => {
-                    zeroize_password(password);
-                    return json!({"success": false, "error": "Impossibile leggere il backup del database per la verifica della password."});
-                }
-            }
-        } else {
-            // TODO(audit:CRIT-5): no monolithic backup available to verify password
-            // against. Implementing a direct KEK-only verification on the split
-            // header would require either (a) an unencrypted KDF params file, or
-            // (b) a header-MAC computable from KEK alone. Refuse-to-operate is
-            // the safer default until such a primitive is added.
-            zeroize_password(password);
-            return json!({
-                "success": false,
-                "error": "Verifica password non disponibile per questo formato vault. Eseguire prima un backup tramite la funzione di esportazione, poi contattare il supporto."
-            });
-        }
+    let has_vault = vault_path.exists()
+        || dir.join("vault.lex.v4-backup").exists()
+        || vault_engine::is_split_vault(&dir);
+    if has_vault && vault_engine::open_current_vault(&dir, &password).is_err() {
+        record_failed_attempt_locked(state, &sec_dir);
+        zeroize_password(password);
+        return json!({"success": false, "error": "Password non corretta o database non verificabile. I dati sono conservati."});
     }
     // else: no recognizable vault on disk → empty state, allow reset without auth.
-    {
-        for sensitive_file in &[
-            VAULT_FILE,
-            VAULT_SALT_FILE,
-            VAULT_VERIFY_FILE,
-            AUDIT_LOG_FILE,
-        ] {
-            let p = dir.join(sensitive_file);
-            if p.exists() {
-                if let Ok(meta) = p.metadata() {
-                    let size = meta.len() as usize;
-                    if size > 0 {
-                        let _ = secure_write(&p, &vec![0u8; size]);
-                    }
-                }
-                let _ = fs::remove_file(&p);
-            }
-        }
-        let _ = fs::remove_dir_all(&dir);
-        let _ = fs::create_dir_all(&dir);
-    }
-    *state.vault_key.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    *state
-        .vault_version
-        .write()
-        .unwrap_or_else(|e| e.into_inner()) = 0;
-    invalidate_vault_cache(&state);
     zeroize_password(password);
-    json!({"success": true})
+    // Even a partial filesystem failure must not leave a session caching data
+    // whose on-disk archive may have already been removed.
+    state.lock_vault_locked();
+    match remove_vault_storage_for_reset(&dir, &sec_dir) {
+        Ok(()) => {
+            clear_lockout(state, &sec_dir);
+            json!({"success": true})
+        }
+        Err(error) => json!({"success": false, "error": error}),
+    }
+}
+
+/// Called only after authorizing reset. The security directory is retained:
+/// licenses and unrelated security state are never part of the deletion.
+fn remove_vault_storage_for_reset(
+    directory: &std::path::Path,
+    security_directory: &std::path::Path,
+) -> Result<(), String> {
+    if security_directory.starts_with(directory) {
+        return Err("Percorsi del database non validi. Ripristino annullato.".into());
+    }
+    match fs::symlink_metadata(directory) {
+        Ok(metadata) if !metadata.is_dir() || metadata.file_type().is_symlink() => {
+            return Err("La cartella del database non è valida. I dati sono conservati.".into());
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => {
+            return Err(
+                "Impossibile verificare la cartella del database. Ripristino annullato.".into(),
+            )
+        }
+    }
+
+    // Reset this archive's watermark BEFORE deletion. A failed metadata write
+    // leaves the archive intact; an interruption after deletion cannot cause
+    // the newly created archive (writes = 0) to be mistaken for a rollback.
+    let counter_path = security_directory.join(".vault-writes-counter");
+    let previous_counter = match fs::symlink_metadata(&counter_path) {
+        Ok(_) => Some(
+            crate::io::safe_bounded_read(&counter_path, 64).map_err(|_| {
+                "Impossibile leggere il contatore del database. I dati sono conservati.".to_string()
+            })?,
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => {
+            return Err(
+                "Impossibile leggere il contatore del database. I dati sono conservati.".into(),
+            )
+        }
+    };
+    atomic_write_with_sync(&counter_path, b"0").map_err(|_| {
+        "Impossibile azzerare il contatore del database. I dati sono conservati.".to_string()
+    })?;
+
+    if let Err(error) = fs::remove_dir_all(directory) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            // Restore rollback protection if deletion did not complete. The
+            // error is explicit because some files may already be removed.
+            let restored = match previous_counter {
+                Some(bytes) => atomic_write_with_sync(&counter_path, &bytes),
+                None => fs::remove_file(&counter_path).map_err(|error| error.to_string()),
+            };
+            if restored.is_err() {
+                eprintln!(
+                    "[SECURITY] Reset incomplete; previous write counter could not be restored."
+                );
+            }
+            return Err("Eliminazione del database incompleta. Controlla i permessi e riprova il ripristino; alcuni file potrebbero essere già stati rimossi.".into());
+        }
+    }
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(directory).map_err(|_| "Database eliminato, ma impossibile ricreare la cartella. Controlla i permessi prima di creare un nuovo archivio.".to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -790,6 +856,7 @@ pub(crate) fn change_password(
     current_password: String,
     new_password: String,
 ) -> Result<Value, String> {
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let sec_dir = state
         .security_dir
         .read()
@@ -802,24 +869,23 @@ pub(crate) fn change_password(
         return Ok(locked_json);
     }
 
-    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let dir = state
         .data_dir
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    // FIX-3 (audit:HIGH-1): branch on vault layout. The legacy
-    // change_password_v4 hard-codes vault.lex; on V6 split-vault that file
-    // is gone after migration, so we need a split-aware path.
-    let result = if vault_engine::is_split_vault(&dir) {
-        change_password_v6(&state, &dir, &current_password, &new_password)
-    } else {
-        // v4 monolithic: re-wrap DEK with new KEK — O(1), no re-encryption needed!
-        change_password_v4(&state, &dir, &current_password, &new_password)
-    };
+    if let Err(error) = validate_password_strength(&new_password) {
+        zeroize_password(current_password);
+        zeroize_password(new_password);
+        return Ok(error);
+    }
+    let result = change_password_v4(&state, &dir, &current_password, &new_password);
 
     // Record failed attempt if password was wrong
+    if result.is_err() {
+        record_failed_attempt_locked(&state, &sec_dir);
+    }
     if let Ok(ref val) = result {
         if val
             .get("success")
@@ -828,7 +894,7 @@ pub(crate) fn change_password(
         {
             clear_lockout(&state, &sec_dir);
         } else {
-            record_failed_attempt(&state, &sec_dir);
+            record_failed_attempt_locked(&state, &sec_dir);
         }
     }
 
@@ -837,125 +903,37 @@ pub(crate) fn change_password(
     result
 }
 
-/// FIX-3 (audit:HIGH-1): V6 split-vault password change.
-/// Reads `vault-data/header.enc` (DEK-encrypted), verifies current password by
-/// deriving KEK and unwrapping DEK from the header, re-wraps DEK with the
-/// new KEK, recomputes header MAC, and writes the header back. Records are
-/// untouched (they are DEK-encrypted, not KEK-encrypted).
-fn change_password_v6(
-    state: &State<AppState>,
-    dir: &std::path::Path,
-    current_password: &str,
-    new_password: &str,
-) -> Result<Value, String> {
-    // We need the DEK in state to decrypt the split header.
-    let dek = get_vault_dek(state)?;
-
-    // Read full split vault structure (decrypts header + index + records using DEK).
-    let mut vault = vault_engine::read_split_vault(dir, &dek)?;
-
-    // Verify current password: derive old KEK and check header_mac.
-    let old_kek = vault_engine::derive_kek(current_password, &vault.kdf)
-        .map_err(|_| "Password attuale errata".to_string())?;
-    let mac_ok = vault_engine::verify_header_mac(&old_kek, &vault)
-        .map_err(|_| "Password attuale errata".to_string())?;
-    // verify_header_mac returns Ok(needs_migration_bool) when the MAC matches
-    // (a legacy version triggers needs_migration = true). It returns Err on
-    // mismatch. Either Ok(_) value is acceptable here.
-    let _ = mac_ok;
-
-    // Also verify by unwrapping DEK with old KEK and checking equality with state DEK.
-    // Defense-in-depth against an attacker who could supply a header with a wrong KDF.
-    let old_dek = vault_engine::unwrap_dek(&old_kek, &vault.wrapped_dek, &vault.dek_iv)
-        .map_err(|_| "Password attuale errata".to_string())?;
-    if old_dek.as_slice() != dek.as_slice() {
-        return Err("Password attuale errata".to_string());
-    }
-
-    // Generate new KDF params + salt, derive new KEK.
-    let mut new_kdf = vault_engine::benchmark_argon2_params();
-    let mut salt = [0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
-    new_kdf.salt = B64.encode(salt);
-    let new_kek = vault_engine::derive_kek(new_password, &new_kdf)?;
-
-    // Re-wrap DEK with new KEK.
-    let (wrapped, iv) = vault_engine::wrap_dek(&new_kek, &dek)?;
-
-    // Update vault header fields and recompute MAC.
-    vault.kdf = new_kdf;
-    vault.wrapped_dek = wrapped;
-    vault.dek_iv = iv;
-    vault.mac_version = Some(vault_engine::CURRENT_MAC_VERSION);
-    vault.header_mac = vault_engine::compute_header_mac(&new_kek, &vault);
-
-    // Persist via split-vault writer (re-encrypts header.enc with DEK; records
-    // and index are unchanged on disk because their decrypt paths reuse DEK).
-    vault_engine::write_split_vault(dir, &vault, &dek)?;
-
-    update_bio_password_if_needed(state, new_password);
-
-    let _ = append_audit_log(state, "Password cambiata (V6 split, O(1))");
-    Ok(json!({"success": true}))
-}
-
-/// v4 change password: only re-wrap DEK with new KEK — O(1)!
-///
-/// NOTE (audit:L-7): DEK is NOT rotated on password change; old DEK ciphertext
-/// is still decryptable with old KEK if leaked. For full forward secrecy after
-/// a suspected password compromise, also call `vault_engine::rotate_dek(...)`
-/// after the new KEK is in place (re-encrypts every record). The `O(1)` path
-/// below is correct for routine password changes; rotation should be opt-in
-/// via a separate "rotate keys" UX action.
+/// Password rewrap commits the full snapshot once without changing record keys.
 fn change_password_v4(
-    state: &State<AppState>,
+    state: &AppState,
     dir: &std::path::Path,
     current_password: &str,
     new_password: &str,
 ) -> Result<Value, String> {
-    let vault_path = dir.join(VAULT_FILE);
-    let raw = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024)?;
-
-    // Verify current password by opening vault
-    let (mut vault, _dek) = vault_engine::open_vault(current_password, &raw)
-        .map_err(|_| "Password attuale errata".to_string())?;
-
-    // Get existing DEK from state
-    let dek = get_vault_dek(state)?;
-
-    // Generate new KDF params with benchmark
-    let mut new_kdf = vault_engine::benchmark_argon2_params();
-    let mut salt = [0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut salt);
-    new_kdf.salt = B64.encode(salt);
-
-    // Derive new KEK
-    let new_kek = vault_engine::derive_kek(new_password, &new_kdf)?;
-
-    // Re-wrap DEK with new KEK
-    let (wrapped, iv) = vault_engine::wrap_dek(&new_kek, &dek)?;
-
-    // Update vault header
-    vault.kdf = new_kdf;
-    vault.wrapped_dek = wrapped;
-    vault.dek_iv = iv;
-    vault.mac_version = Some(vault_engine::CURRENT_MAC_VERSION);
-    vault.header_mac = vault_engine::compute_header_mac(&new_kek, &vault);
-
-    // Write updated vault
-    let serialized = vault_engine::serialize_vault(&vault)?;
-    atomic_write_with_sync(&vault_path, &serialized)?;
-
+    get_vault_dek(state)?;
+    vault_engine::change_password_snapshot(dir, current_password, new_password)?;
     update_bio_password_if_needed(state, new_password);
-
-    let _ = append_audit_log(state, "Password cambiata (v4, O(1))");
+    let _ = append_audit_log_locked(state, "Password cambiata");
     Ok(json!({"success": true}))
 }
 
 /// Update biometric keychain entry if biometric is enabled.
 #[allow(unused_variables)]
-fn update_bio_password_if_needed(state: &State<AppState>, new_password: &str) {
-    #[cfg(not(target_os = "android"))]
+fn update_bio_password_if_needed(state: &AppState, new_password: &str) {
+    #[cfg(target_os = "windows")]
+    {
+        let directory = state
+            .data_dir
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        // Never recreate the removed Windows credential, even if an old marker
+        // survives. The password change itself has already committed safely.
+        if let Err(error) = crate::bio::remove_legacy_windows_bio(&directory) {
+            eprintln!("[LexFlow] {error}");
+        }
+    }
+    #[cfg(not(any(target_os = "android", target_os = "windows")))]
     {
         let dir = state
             .data_dir
@@ -965,7 +943,11 @@ fn update_bio_password_if_needed(state: &State<AppState>, new_password: &str) {
         if dir.join(BIO_MARKER_FILE).exists() {
             let user = whoami::username();
             if let Ok(entry) = keyring::Entry::new(BIO_SERVICE, &user) {
-                if entry.set_password(new_password).is_err() {
+                #[cfg(target_os = "macos")]
+                let update = crate::bio::refresh_macos_bio_password(new_password);
+                #[cfg(not(target_os = "macos"))]
+                let update = entry.set_password(new_password).map_err(|e| e.to_string());
+                if update.is_err() {
                     eprintln!(
                         "[SECURITY WARNING] Failed to update biometric password in keychain. \
                          Disabling biometric login."
@@ -1005,6 +987,7 @@ fn check_verify_rate_limit() -> Result<(), Value> {
 
 #[tauri::command]
 pub(crate) fn verify_vault_password(state: State<AppState>, pwd: String) -> Result<Value, String> {
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     // FIX-8 (audit:M-7): rate-limit independently of unlock_vault lockout.
     if let Err(rl_json) = check_verify_rate_limit() {
         zeroize_password(pwd);
@@ -1022,34 +1005,14 @@ pub(crate) fn verify_vault_password(state: State<AppState>, pwd: String) -> Resu
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     if let Err(locked_json) = check_lockout(&state, &sec_dir) {
+        zeroize_password(pwd);
         return Ok(locked_json);
     }
 
-    // FIX-7-related: support V6 split layout for password verification.
-    let valid = if vault_engine::is_split_vault(&dir) {
-        // On split-vault, header.enc is DEK-encrypted (cannot verify without DEK),
-        // so use the .v4-backup monolithic file (kept by migrate_to_split).
-        let backup_path = dir.join("vault.lex.v4-backup");
-        if let Ok(raw) = crate::io::safe_bounded_read(&backup_path, 500 * 1024 * 1024) {
-            vault_engine::open_vault(&pwd, &raw).is_ok()
-        } else {
-            // TODO(audit:CRIT-5/M-7): no monolithic backup available — cannot
-            // verify password against split-vault header without already
-            // possessing the DEK. Returning false here is conservative but
-            // could degrade UX; proper fix is a KEK-only verification path.
-            false
-        }
-    } else {
-        let vault_path = dir.join(VAULT_FILE);
-        if let Ok(raw) = crate::io::safe_bounded_read(&vault_path, 500 * 1024 * 1024) {
-            vault_engine::open_vault(&pwd, &raw).is_ok()
-        } else {
-            false
-        }
-    };
+    let valid = vault_engine::open_current_vault(&dir, &pwd).is_ok();
 
     if !valid {
-        record_failed_attempt(&state, &sec_dir);
+        record_failed_attempt_locked(&state, &sec_dir);
     } else {
         clear_lockout(&state, &sec_dir);
     }
@@ -1067,10 +1030,7 @@ pub(crate) fn load_practices(state: State<AppState>) -> Result<Value, String> {
 #[tauri::command]
 pub(crate) fn save_practices(state: State<AppState>, list: Value) -> Result<bool, String> {
     crate::validation::validate_practices(&list)?;
-    let count = list.as_array().map(|a| a.len()).unwrap_or(0);
-    let result = save_vault_field(&state, "practices", list)?;
-    let _ = append_audit_log(&state, &format!("Salvati {} fascicoli", count));
-    Ok(result)
+    save_vault_field(&state, "practices", list)
 }
 
 #[tauri::command]
@@ -1081,9 +1041,7 @@ pub(crate) fn load_agenda(state: State<AppState>) -> Result<Value, String> {
 #[tauri::command]
 pub(crate) fn save_agenda(state: State<AppState>, agenda: Value) -> Result<bool, String> {
     crate::validation::validate_agenda(&agenda)?;
-    let result = save_vault_field(&state, "agenda", agenda)?;
-    let _ = append_audit_log(&state, "Aggiornata agenda");
-    Ok(result)
+    save_vault_field(&state, "agenda", agenda)
 }
 
 #[tauri::command]
@@ -1094,9 +1052,7 @@ pub(crate) fn load_time_logs(state: State<AppState>) -> Result<Value, String> {
 #[tauri::command]
 pub(crate) fn save_time_logs(state: State<AppState>, logs: Value) -> Result<bool, String> {
     crate::validation::validate_time_logs(&logs)?;
-    let result = save_vault_field(&state, "timeLogs", logs)?;
-    let _ = append_audit_log(&state, "Aggiornate ore lavorate");
-    Ok(result)
+    save_vault_field(&state, "timeLogs", logs)
 }
 
 #[tauri::command]
@@ -1107,9 +1063,7 @@ pub(crate) fn load_invoices(state: State<AppState>) -> Result<Value, String> {
 #[tauri::command]
 pub(crate) fn save_invoices(state: State<AppState>, invoices: Value) -> Result<bool, String> {
     crate::validation::validate_invoices(&invoices)?;
-    let result = save_vault_field(&state, "invoices", invoices)?;
-    let _ = append_audit_log(&state, "Aggiornate fatture");
-    Ok(result)
+    save_vault_field(&state, "invoices", invoices)
 }
 
 #[tauri::command]
@@ -1120,10 +1074,7 @@ pub(crate) fn load_contacts(state: State<AppState>) -> Result<Value, String> {
 #[tauri::command]
 pub(crate) fn save_contacts(state: State<AppState>, contacts: Value) -> Result<bool, String> {
     crate::validation::validate_contacts(&contacts)?;
-    let count = contacts.as_array().map(|a| a.len()).unwrap_or(0);
-    let result = save_vault_field(&state, "contacts", contacts)?;
-    let _ = append_audit_log(&state, &format!("Salvati {} contatti", count));
-    Ok(result)
+    save_vault_field(&state, "contacts", contacts)
 }
 
 // ─── Summary ────────────────────────────────────────────────
@@ -1172,7 +1123,7 @@ pub(crate) fn get_summary(state: State<AppState>) -> Result<Value, String> {
 #[tauri::command]
 pub(crate) fn get_vault_index(state: State<AppState>) -> Result<Value, String> {
     let version = get_vault_version(&state);
-    if version != 4 {
+    if version < 4 {
         // v2: no index — return full practices/agenda with minimal fields
         let vault = read_vault_internal(&state)?;
         return Ok(vault);
@@ -1185,23 +1136,7 @@ pub(crate) fn get_vault_index(state: State<AppState>) -> Result<Value, String> {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    // FIX-7 (audit:M-5): support V6 split layout — read via read_split_vault
-    // when the monolithic file is gone after migration.
-    let vault = if vault_engine::is_split_vault(&dir) {
-        vault_engine::read_split_vault(&dir, &dek)?
-    } else {
-        let path = dir.join(VAULT_FILE);
-        if !path.exists() {
-            return Ok(json!([]));
-        }
-        let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-        vault_engine::deserialize_vault(&raw)?
-    };
-    // On V6 split, an empty index block (newly migrated, no index file) means
-    // nothing to list yet.
-    if vault.index.iv.is_empty() {
-        return Ok(json!([]));
-    }
+    let vault = vault_engine::read_authenticated_snapshot(&dir, &dek)?;
     let index = vault_engine::decrypt_index(&dek, &vault.index)?;
 
     // Convert to JSON array with summary for lazy list rendering
@@ -1234,7 +1169,7 @@ pub(crate) fn load_record_detail(
     record_id: String,
 ) -> Result<Value, String> {
     let version = get_vault_version(&state);
-    if version != 4 {
+    if version < 4 {
         // v2: load full vault and find by id
         let vault = read_vault_internal(&state)?;
         for field in &["practices", "agenda", "contacts", "timeLogs", "invoices"] {
@@ -1258,23 +1193,13 @@ pub(crate) fn load_record_detail(
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    // FIX-7 (audit:M-5): support V6 split layout
-    let vault = if vault_engine::is_split_vault(&dir) {
-        vault_engine::read_split_vault(&dir, &dek)?
-    } else {
-        let path = dir.join(VAULT_FILE);
-        let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-        vault_engine::deserialize_vault(&raw)?
-    };
+    let vault = vault_engine::read_authenticated_snapshot(&dir, &dek)?;
 
     let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
     let plaintext = vault_engine::read_current_version(entry, &dek)?;
     // V7: records are serialized with MessagePack; fall back to JSON for older
     // ones that may still exist.
-    if let Ok(v) = rmp_serde::from_slice::<Value>(&plaintext) {
-        return Ok(v);
-    }
-    serde_json::from_slice(&plaintext).map_err(|e| e.to_string())
+    vault_engine::decode_record_object(&plaintext)
 }
 
 #[tauri::command]
@@ -1288,13 +1213,7 @@ pub(crate) fn load_record_history(
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    // FIX-7 (audit:M-5): support V6 split layout
-    let vault = if vault_engine::is_split_vault(&dir) {
-        vault_engine::read_split_vault(&dir, &dek)?
-    } else {
-        let raw = crate::io::safe_bounded_read(&dir.join(VAULT_FILE), 500 * 1024 * 1024)?;
-        vault_engine::deserialize_vault(&raw)?
-    };
+    let vault = vault_engine::read_authenticated_snapshot(&dir, &dek)?;
 
     let entry = vault.records.get(&record_id).ok_or("Record non trovato")?;
 
@@ -1307,7 +1226,7 @@ pub(crate) fn load_record_history(
             compressed: ver.compressed,
         };
         if let Ok(plaintext) = vault_engine::decrypt_record(&dek, &block) {
-            if let Ok(val) = serde_json::from_slice::<Value>(&plaintext) {
+            if let Ok(val) = vault_engine::decode_record_object(&plaintext) {
                 history.push(json!({
                     "version": ver.v,
                     "timestamp": ver.ts,
@@ -1447,6 +1366,7 @@ pub(crate) fn check_conflict(state: State<AppState>, name: String) -> Result<Val
 /// Generate a recovery key for the vault. Returns the display string to show ONCE.
 #[tauri::command]
 pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, String> {
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let version = get_vault_version(&state);
     if version < 4 {
         return Err("Recovery key requires modern vault format".into());
@@ -1459,14 +1379,13 @@ pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, Str
         .clone();
     let path = dir.join(VAULT_FILE);
     let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let mut vault = vault_engine::deserialize_vault(&raw)?;
+    let mut vault = vault_engine::deserialize_authenticated_vault(&raw, &dek)?;
 
     let display_key = vault_engine::generate_recovery_key(&mut vault, &dek)?;
 
     // Recovery fields are NOT in header MAC scope — they're optional add-ons
     // protected by their own AES-GCM-SIV authentication (wrap_dek).
-    let serialized = vault_engine::serialize_vault(&vault)?;
-    crate::io::atomic_write_with_sync(&path, &serialized)?;
+    vault_engine::write_canonical_vault(&dir, &mut vault, &dek)?;
     invalidate_vault_cache(&state);
 
     Ok(json!({"recoveryKey": display_key}))
@@ -1475,6 +1394,13 @@ pub(crate) fn generate_recovery_key(state: State<AppState>) -> Result<Value, Str
 /// Unlock vault using recovery key (when password is forgotten).
 #[tauri::command]
 pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String) -> Value {
+    unlock_with_recovery_inner(&state, recovery_key)
+}
+
+fn unlock_with_recovery_inner(state: &AppState, recovery_key: String) -> Value {
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+    let recovery_key = Zeroizing::new(recovery_key);
+    invalidate_vault_cache(state);
     let sec_dir = state
         .security_dir
         .read()
@@ -1483,7 +1409,7 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
 
     // SECURITY FIX: apply rate limiting to recovery unlock too.
     // Recovery key is 128-bit random (brute-force infeasible), but defense-in-depth.
-    if let Err(locked_json) = crate::lockout::check_lockout(&state, &sec_dir) {
+    if let Err(locked_json) = crate::lockout::check_lockout(state, &sec_dir) {
         return locked_json;
     }
 
@@ -1506,7 +1432,10 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
     };
 
     match vault_engine::open_vault_with_recovery(&recovery_key, &raw) {
-        Ok((_vault, dek)) => {
+        Ok((vault, dek)) => {
+            if let Err(error) = enforce_vault_watermark(&sec_dir, vault.rotation.writes) {
+                return json!({"success": false, "error": error});
+            }
             *state.vault_dek.lock().unwrap_or_else(|e| e.into_inner()) =
                 Some(SecureKey::new(Zeroizing::new(dek.to_vec())));
             *state
@@ -1517,12 +1446,12 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
                 .last_activity
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = Instant::now();
-            crate::lockout::clear_lockout(&state, &sec_dir);
-            let _ = append_audit_log(&state, "Sblocco Vault via recovery key");
+            crate::lockout::clear_lockout(state, &sec_dir);
+            let _ = append_audit_log_locked(state, "Sblocco Vault via recovery key");
             json!({"success": true})
         }
         Err(e) => {
-            crate::lockout::record_failed_attempt(&state, &sec_dir);
+            crate::lockout::record_failed_attempt_locked(state, &sec_dir);
             json!({"success": false, "error": e})
         }
     }
@@ -1533,12 +1462,13 @@ pub(crate) fn unlock_with_recovery(state: State<AppState>, recovery_key: String)
 #[tauri::command]
 pub(crate) fn get_vault_health(state: State<AppState>) -> Result<Value, String> {
     let version = get_vault_version(&state);
-    if version != 4 {
+    if version < 4 {
         return Ok(json!({
             "version": version,
             "format": "v2-legacy",
         }));
     }
+    let dek = get_vault_dek(&state)?;
     let dir = state
         .data_dir
         .read()
@@ -1546,16 +1476,18 @@ pub(crate) fn get_vault_health(state: State<AppState>) -> Result<Value, String> 
         .clone();
     let path = dir.join(VAULT_FILE);
     if !path.exists() {
-        return Ok(json!({"version": 4, "error": "Nessun database trovato. Crea un nuovo vault."}));
+        return Ok(
+            json!({"version": version, "error": "Nessun database trovato. Crea un nuovo vault."}),
+        );
     }
     let raw = crate::io::safe_bounded_read(&path, 500 * 1024 * 1024)?;
-    let vault = vault_engine::deserialize_vault(&raw)?;
+    let vault = vault_engine::deserialize_authenticated_vault(&raw, &dek)?;
 
     let rotation_due = vault_engine::needs_rotation(&vault.rotation);
 
     Ok(json!({
-        "version": 4,
-        "format": "v4-envelope",
+        "version": vault.version,
+        "format": "v8-atomic-envelope",
         "kdfAlg": vault.kdf.alg,
         "kdfMemory": vault.kdf.m,
         "kdfTime": vault.kdf.t,
@@ -1566,4 +1498,454 @@ pub(crate) fn get_vault_health(state: State<AppState>) -> Result<Value, String> 
         "rotationDue": rotation_due,
         "totalRecords": vault.records.len(),
     }))
+}
+
+#[cfg(test)]
+mod atomic_snapshot_tests {
+    use super::*;
+    use crate::vault_engine::*;
+
+    fn data(title: &str) -> Value {
+        json!({"practices": [{"id": "synthetic-1", "client": title}], "agenda": []})
+    }
+
+    fn make_legacy(vault: &mut VaultData, password: &str) {
+        vault.version = 7;
+        let kek = derive_kek(password, &vault.kdf).unwrap();
+        vault.header_mac = compute_header_mac(&kek, vault);
+    }
+
+    fn assert_title(vault: &VaultData, dek: &[u8], title: &str) {
+        let bytes = read_current_version(&vault.records["practices_synthetic-1"], dek).unwrap();
+        let value: Value = rmp_serde::from_slice(&bytes).unwrap();
+        assert_eq!(value["client"], title);
+    }
+
+    #[test]
+    fn reset_then_create_lock_and_unlock_does_not_reject_new_vault_as_rollback() {
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("vault");
+        let security = temp.path().join("security");
+        fs::create_dir(&directory).unwrap();
+        fs::create_dir(&security).unwrap();
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        let _ = crate::platform::MACHINE_ID_CACHE.set("synthetic-reset-machine".into());
+        crate::lockout::lockout_clear(&security);
+        fs::write(security.join(LICENSE_FILE), b"synthetic license preserved").unwrap();
+        let state = AppState::new(directory.clone(), security.clone());
+        let password = "SyntheticOldPassword_123!";
+        assert_eq!(unlock_vault_inner(&state, password.into())["success"], true);
+        save_vault_field(
+            &state,
+            "practices",
+            data("Before reset")["practices"].clone(),
+        )
+        .unwrap();
+        state.lock_vault();
+        assert_eq!(unlock_vault_inner(&state, password.into())["success"], true);
+        let watermark = fs::read_to_string(security.join(".vault-writes-counter")).unwrap();
+        assert!(watermark.parse::<u64>().unwrap() > 0);
+        assert_eq!(reset_vault_inner(&state, password.into())["success"], true);
+        assert!(get_vault_dek(&state).is_err());
+        assert!(state.vault_cache.read().unwrap().is_none());
+        assert_eq!(
+            fs::read_to_string(security.join(".vault-writes-counter")).unwrap(),
+            "0"
+        );
+        assert_eq!(
+            fs::read(security.join(LICENSE_FILE)).unwrap(),
+            b"synthetic license preserved"
+        );
+        let new_password = "SyntheticNewPassword_456!";
+        assert_eq!(
+            unlock_vault_inner(&state, new_password.into())["isNew"],
+            true
+        );
+        state.lock_vault();
+        assert_eq!(
+            unlock_vault_inner(&state, new_password.into())["success"],
+            true
+        );
+        let (opened, _) = open_current_vault(&directory, new_password).unwrap();
+        assert_eq!(opened.rotation.writes, 0);
+        assert!(open_current_vault(&directory, password).is_err());
+    }
+
+    #[test]
+    fn reset_metadata_failure_preserves_archive_and_unrelated_security_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("vault");
+        let security = temp.path().join("security");
+        fs::create_dir(&directory).unwrap();
+        fs::create_dir(&security).unwrap();
+        let vault_path = directory.join(VAULT_FILE);
+        fs::write(&vault_path, b"synthetic encrypted archive bytes").unwrap();
+        fs::write(security.join(LICENSE_FILE), b"synthetic license").unwrap();
+        fs::create_dir(security.join(".vault-writes-counter")).unwrap();
+        assert!(remove_vault_storage_for_reset(&directory, &security).is_err());
+        assert_eq!(
+            fs::read(vault_path).unwrap(),
+            b"synthetic encrypted archive bytes"
+        );
+        assert_eq!(
+            fs::read(security.join(LICENSE_FILE)).unwrap(),
+            b"synthetic license"
+        );
+    }
+
+    #[test]
+    fn reset_cannot_delete_nested_security_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let security = temp.path().join("security");
+        fs::create_dir(&security).unwrap();
+        fs::write(security.join(LICENSE_FILE), b"synthetic license").unwrap();
+        assert!(remove_vault_storage_for_reset(temp.path(), &security).is_err());
+        assert_eq!(
+            fs::read(security.join(LICENSE_FILE)).unwrap(),
+            b"synthetic license"
+        );
+    }
+
+    #[test]
+    fn exhausted_write_counter_cannot_mutate_existing_records() {
+        let (mut vault, dek) = create_vault("SyntheticPassword_123!").unwrap();
+        update_vault_records(&mut vault, &dek, &data("Preserved")).unwrap();
+        vault.rotation.writes = u64::MAX;
+        let original = serialize_vault(&vault).unwrap();
+        assert!(update_vault_records(&mut vault, &dek, &data("Must not replace")).is_err());
+        assert_eq!(serialize_vault(&vault).unwrap(), original);
+    }
+
+    #[test]
+    fn password_and_recovery_unlock_both_reject_older_snapshot() {
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("vault");
+        let security = temp.path().join("security");
+        fs::create_dir(&directory).unwrap();
+        fs::create_dir(&security).unwrap();
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        let _ = crate::platform::MACHINE_ID_CACHE.set("synthetic-recovery-machine".into());
+        crate::lockout::lockout_clear(&security);
+        let password = "SyntheticPassword_123!";
+        let (mut vault, dek) = create_vault(password).unwrap();
+        let recovery = vault_engine::generate_recovery_key(&mut vault, &dek).unwrap();
+        vault.rotation.writes = 5;
+        write_canonical_vault(&directory, &mut vault, &dek).unwrap();
+        fs::write(security.join(".vault-writes-counter"), b"6").unwrap();
+        let state = AppState::new(directory, security.clone());
+        for result in [
+            unlock_vault_inner(&state, password.into()),
+            unlock_with_recovery_inner(&state, recovery.clone()),
+        ] {
+            assert_eq!(result["success"], false);
+            assert!(result["error"].as_str().unwrap().contains("rollback"));
+        }
+        assert!(get_vault_dek(&state).is_err());
+        assert_eq!(*state.failed_attempts.lock().unwrap(), 0);
+        fs::write(security.join(".vault-writes-counter"), b"5").unwrap();
+        assert_eq!(
+            unlock_with_recovery_inner(&state, recovery)["success"],
+            true
+        );
+        assert!(get_vault_dek(&state).is_ok());
+    }
+
+    #[test]
+    fn invalid_or_unreadable_watermark_is_not_treated_as_zero() {
+        let temp = tempfile::tempdir().unwrap();
+        let counter = temp.path().join(".vault-writes-counter");
+        fs::write(&counter, b"invalid counter").unwrap();
+        assert!(enforce_vault_watermark(temp.path(), 4).is_err());
+        assert_eq!(fs::read(&counter).unwrap(), b"invalid counter");
+        fs::remove_file(&counter).unwrap();
+        fs::create_dir(&counter).unwrap();
+        assert!(enforce_vault_watermark(temp.path(), 4).is_err());
+        assert!(counter.is_dir());
+    }
+
+    #[test]
+    fn atomic_snapshot_migrates_latest_split_and_survives_password_change_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let password = "SyntheticOldPassword_123!";
+        let (mut vault, dek) = create_vault(password).unwrap();
+        make_legacy(&mut vault, password);
+        update_vault_records(&mut vault, &dek, &data("Old synthetic record")).unwrap();
+        // Legacy bootstrap predates the newest split save.
+        std::fs::write(
+            dir.path().join("vault.lex.v4-backup"),
+            serialize_vault(&vault).unwrap(),
+        )
+        .unwrap();
+        update_vault_records(&mut vault, &dek, &data("Latest synthetic record")).unwrap();
+        write_split_vault(dir.path(), &vault, &dek).unwrap();
+        let (mut latest, key) = open_current_vault(dir.path(), password).unwrap();
+        assert_title(&latest, &key, "Latest synthetic record");
+        upgrade_canonical_header(&mut latest, password).unwrap();
+        write_canonical_vault(dir.path(), &mut latest, &key).unwrap();
+        assert!(!is_split_vault(dir.path()));
+        assert!(dir.path().join("vault-data/header.enc").exists());
+
+        change_password_snapshot(dir.path(), password, "SyntheticNewPassword_456!").unwrap();
+        drop(key);
+        drop(dek);
+        assert!(open_current_vault(dir.path(), password).is_err());
+        let (reopened, key) = open_current_vault(dir.path(), "SyntheticNewPassword_456!").unwrap();
+        assert_title(&reopened, &key, "Latest synthetic record");
+
+        // A backup is the exact current encrypted snapshot and is portable.
+        let backup = std::fs::read(dir.path().join(VAULT_FILE)).unwrap();
+        let (restored, key) = open_vault("SyntheticNewPassword_456!", &backup).unwrap();
+        assert_title(&restored, &key, "Latest synthetic record");
+        assert!(!String::from_utf8_lossy(&backup).contains("Latest synthetic record"));
+    }
+
+    #[test]
+    fn atomic_snapshot_corrupted_split_never_falls_back_to_stale_bootstrap() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut vault, dek) = create_vault("SyntheticPassword_123!").unwrap();
+        make_legacy(&mut vault, "SyntheticPassword_123!");
+        let bootstrap = serialize_vault(&vault).unwrap();
+        std::fs::write(dir.path().join(VAULT_FILE), &bootstrap).unwrap();
+        update_vault_records(&mut vault, &dek, &data("Latest")).unwrap();
+        write_split_vault(dir.path(), &vault, &dek).unwrap();
+        let record = dir
+            .path()
+            .join("vault-data/records/practices_synthetic-1.enc");
+        let mut ciphertext = std::fs::read(&record).unwrap();
+        *ciphertext.last_mut().unwrap() ^= 1;
+        std::fs::write(&record, ciphertext).unwrap();
+        assert!(open_current_vault(dir.path(), "SyntheticPassword_123!").is_err());
+        assert_eq!(
+            std::fs::read(dir.path().join(VAULT_FILE)).unwrap(),
+            bootstrap
+        );
+        assert!(!has_canonical_vault(dir.path()));
+    }
+
+    #[test]
+    fn atomic_snapshot_unchanged_save_reuses_record_ciphertext_and_retains_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut vault, dek) = create_vault("SyntheticPassword_123!").unwrap();
+        update_vault_records(&mut vault, &dek, &data("Unchanged")).unwrap();
+        let original = serde_json::to_vec(&vault.records).unwrap();
+        update_vault_records(&mut vault, &dek, &data("Unchanged")).unwrap();
+        assert_eq!(serde_json::to_vec(&vault.records).unwrap(), original);
+        update_vault_records(&mut vault, &dek, &data("Changed")).unwrap();
+        assert_eq!(vault.records["practices_synthetic-1"].versions.len(), 2);
+        write_canonical_vault(dir.path(), &mut vault, &dek).unwrap();
+        let (reopened, key) = open_current_vault(dir.path(), "SyntheticPassword_123!").unwrap();
+        assert_title(&reopened, &key, "Changed");
+    }
+
+    #[test]
+    fn atomic_snapshot_manifest_rejects_individual_record_rollback() {
+        let dir = tempfile::tempdir().unwrap();
+        let password = "SyntheticPassword_123!";
+        let (mut vault, dek) = create_vault(password).unwrap();
+        update_vault_records(&mut vault, &dek, &data("Old")).unwrap();
+        let old_record = vault.records["practices_synthetic-1"].clone();
+        update_vault_records(&mut vault, &dek, &data("Current")).unwrap();
+        write_canonical_vault(dir.path(), &mut vault, &dek).unwrap();
+        // The substituted old record remains valid AEAD ciphertext under DEK.
+        // Only the manifest authenticates which version belongs to this snapshot.
+        vault
+            .records
+            .insert("practices_synthetic-1".into(), old_record);
+        let mut tampered = CANONICAL_MAGIC.to_vec();
+        tampered.extend(serde_json::to_vec(&vault).unwrap());
+        std::fs::write(dir.path().join(VAULT_FILE), &tampered).unwrap();
+        assert!(deserialize_authenticated_vault(&tampered, &dek).is_err());
+        assert!(open_current_vault(dir.path(), password).is_err());
+    }
+
+    #[test]
+    fn atomic_snapshot_manifest_cannot_be_bypassed_by_legacy_magic() {
+        let dir = tempfile::tempdir().unwrap();
+        let password = "SyntheticPassword_123!";
+        let (mut vault, dek) = create_vault(password).unwrap();
+        let recovery = vault_engine::generate_recovery_key(&mut vault, &dek).unwrap();
+        update_vault_records(&mut vault, &dek, &data("Old")).unwrap();
+        let old_record = vault.records["practices_synthetic-1"].clone();
+        update_vault_records(&mut vault, &dek, &data("Current")).unwrap();
+        write_canonical_vault(dir.path(), &mut vault, &dek).unwrap();
+        // Changing only the outer prefix retains compatibility and integrity.
+        let legacy_prefix = serialize_vault(&vault).unwrap();
+        assert!(open_vault(password, &legacy_prefix).is_ok());
+        vault
+            .records
+            .insert("practices_synthetic-1".into(), old_record);
+        let downgraded = serialize_vault(&vault).unwrap();
+        assert!(downgraded.starts_with(vault_engine::VAULT_MAGIC));
+        assert!(deserialize_authenticated_vault(&downgraded, &dek).is_err());
+        assert!(open_vault(password, &downgraded).is_err());
+        assert!(vault_engine::open_vault_with_recovery(&recovery, &downgraded).is_err());
+    }
+
+    #[test]
+    fn atomic_snapshot_signed_version_requires_manifest_for_all_unlock_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let password = "SyntheticPassword_123!";
+        let (mut vault, dek) = create_vault(password).unwrap();
+        let recovery = vault_engine::generate_recovery_key(&mut vault, &dek).unwrap();
+        update_vault_records(&mut vault, &dek, &data("Old")).unwrap();
+        let old_record = vault.records["practices_synthetic-1"].clone();
+        let old_entries = decrypt_index(&dek, &vault.index).unwrap();
+        let historical_bare_index = encrypt_index(&dek, &old_entries).unwrap();
+        update_vault_records(&mut vault, &dek, &data("Current")).unwrap();
+        write_canonical_vault(dir.path(), &mut vault, &dek).unwrap();
+
+        let mut blank_index = vault.clone();
+        blank_index.index.iv.clear();
+        let mut replayed_index = vault.clone();
+        replayed_index.index = historical_bare_index;
+        replayed_index
+            .records
+            .insert("practices_synthetic-1".into(), old_record);
+        let mut changed_header = replayed_index.clone();
+        changed_header.version = 7;
+        for tampered in [blank_index, replayed_index, changed_header] {
+            // Use an accepted legacy outer prefix for every attack variant.
+            let bytes = serialize_vault(&tampered).unwrap();
+            assert!(open_vault(password, &bytes).is_err());
+            assert!(deserialize_authenticated_vault(&bytes, &dek).is_err());
+            assert!(vault_engine::open_vault_with_recovery(&recovery, &bytes).is_err());
+        }
+    }
+
+    #[test]
+    fn atomic_snapshot_legacy_magic_never_revives_retained_split_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let password = "SyntheticPassword_123!";
+        let (mut vault, dek) = create_vault(password).unwrap();
+        make_legacy(&mut vault, password);
+        update_vault_records(&mut vault, &dek, &data("Old split record")).unwrap();
+        write_split_vault(dir.path(), &vault, &dek).unwrap();
+        upgrade_canonical_header(&mut vault, password).unwrap();
+        update_vault_records(&mut vault, &dek, &data("Current atomic record")).unwrap();
+        write_canonical_vault(dir.path(), &mut vault, &dek).unwrap();
+
+        // An attacker can replace outer magic without knowing either key.
+        let path = dir.path().join(VAULT_FILE);
+        std::fs::write(&path, serialize_vault(&vault).unwrap()).unwrap();
+        assert!(is_split_vault(dir.path())); // Untrusted storage hint only.
+        let (opened, key) = open_current_vault(dir.path(), password).unwrap();
+        assert_title(&opened, &key, "Current atomic record");
+        let session = read_authenticated_snapshot(dir.path(), &dek).unwrap();
+        assert_title(&session, &dek, "Current atomic record");
+
+        // A damaged/missing current snapshot must fail even with readable
+        // legacy split files present beside it.
+        vault.index.iv.clear();
+        std::fs::write(&path, serialize_vault(&vault).unwrap()).unwrap();
+        assert!(open_current_vault(dir.path(), password).is_err());
+        assert!(read_authenticated_snapshot(dir.path(), &dek).is_err());
+        std::fs::remove_file(&path).unwrap();
+        assert!(read_authenticated_snapshot(dir.path(), &dek).is_err());
+    }
+
+    #[test]
+    fn atomic_snapshot_rotation_immediately_preserves_authenticated_manifest() {
+        let password = "SyntheticPassword_123!";
+        let (mut vault, old_dek) = create_vault(password).unwrap();
+        update_vault_records(&mut vault, &old_dek, &data("Preserved across rotation")).unwrap();
+        let kek = derive_kek(password, &vault.kdf).unwrap();
+        let new_dek = rotate_dek(&mut vault, &kek).unwrap();
+        assert_ne!(old_dek.as_slice(), new_dek.as_slice());
+        // The returned object itself is valid, before any writer reseals it.
+        let bytes = serialize_vault(&vault).unwrap();
+        let (opened, key) = open_vault(password, &bytes).unwrap();
+        assert_title(&opened, &key, "Preserved across rotation");
+        assert!(deserialize_authenticated_vault(&bytes, &new_dek).is_ok());
+        assert!(deserialize_authenticated_vault(&bytes, &old_dek).is_err());
+    }
+
+    #[test]
+    fn atomic_snapshot_legacy_recovery_requires_explicit_password_migration() {
+        let password = "SyntheticPassword_123!";
+        let (mut vault, dek) = create_vault(password).unwrap();
+        let recovery = vault_engine::generate_recovery_key(&mut vault, &dek).unwrap();
+        make_legacy(&mut vault, password);
+        let bytes = serialize_vault(&vault).unwrap();
+        let error = vault_engine::open_vault_with_recovery(&recovery, &bytes).unwrap_err();
+        assert!(error.contains("migrato con la password"));
+        // A verified password migration makes the same recovery key usable.
+        upgrade_canonical_header(&mut vault, password).unwrap();
+        let bytes = serialize_vault(&vault).unwrap();
+        assert!(vault_engine::open_vault_with_recovery(&recovery, &bytes).is_ok());
+    }
+
+    #[test]
+    fn malformed_records_and_domains_never_replace_an_existing_snapshot() {
+        let (mut vault, dek) = create_vault("SyntheticPassword_123!").unwrap();
+        update_vault_records(&mut vault, &dek, &data("Preserved")).unwrap();
+        let original = serialize_vault(&vault).unwrap();
+        for invalid in [
+            json!([]),
+            json!({"practices": null}),
+            json!({"practices": [[]]}),
+            json!({"practices": [{"id": ""}]}),
+            json!({"practices": [{"id": "same"}, {"id": "same"}]}),
+        ] {
+            assert!(update_vault_records(&mut vault, &dek, &invalid).is_err());
+            assert_eq!(serialize_vault(&vault).unwrap(), original);
+        }
+        // All domains are validated before an earlier valid domain can mutate
+        // the snapshot, including during import of several domains together.
+        for field in ["agenda", "contacts", "timeLogs", "invoices"] {
+            for records in [
+                json!([{}]),
+                json!([{"id": 42}]),
+                json!([{"id": ""}]),
+                json!([{"id": "same"}, {"id": "same"}]),
+            ] {
+                let mut invalid = data("Must not replace preserved record");
+                invalid[field] = records;
+                assert!(update_vault_records(&mut vault, &dek, &invalid).is_err());
+                assert_eq!(serialize_vault(&vault).unwrap(), original);
+            }
+        }
+        let index = decrypt_index(&dek, &vault.index).unwrap();
+        for invalid in [
+            json!([]),
+            json!(42),
+            json!({"client": "No id"}),
+            json!({"id": "another-record"}),
+        ] {
+            let bytes = rmp_serde::to_vec(&invalid).unwrap();
+            assert!(decode_indexed_record(&bytes, &index[0]).is_err());
+        }
+    }
+
+    #[test]
+    fn atomic_snapshot_rotation_preserves_data_and_monotonic_counter() {
+        let dir = tempfile::tempdir().unwrap();
+        let password = "SyntheticPassword_123!";
+        let (mut vault, dek) = create_vault(password).unwrap();
+        update_vault_records(&mut vault, &dek, &data("Latest")).unwrap();
+        vault.rotation.writes = 10_000;
+        let kek = derive_kek(password, &vault.kdf).unwrap();
+        let new_key = rotate_dek(&mut vault, &kek).unwrap();
+        assert_ne!(dek.as_slice(), new_key.as_slice());
+        assert_eq!(vault.rotation.writes, 10_000);
+        assert!(!needs_rotation(&vault.rotation));
+        write_canonical_vault(dir.path(), &mut vault, &new_key).unwrap();
+        let (reopened, key) = open_current_vault(dir.path(), password).unwrap();
+        assert_title(&reopened, &key, "Latest");
+    }
+
+    #[test]
+    fn atomic_snapshot_failed_replacement_preserves_original_and_cleans_staging_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut vault, dek) = create_vault("SyntheticPassword_123!").unwrap();
+        // Force rename to fail after the staged file has been completely written.
+        let target = dir.path().join(VAULT_FILE);
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("preserved"), b"original").unwrap();
+        assert!(write_canonical_vault(dir.path(), &mut vault, &dek).is_err());
+        assert_eq!(
+            std::fs::read(target.join("preserved")).unwrap(),
+            b"original"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 }

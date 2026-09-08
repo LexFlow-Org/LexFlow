@@ -12,6 +12,7 @@ import {
   FileText
 } from 'lucide-react';
 import { useDebounce } from '../hooks/useDebounce';
+import { normalizeSearchText } from '../utils/helpers';
 
 // Mappa dei colori e stili per ogni materia
 const SUBJECT_STYLES = {
@@ -104,6 +105,23 @@ PracticeRow.propTypes = {
   onSelect: PropTypes.func,
 };
 
+// Incremental rendering keeps the initial archive view small on older devices.
+// All records remain searchable; variable-height mobile rows keep normal layout.
+const PRACTICES_PER_PAGE = 50;
+function PracticeResults({ practices, onSelect }) {
+  const [visibleCount, setVisibleCount] = useState(PRACTICES_PER_PAGE);
+  return <>
+    {practices.slice(0, visibleCount).map(p => <PracticeRow key={p.id} practice={p} onSelect={onSelect} />)}
+    {practices.length > PRACTICES_PER_PAGE && <div className="flex flex-col items-center gap-3 py-3">
+      <p className="text-sm text-text-dim" role="status">{Math.min(visibleCount, practices.length)} di {practices.length} fascicoli</p>
+      {visibleCount < practices.length && <button type="button" className="btn-ghost px-5 py-3"
+        onClick={() => setVisibleCount(count => count + PRACTICES_PER_PAGE)}>
+        Mostra altri {Math.min(PRACTICES_PER_PAGE, practices.length - visibleCount)}
+      </button>}
+    </div>}
+  </>;
+}
+
 export default function PracticesList({ practices = [], onSelect, onNewPractice }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -126,21 +144,17 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
     closed: safePractices.filter(p => p?.status === 'closed').length,
   }), [safePractices]);
 
+  const searchIndex = useMemo(() => safePractices.filter(Boolean).map(practice => ({
+    practice,
+    text: [practice.client, practice.object, practice.code].map(normalizeSearchText).join('\0'),
+  })), [safePractices]);
+
   const filteredPractices = useMemo(() => {
-    const lowerSearch = debouncedSearch.toLowerCase();
-    return safePractices.filter(p => {
-      if (!p) return false;
-      const matchesSearch =
-        (p.client?.toLowerCase() || '').includes(lowerSearch) ||
-        (p.object?.toLowerCase() || '').includes(lowerSearch) ||
-        (p.code?.toLowerCase() || '').includes(lowerSearch);
-
-      const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
-      const matchesType = filterType === 'all' || p.type === filterType;
-
-      return matchesSearch && matchesStatus && matchesType;
-    });
-  }, [safePractices, debouncedSearch, filterStatus, filterType]);
+    const query = normalizeSearchText(debouncedSearch.trim());
+    return searchIndex.filter(({ practice, text }) => text.includes(query)
+      && (filterStatus === 'all' || practice.status === filterStatus)
+      && (filterType === 'all' || practice.type === filterType)).map(({ practice }) => practice);
+  }, [searchIndex, debouncedSearch, filterStatus, filterType]);
 
   const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || searchTerm !== '';
   const resetFilters = () => {
@@ -242,7 +256,7 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
         </div>
 
         <div className="flex items-center gap-2 w-full lg:w-auto p-2 lg:p-0 border-t lg:border-t-0 lg:border-l border-border">
-          <div className="flex items-center gap-4 px-4 h-10">
+          <div className="flex flex-wrap items-center gap-3 px-2 min-h-10">
             <Filter size={14} className="text-text-dim opacity-50" aria-hidden="true" />
 
             {/* FIX-54: aria-label sui select */}
@@ -280,11 +294,9 @@ export default function PracticesList({ practices = [], onSelect, onNewPractice 
       {/* Lista Fascicoli */}
       <div className="space-y-4">
       {filteredPractices.length > 0 ? (
-        filteredPractices.map((p, index) => (
-          <PracticeRow key={p?.id || `practice-${index}`} practice={p} onSelect={onSelect} />
-        ))
+        <PracticeResults key={`${filterStatus}:${filterType}:${debouncedSearch}`} practices={filteredPractices} onSelect={onSelect} />
       ) : (
-        <div className="glass-card p-24 flex flex-col items-center justify-center text-center space-y-6 border border-dashed border-border">
+        <div className="glass-card p-6 sm:p-24 flex flex-col items-center justify-center text-center space-y-6 border border-dashed border-border">
           {/* FIX-57: opacità più leggibile sull'icona empty state */}
           <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center text-text-dim">
             <Search size={40} />

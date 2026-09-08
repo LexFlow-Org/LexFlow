@@ -154,6 +154,44 @@ mod tests {
         // Inner quotes should be doubled
         assert!(escaped.contains("\"\"Rossi"));
     }
+
+    #[test]
+    fn malformed_numeric_warnings_never_include_record_values() {
+        let confidential = "SYNTHETIC confidential client description";
+        for raw in [
+            serde_json::json!(confidential),
+            serde_json::json!({ "client": confidential }),
+            serde_json::json!([confidential]),
+        ] {
+            let record = serde_json::json!({ "hours": raw });
+            let mut warnings = Vec::new();
+            assert_eq!(
+                value_to_num_with_warning(&record, "hours", |warning| warnings
+                    .push(warning.to_owned())),
+                ""
+            );
+            assert_eq!(warnings.len(), 1);
+            assert!(warnings[0].contains("hours"));
+            assert!(!warnings[0].contains(confidential));
+            assert!(!warnings[0].contains("client"));
+        }
+    }
+
+    #[test]
+    fn numeric_and_missing_cells_preserve_export_without_warnings() {
+        let mut warnings = Vec::new();
+        let record = serde_json::json!({ "hours": 2.5 });
+        assert_eq!(
+            value_to_num_with_warning(&record, "hours", |warning| warnings
+                .push(warning.to_owned())),
+            "2.50"
+        );
+        assert_eq!(
+            value_to_num_with_warning(&record, "rate", |warning| warnings.push(warning.to_owned())),
+            ""
+        );
+        assert!(warnings.is_empty());
+    }
 }
 
 fn value_to_str(v: &Value, field: &str) -> String {
@@ -164,18 +202,21 @@ fn value_to_str(v: &Value, field: &str) -> String {
 }
 
 fn value_to_num(v: &Value, field: &str) -> String {
+    value_to_num_with_warning(v, field, |message| eprintln!("{message}"))
+}
+
+fn value_to_num_with_warning(v: &Value, field: &str, warn: impl FnOnce(&str)) -> String {
     match v.get(field) {
         // Field is missing — empty cell is fine.
         None => String::new(),
         Some(raw) => match raw.as_f64() {
             Some(n) => format!("{:.2}", n),
             None => {
-                // VALIDATION-CSV-1: log malformed numerics so the user can
-                // investigate. Returning empty keeps the CSV well-formed.
-                eprintln!(
-                    "[csv_export] WARN: malformed numeric for field '{}': {:?}",
-                    field, raw
-                );
+                // The field name is fixed by the exporter. An invalid value
+                // may contain confidential imported text: never log its data.
+                warn(&format!(
+                    "[csv_export] WARN: malformed numeric for field '{field}'"
+                ));
                 String::new()
             }
         },

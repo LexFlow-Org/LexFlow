@@ -11,8 +11,8 @@ mod constants;
 mod crypto;
 mod csv_export;
 mod doc_tools;
-mod error;
 mod files;
+mod hardening;
 mod import_export;
 mod io;
 mod license;
@@ -35,20 +35,8 @@ use std::fs;
 #[allow(unused_imports)] // needed for get_webview_window in run() event handler
 use tauri::Manager;
 
-/// Redact panic message contents that may contain secrets, and cap length.
-/// Used by the panic hook before persisting to crash.log.
-#[cfg(not(target_os = "android"))]
-fn redact_panic_message(msg: &str) -> String {
-    let m = msg.to_lowercase();
-    const SECRET_PATTERNS: &[&str] = &[
-        "password", " key", "dek", "kek", "hmac", "secret", "token", "recovery",
-    ];
-    if SECRET_PATTERNS.iter().any(|p| m.contains(p)) {
-        return "[REDACTED — message contained possible secret pattern]".to_string();
-    }
-    msg.chars().take(256).collect()
-}
-
+// Panic payloads may contain client names, document text or credentials.
+// Persist only source location and time, never the payload.
 #[cfg(mobile)]
 #[tauri::mobile_entry_point]
 pub fn mobile_entry() {
@@ -63,7 +51,8 @@ pub fn run() {
     // SEC-SE-4 (audit): disable_core_dumps now returns Result<(), String>; we log
     // the failure but continue startup — refusing to launch on a setrlimit failure
     // would brick the app on platforms where the call is denied (e.g. some CI
-    // sandboxes), and the in-memory DEK is still zeroized via Drop on crash.
+    // sandboxes). Normal session teardown wipes the DEK; process aborts do not
+    // run Rust destructors, so Drop is not a substitute for dump suppression.
     if let Err(e) = security::disable_core_dumps() {
         eprintln!("[LexFlow] SECURITY: disable_core_dumps failed: {}", e);
     }
@@ -83,21 +72,10 @@ pub fn run() {
                 .location()
                 .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
                 .unwrap_or_else(|| "unknown location".to_string());
-            let raw_message = if let Some(s) = info.payload().downcast_ref::<&str>() {
-                s.to_string()
-            } else if let Some(s) = info.payload().downcast_ref::<String>() {
-                s.clone()
-            } else {
-                "unknown panic payload".to_string()
-            };
-            // SECURITY: redact possible secret patterns and cap length BEFORE persist.
-            let message = redact_panic_message(&raw_message);
-
             let entry = format!(
-                "\n═══ CRASH {} ═══\nLocation: {}\nMessage: {}\nThread: {:?}\n",
+                "\n═══ CRASH {} ═══\nLocation: {}\nThread: {:?}\n",
                 timestamp,
                 location,
-                message,
                 std::thread::current().name().unwrap_or("unnamed"),
             );
 
@@ -162,19 +140,73 @@ pub fn run() {
     let _ = fs::create_dir_all(&data_dir);
     let _ = fs::create_dir_all(&security_dir);
 
+    #[cfg(all(unix, not(target_os = "android")))]
+    {
+        static INSTANCE_LOCK: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
+        match hardening::lock_instance_file(&security_dir.join(".lexflow-instance.lock")) {
+            Ok(file) => {
+                let _ = INSTANCE_LOCK.set(file);
+            }
+            Err(error) => {
+                eprintln!("[LexFlow] {error}");
+                return;
+            }
+        }
+    }
+
     #[cfg(not(target_os = "android"))]
     setup::migrate_old_identifier(&data_dir, &security_dir);
 
     setup::migrate_security_files(&data_dir, &security_dir);
+
+    #[cfg(target_os = "windows")]
+    if let Err(error) = bio::remove_legacy_windows_bio(&data_dir) {
+        // Leave manual password access available and expose incomplete cleanup
+        // through check_bio_status. No credential contents are read or logged.
+        eprintln!("[LexFlow] {error}");
+    }
 
     #[cfg(not(target_os = "android"))]
     let data_dir_for_scheduler = data_dir.clone();
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        )
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("offline-navigation")
+                .on_navigation(|webview, url| {
+                    #[cfg(debug_assertions)]
+                    if webview
+                        .app_handle()
+                        .config()
+                        .build
+                        .dev_url
+                        .as_ref()
+                        .is_some_and(|dev| url.origin() == dev.origin())
+                    {
+                        return true;
+                    }
+                    #[cfg(not(debug_assertions))]
+                    let _ = webview;
+                    hardening::navigation_allowed(url)
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(if cfg!(debug_assertions) {
+                    tauri_plugin_log::log::LevelFilter::Debug
+                } else {
+                    // Dependency traces include local account and activity metadata.
+                    tauri_plugin_log::log::LevelFilter::Warn
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_shell::init());
 
     #[cfg(not(target_os = "android"))]
@@ -193,7 +225,7 @@ pub fn run() {
             }
             #[cfg(target_os = "android")]
             {
-                let id = platform::init_android_device_id()
+                let id = platform::init_android_device_id(app.handle())
                     .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
                 platform::ANDROID_DEVICE_ID_CACHE.set(id).ok();
             }
@@ -258,6 +290,7 @@ pub fn run() {
             settings::save_settings,
             // Biometrics
             bio::check_bio,
+            bio::check_bio_status,
             bio::has_bio_saved,
             bio::save_bio,
             bio::bio_login,

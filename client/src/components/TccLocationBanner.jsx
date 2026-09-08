@@ -13,8 +13,6 @@ const STORAGE_KEY = 'tcc-warning-dismissed';
  *
  * The banner is dismissable — power users can ignore it.  The dismissed
  * state is stored in localStorage so it persists across reload/sessions.
- * Re-checks the location when the window regains focus (so a banner
- * can disappear after the user moves the app to /Applications).
  */
 export default function TccLocationBanner() {
   const [warning, setWarning] = useState(null);
@@ -38,24 +36,6 @@ export default function TccLocationBanner() {
     return () => {
       if (typeof unsub === 'function') unsub();
     };
-  }, [dismissed]);
-
-  // Re-check on focus: if the app was moved to /Applications between sessions
-  // or runtime, the warning should disappear automatically.
-  useEffect(() => {
-    if (dismissed) return;
-
-    const recheck = async () => {
-      try {
-        const loc = await api.checkTccLocation?.();
-        if (loc && loc.ok) setWarning(null);
-      } catch {
-        // ignore — keep current state
-      }
-    };
-
-    window.addEventListener('focus', recheck);
-    return () => window.removeEventListener('focus', recheck);
   }, [dismissed]);
 
   if (!warning || dismissed) return null;

@@ -1,3 +1,5 @@
+import { getSessionGeneration } from '../utils/sessionData';
+import { useSessionState } from '../hooks/useSessionState';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import {
@@ -29,7 +31,7 @@ import ModalOverlay from '../components/ModalOverlay';
 import * as api from '../tauri-api';
 import Toggle from '../components/Toggle';
 
-const RECOVERY_STORE_KEY = 'lexflow_pending_recovery';
+
 
 const PREAVVISO_OPTIONS = [
   { value: 0, label: 'Al momento' },
@@ -47,7 +49,6 @@ const AUTOLOCK_OPTIONS = [
   { value: 10, label: '10 min' },
   { value: 15, label: '15 min' },
   { value: 30, label: '30 min' },
-  { value: 0, label: 'Mai' },
 ];
 
 /* ── Factory Reset Modal ── */
@@ -207,39 +208,52 @@ FactoryResetModal.propTypes = {
 };
 
 /* ── Export Backup Modal ── */
-function ExportBackupModal({ onClose }) {
+export function ExportBackupModal({ onClose }) {
+  const [currentPassword, setCurrentPassword] = useState('');
   const [pwd, setPwd] = useState('');
   const [pwdConfirm, setPwdConfirm] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const exportInFlight = useRef(false);
   const doExport = async () => {
+    if (exportInFlight.current) return;
     setError('');
+    if (!currentPassword) { setError('Inserisci la Master Password attuale per autorizzare il backup.'); return; }
     if (!pwd) { setError('Inserisci una password per il backup.'); return; }
     if (pwd.length < 12) { setError('Password troppo corta (min. 12 caratteri).'); return; }
     if (pwd !== pwdConfirm) { setError('Le password non corrispondono.'); return; }
     if (!api.exportVault) { toast.error('Servizio backup non disponibile'); return; }
+    exportInFlight.current = true;
     setLoading(true);
     const toastId = toast.loading('Generazione backup…');
     try {
-      const result = await api.exportVault(pwd);
+      const result = await api.exportVault(pwd, currentPassword);
       if (result?.cancelled) { toast.dismiss(toastId); return; }
       if (result?.success) {
         toast.success('Backup esportato con successo!', { id: toastId });
         onClose();
         return;
       }
-      toast.error('Errore: ' + (result?.error || 'Sconosciuto'), { id: toastId });
-    } catch {
-      toast.error('Errore critico durante il backup', { id: toastId });
+      const message = result?.error || 'Esportazione del backup non riuscita.';
+      setError(message);
+      toast.error(message, { id: toastId });
+    } catch (err) {
+      const message = typeof err === 'string' ? err : err?.message || 'Impossibile esportare il backup. Controlla le password e la destinazione.';
+      setError(message);
+      toast.error(message, { id: toastId });
     } finally {
+      setCurrentPassword('');
+      setPwd('');
+      setPwdConfirm('');
+      exportInFlight.current = false;
       setLoading(false);
     }
   };
 
   return (
-    <ModalOverlay onClose={onClose} labelledBy="export-backup-title" zIndex={200}>
+    <ModalOverlay onClose={onClose} labelledBy="export-backup-title" zIndex={200} focusTrap>
       <div className="modal-card modal-card-sm">
         <div className="modal-header-gradient modal-header-gradient-primary">
           <div className="flex items-center justify-between">
@@ -259,18 +273,27 @@ function ExportBackupModal({ onClose }) {
         </div>
         <div className="px-8 py-6 space-y-4">
           <p className="text-text-muted text-xs leading-relaxed">
-            Scegli una password per proteggere il file di backup. Ti servirà per importarlo su un altro dispositivo.
+            Inserisci la Master Password attuale per autorizzare l’esportazione. Scegli poi una password per il file di backup: può essere diversa e servirà per importarlo su un altro dispositivo.
           </p>
           <div className="space-y-3">
+            <label className="block text-xs text-text-dim">
+              Master Password attuale
+              <input type="password" autoComplete="off" disabled={loading} value={currentPassword}
+                onChange={e => { setCurrentPassword(e.target.value); setError(''); }} autoFocus
+                className="mt-1 w-full py-3 px-3 rounded-xl bg-surface border border-border text-text"
+                aria-invalid={!!error} aria-describedby={error ? 'export-backup-error' : undefined} />
+            </label>
             <div className="relative">
               <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
               <input
                 type={showPwd ? 'text' : 'password'}
                 className="w-full py-3 pl-10 pr-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
                 placeholder="Password backup…"
+                aria-label="Password del backup"
+                autoComplete="off"
+                disabled={loading}
                 value={pwd}
                 onChange={e => { setPwd(e.target.value); setError(''); }}
-                autoFocus
                 aria-invalid={!!error}
                 aria-describedby={error ? 'export-backup-error' : undefined}
               />
@@ -290,6 +313,9 @@ function ExportBackupModal({ onClose }) {
                 type={showPwd ? 'text' : 'password'}
                 className="w-full py-3 pl-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
                 placeholder="Conferma password…"
+                aria-label="Conferma password del backup"
+                autoComplete="off"
+                disabled={loading}
                 value={pwdConfirm}
                 onChange={e => { setPwdConfirm(e.target.value); setError(''); }}
                 aria-invalid={!!error}
@@ -466,7 +492,7 @@ function ImportBackupModal({ onClose }) {
 ImportBackupModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── Biometric Configuration / Deactivation Modal ── */
-function BioResetConfirmModal({ onClose, bioStatus }) {
+export function BioResetConfirmModal({ onClose, bioStatus }) {
   // If bio is active → flow: confirm-deactivate → done-deactivated
   // If bio is available (not configured) → flow: enroll (ask password → saveBio → done)
   const isActive = bioStatus === 'active';
@@ -475,6 +501,16 @@ function BioResetConfirmModal({ onClose, bioStatus }) {
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const [bioPlatform, setBioPlatform] = useState('');
+  const enrollInFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    api.getPlatform().then(value => { if (mounted.current) setBioPlatform(value); }).catch(() => {});
+    return () => { mounted.current = false; };
+  }, []);
+  const biometricName = bioPlatform === 'macos' ? 'Touch ID' : 'la biometria del dispositivo';
 
   // Deactivate biometrics
   const doDeactivate = async () => {
@@ -488,28 +524,35 @@ function BioResetConfirmModal({ onClose, bioStatus }) {
     setLoading(false);
   };
 
-  // Enroll biometrics: verify password → saveBio (triggers native popup) → done
+  // Keep the password only for this requested operation, never in App or onboarding.
   const doEnroll = async () => {
+    if (enrollInFlight.current) return;
     setError('');
     if (!pwd.trim()) { setError('Inserisci la Master Password.'); return; }
+    enrollInFlight.current = true;
     setLoading(true);
+    const providedPassword = pwd;
+    const generation = getSessionGeneration();
+    setPwd('');
     try {
-      // Verify the password is correct first
-      const verify = await api.verifyVaultPassword(pwd);
+      if (await api.getPlatform() === 'windows') throw new Error('Accesso con Master Password');
+      if (!await api.checkBio()) throw new Error('Biometria non disponibile');
+      const verify = await api.verifyVaultPassword(providedPassword);
+      if (!mounted.current || generation !== getSessionGeneration()) return;
       if (!verify?.valid) {
         setError(verify?.error || 'Password errata.');
-        setLoading(false);
         return;
       }
-      // Enroll biometrics with the password (this triggers the native biometric popup)
-      await api.saveBio(pwd);
+      await api.saveBio(providedPassword);
+      if (!mounted.current || generation !== getSessionGeneration()) return;
       toast.success("Biometria configurata con successo!");
-      // refreshBioStatus is invoked once by the parent's onClose handler — avoid double-fetch.
       onClose();
     } catch {
-      setError('Errore nella configurazione biometrica.');
+      if (mounted.current) setError('Errore nella configurazione biometrica.');
+    } finally {
+      enrollInFlight.current = false;
+      if (mounted.current) setLoading(false);
     }
-    setLoading(false);
   };
 
   // Close after deactivation — parent's onClose handler refreshes bio status.
@@ -540,7 +583,7 @@ function BioResetConfirmModal({ onClose, bioStatus }) {
   const defaultIcon = <Fingerprint size={22} className="text-danger" />;
 
   return (
-    <ModalOverlay onClose={onClose} labelledBy="bio-modal-title" zIndex={200}>
+    <ModalOverlay onClose={onClose} labelledBy="bio-modal-title" zIndex={200} focusTrap>
       <div className="modal-card modal-card-sm">
         <div className={`modal-header-gradient ${stepGradientClass[step] || defaultGradientClass}`}>
         <div className="flex items-center justify-between">
@@ -609,7 +652,7 @@ function BioResetConfirmModal({ onClose, bioStatus }) {
         <>
           <div className="px-8 py-6 space-y-4">
             <p className="text-text-muted text-xs leading-relaxed">
-              Inserisci la tua Master Password per configurare l'accesso biometrico. Dopo la verifica, il sistema ti chiederà di confermare con Face ID / Touch ID.
+              Inserisci la tua Master Password per configurare l'accesso biometrico. Dopo la verifica, il sistema ti chiederà di confermare con {biometricName}.
             </p>
             <div className="relative">
               <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
@@ -617,6 +660,9 @@ function BioResetConfirmModal({ onClose, bioStatus }) {
                 type={showPwd ? 'text' : 'password'}
                 className="w-full py-3 pl-10 pr-10 rounded-xl bg-surface border border-border text-text placeholder:text-text-dim/40 text-sm focus:border-primary/40 outline-none transition-colors"
                 placeholder="Master Password…"
+                aria-label="Master Password per la biometria"
+                autoComplete="off"
+                disabled={loading}
                 value={pwd}
                 onChange={e => { setPwd(e.target.value); setError(''); }}
                 autoFocus
@@ -652,7 +698,11 @@ function BioResetConfirmModal({ onClose, bioStatus }) {
 
 BioResetConfirmModal.propTypes = { onClose: PropTypes.func.isRequired, bioStatus: PropTypes.string };
 
-export default function SettingsPage({ onLock }) {
+export default function SettingsPage({ onLock, onSettingsChange }) {
+  const saveSettings = useCallback(async (updated) => {
+    await api.saveSettings(updated);
+    onSettingsChange?.(updated);
+  }, [onSettingsChange]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsLoadError, setSettingsLoadError] = useState(false);
   const [privacyEnabled, setPrivacyEnabled] = useState(true);
@@ -680,12 +730,8 @@ export default function SettingsPage({ onLock }) {
   const [changePwdLoading, setChangePwdLoading] = useState(false);
   const [changePwdError, setChangePwdError] = useState('');
   const [changePwdSuccess, setChangePwdSuccess] = useState('');
-  // Recovery key persists across remounts via sessionStorage until the user
-  // explicitly confirms they have saved it. Losing this key without saving it
-  // would lock the user out of vault recovery.
-  const [recoveryKey, setRecoveryKey] = useState(() => {
-    try { return sessionStorage.getItem(RECOVERY_STORE_KEY) || ''; } catch { return ''; }
-  });
+  // Retain only during this unlocked session; never persist a recovery secret.
+  const [recoveryKey, setRecoveryKey] = useSessionState('recoveryKey', '');
   const [confirmedSaved, setConfirmedSaved] = useState(false);
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [vaultHealth, setVaultHealth] = useState(null);
@@ -696,29 +742,23 @@ export default function SettingsPage({ onLock }) {
 
   // Biometrics status: 'checking' | 'active' | 'available' | 'unavailable'
   const [bioStatus, setBioStatus] = useState('checking');
+  const [bioAvailability, setBioAvailability] = useState(null);
+  const windowsPasswordOnly = platform === 'Windows' || bioAvailability?.reason?.startsWith('windows_hello_');
   const refreshBioStatus = useCallback(async () => {
     try {
-      const available = await api.checkBio();
-      if (!available) { setBioStatus('unavailable'); return; }
+      const diagnostic = await api.checkBioStatus();
+      setBioAvailability(diagnostic);
+      if (!diagnostic.available) { setBioStatus('unavailable'); return; }
       const saved = await api.hasBioSaved();
       setBioStatus(saved ? 'active' : 'available');
-    } catch { setBioStatus('unavailable'); }
+    } catch { setBioAvailability(null); setBioStatus('unavailable'); }
   }, []);
-
-  // Persist the recovery key in sessionStorage so a stray re-render or
-  // accidental nav back to Settings doesn't lose the irreplaceable secret.
-  useEffect(() => {
-    try {
-      if (recoveryKey) sessionStorage.setItem(RECOVERY_STORE_KEY, recoveryKey);
-    } catch { /* sessionStorage unavailable */ }
-  }, [recoveryKey]);
 
   const onConfirmSaved = useCallback(() => {
     if (!confirmedSaved) return;
-    try { sessionStorage.removeItem(RECOVERY_STORE_KEY); } catch { /* ignore */ }
     setRecoveryKey('');
     setConfirmedSaved(false);
-  }, [confirmedSaved]);
+  }, [confirmedSaved, setRecoveryKey]);
 
   // Vault-health polling: only when document is visible to avoid burning
   // resources / triggering audit-log writes while the app is in the background.
@@ -772,17 +812,10 @@ export default function SettingsPage({ onLock }) {
     if (settings.lawyerTitle) setLawyerTitle(settings.lawyerTitle);
   }, []);
 
-  const loadSettings = useCallback(async () => {
-    setSettingsLoadError(false);
-    try {
-      const s = await api.getSettings();
-      applySettings(s);
-      setSettingsLoaded(true);
-    } catch {
-      // Don't apply defaults blindly — surface a Retry to the user.
-      setSettingsLoadError(true);
-    }
-  }, [applySettings]);
+  const loadSettings = useCallback(() => api.getSettings().then(s => {
+    applySettings(s);
+    setSettingsLoaded(true);
+  }).catch(() => setSettingsLoadError(true)), [applySettings]);
 
   useEffect(() => {
     let mounted = true;
@@ -817,10 +850,11 @@ export default function SettingsPage({ onLock }) {
       .catch(() => { /* silent */ });
 
     // Check biometrics status asynchronously
-    api.checkBio()
-      .then(available => {
+    api.checkBioStatus()
+      .then(diagnostic => {
         if (!mounted) return undefined;
-        if (!available) { setBioStatus('unavailable'); return undefined; }
+        setBioAvailability(diagnostic);
+        if (!diagnostic.available) { setBioStatus('unavailable'); return undefined; }
         return api.hasBioSaved().then(saved => { if (mounted) setBioStatus(saved ? 'active' : 'available'); });
       })
       .catch(() => { if (mounted) setBioStatus('unavailable'); });
@@ -857,13 +891,13 @@ export default function SettingsPage({ onLock }) {
     const prev = privacyEnabled;
     setPrivacyEnabled(val);
     try {
-      await api.saveSettings({ ...buildFullSettings(), privacyBlurEnabled: val });
+      await saveSettings({ ...buildFullSettings(), privacyBlurEnabled: val });
       toast.success(val ? 'Privacy Blur Attivato' : 'Privacy Blur Disattivato');
     } catch {
       toast.error('Errore salvataggio');
       setPrivacyEnabled(prev);
     }
-  }, [privacyEnabled, buildFullSettings]);
+  }, [privacyEnabled, buildFullSettings, saveSettings]);
 
   const handleScreenshotToggle = useCallback(async (val) => {
     const prev = screenshotProtection;
@@ -872,7 +906,7 @@ export default function SettingsPage({ onLock }) {
     // roll back BOTH the persisted setting and the in-memory state so they
     // can never drift out of agreement.
     try {
-      await api.saveSettings({ ...buildFullSettings(), screenshotProtection: val });
+      await saveSettings({ ...buildFullSettings(), screenshotProtection: val });
     } catch {
       toast.error('Errore salvataggio');
       setScreenshotProtection(prev);
@@ -885,32 +919,33 @@ export default function SettingsPage({ onLock }) {
       toast.error('Errore protezione schermo: ripristino valore precedente');
       setScreenshotProtection(prev);
       // Best-effort rollback of persisted setting; ignore rollback failures.
-      try { await api.saveSettings({ ...buildFullSettings(), screenshotProtection: prev }); } catch { /* ignore */ }
+      try { await saveSettings({ ...buildFullSettings(), screenshotProtection: prev }); } catch { /* ignore */ }
     }
-  }, [screenshotProtection, buildFullSettings]);
+  }, [screenshotProtection, buildFullSettings, saveSettings]);
 
   const handleAutolockChange = useCallback(async (opt) => {
     const prev = autolockMinutes;
     setAutolockMinutes(opt.value);
     try {
       await api.setAutolockMinutes(opt.value);
-      await api.saveSettings({ ...buildFullSettings(), autolockMinutes: opt.value });
-      toast.success(opt.value === 0 ? 'Blocco automatico disabilitato' : `Blocco dopo ${opt.label} di inattività`);
+      await saveSettings({ ...buildFullSettings(), autolockMinutes: opt.value });
+      toast.success(`Blocco dopo ${opt.label} di inattività`);
     } catch {
       toast.error('Errore');
       setAutolockMinutes(prev);
+      await api.setAutolockMinutes(prev).catch(() => {});
     }
-  }, [autolockMinutes, buildFullSettings]);
+  }, [autolockMinutes, buildFullSettings, saveSettings]);
 
   // Funzione per salvare le impostazioni delle notifiche
   const saveNotifySettings = useCallback(async (updates) => {
     try {
-      await api.saveSettings({ ...buildFullSettings(), ...updates });
+      await saveSettings({ ...buildFullSettings(), ...updates });
       toast.success("Preferenze notifiche aggiornate");
     } catch {
       toast.error("Errore nel salvataggio");
     }
-  }, [buildFullSettings]);
+  }, [buildFullSettings, saveSettings]);
 
   const handleNotifyToggle = useCallback((val) => {
     setNotifyEnabled(val);
@@ -926,13 +961,13 @@ export default function SettingsPage({ onLock }) {
     const prev = lawyerTitle;
     setLawyerTitle(newTitle);
     try {
-      await api.saveSettings({ ...buildFullSettings(), lawyerTitle: newTitle });
+      await saveSettings({ ...buildFullSettings(), lawyerTitle: newTitle });
       toast.success(`Titolo aggiornato: ${newTitle}`);
     } catch {
       toast.error('Errore salvataggio');
       setLawyerTitle(prev);
     }
-  }, [lawyerTitle, buildFullSettings]);
+  }, [lawyerTitle, buildFullSettings, saveSettings]);
 
   // Change Password — full validation including the new "confirm" field.
   const handleChangePassword = useCallback(async () => {
@@ -983,7 +1018,7 @@ export default function SettingsPage({ onLock }) {
     } catch (e) {
       toast?.error(String(e));
     }
-  }, []);
+  }, [setRecoveryKey]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-10">
@@ -1006,7 +1041,7 @@ export default function SettingsPage({ onLock }) {
           </div>
           <button
             type="button"
-            onClick={loadSettings}
+            onClick={() => { setSettingsLoadError(false); void loadSettings(); }}
             className="px-4 py-2 rounded-xl bg-surface border border-border text-text text-xs font-bold uppercase tracking-widest hover:bg-card transition-colors"
           >
             Riprova
@@ -1129,13 +1164,17 @@ export default function SettingsPage({ onLock }) {
         {/* Recovery Key */}
         <div className="space-y-3">
           <label className="text-2xs font-bold text-text-dim uppercase tracking-wider block">Chiave di Emergenza</label>
-          <p className="text-xs text-text-dim">Genera una chiave di recupero per sbloccare il vault se dimentichi la password. Conservala in un luogo sicuro.</p>
+          <p className="text-xs text-text-dim">Genera una chiave di recupero per sbloccare il vault se dimentichi la password. Conservala in un luogo sicuro prima di bloccare o chiudere l’app.</p>
           {recoveryKey ? (
             <div className="bg-surface border border-primary-soft rounded-xl p-4 space-y-3">
               <p className="text-center font-mono text-lg tracking-[4px] text-primary font-bold select-all">{recoveryKey}</p>
               <p className="text-xs text-text-dim text-center">Copia e conserva questa chiave. Non verrà mostrata di nuovo.</p>
               <button
-                onClick={() => { api.secureCopy?.(recoveryKey); toast?.success('Chiave copiata (auto-cancellazione in 30s)'); }}
+                onClick={async () => {
+                  const copied = await api.secureCopy(recoveryKey);
+                  if (copied) toast.success('Chiave copiata. Cancellazione degli appunti dopo 30s, se consentita dal sistema.');
+                  else toast.error('Copia non riuscita. Conserva la chiave manualmente.');
+                }}
                 className="w-full px-4 py-2 rounded-xl bg-primary-soft text-primary text-xs font-bold uppercase tracking-widest"
               >
                 Copia negli Appunti
@@ -1242,33 +1281,33 @@ export default function SettingsPage({ onLock }) {
             <h2 className="text-lg font-bold text-text">Sicurezza & Privacy</h2>
           </div>
 
-          <div className="flex items-center justify-between group">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-4 group">
+            <div className="space-y-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 {privacyEnabled ? <Eye size={16} className="text-primary" /> : <EyeOff size={16} className="text-text-dim" />}
-                <span className="font-medium text-text">Privacy Blur</span>
+                <span id="privacy-toggle-label" className="font-medium text-text">Privacy Blur</span>
                 <span className="text-2xs bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/20">CONSIGLIATO</span>
               </div>
               <p className="text-xs text-text-muted max-w-md">
                 Sfoca automaticamente il contenuto dell'app quando perdi il focus.
               </p>
             </div>
-            <Toggle checked={privacyEnabled} onChange={handlePrivacyToggle} />
+            <Toggle checked={privacyEnabled} onChange={handlePrivacyToggle} ariaLabelledBy="privacy-toggle-label" />
           </div>
 
           {/* Anti-Screenshot */}
-          <div className="flex items-center justify-between group pt-4 border-t border-border">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-4 group pt-4 border-t border-border">
+            <div className="space-y-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 {screenshotProtection ? <Camera size={16} className="text-primary" /> : <CameraOff size={16} className="text-text-dim" />}
-                <span className="font-medium text-text">Blocco Screenshot</span>
+                <span id="screenshot-toggle-label" className="font-medium text-text">Blocco Screenshot</span>
                 <span className="text-2xs bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/20">SICUREZZA</span>
               </div>
               <p className="text-xs text-text-muted max-w-md">
                 Impedisce la cattura dello schermo (screenshot, registrazioni, condivisione schermo).
               </p>
             </div>
-            <Toggle checked={screenshotProtection} onChange={handleScreenshotToggle} />
+            <Toggle checked={screenshotProtection} onChange={handleScreenshotToggle} ariaLabelledBy="screenshot-toggle-label" />
           </div>
 
           {/* Auto-Lock Timer */}
@@ -1314,8 +1353,17 @@ export default function SettingsPage({ onLock }) {
               <Lock size={18} className="text-primary transition-transform group-hover:-rotate-12" />
               <span className="text-sm font-bold uppercase tracking-wider">Blocca Vault Ora</span>
             </button>
-            <button
+            {windowsPasswordOnly ? (
+              <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-surface">
+                <KeyRound size={20} className="text-text-dim flex-shrink-0" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-text">Accesso con Master Password</p>
+                  <p className="text-xs text-text-muted">Richiesta a ogni sblocco dell’archivio.</p>
+                </div>
+              </div>
+            ) : <button
               onClick={openBioResetConfirm}
+              disabled={bioStatus === 'checking' || bioStatus === 'unavailable'}
               className={`flex items-center gap-4 p-4 rounded-xl border transition-colors group relative ${
                 {
                   active: 'bg-success-soft hover:bg-success-soft border-success-border',
@@ -1343,14 +1391,27 @@ export default function SettingsPage({ onLock }) {
                     checking: 'text-text-dim animate-pulse',
                   }[bioStatus] || 'text-text-dim'
                 }`}>
-                  {bioStatus === 'active' && 'Attiva — Face ID / Touch ID'}
+                  {bioStatus === 'active' && `Attiva — ${platform === 'macOS' ? 'Touch ID' : 'biometria del dispositivo'}`}
                   {bioStatus === 'available' && 'Non configurata'}
-                  {bioStatus === 'unavailable' && 'Non disponibile'}
+                  {bioStatus === 'unavailable' && (bioAvailability?.reason === 'build_not_authorized'
+                    ? 'Configurazione dell’app richiesta'
+                    : platform === 'Android' ? 'Solo Master Password' : 'Non disponibile')}
                   {bioStatus === 'checking' && 'Verifica…'}
                 </span>
               </div>
-            </button>
+            </button>}
           </div>
+          {bioAvailability?.reason === 'windows_hello_cleanup_failed' && (
+            <p role="alert" className="text-xs text-warning leading-relaxed">
+              Non è stato possibile eliminare la vecchia credenziale di sblocco. Riavvia LexFlow per riprovare. L’accesso usa soltanto la Master Password.
+            </p>
+          )}
+          {bioStatus === 'unavailable' && bioAvailability?.reason === 'build_not_authorized' && (
+            <p className="text-xs text-text-muted leading-relaxed">
+              {bioAvailability.deviceReady ? 'Touch ID è rilevato su questo Mac. ' : ''}
+              Questa copia di LexFlow non dispone della firma Apple necessaria per usare il Portachiavi biometrico protetto. Continua con la Master Password.
+            </p>
+          )}
         </section>
 
         <section className="glass-card p-6 space-y-6">
@@ -1360,17 +1421,17 @@ export default function SettingsPage({ onLock }) {
           </div>
 
           <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
                   {notifyEnabled ? <Bell size={16} className="text-primary" /> : <BellOff size={16} className="text-text-dim" />}
-                  <span className="font-medium text-text">Avvisi Agenda e Scadenze</span>
+                  <span id="notifications-toggle-label" className="font-medium text-text">Avvisi Agenda e Scadenze</span>
                 </div>
                 <p className="text-xs text-text-muted max-w-md">
                   Ricevi notifiche desktop per udienze, scadenze e impegni in agenda.
                 </p>
               </div>
-              <Toggle checked={notifyEnabled} onChange={handleNotifyToggle} />
+              <Toggle checked={notifyEnabled} onChange={handleNotifyToggle} ariaLabelledBy="notifications-toggle-label" />
             </div>
 
             <div className="pt-4 border-t border-border">
@@ -1514,7 +1575,7 @@ export default function SettingsPage({ onLock }) {
                   </div>
                   <div>
                     <h3 id="regen-recovery-title" className="text-xl font-bold text-text">Rigenera Chiave di Recovery</h3>
-                    <p className="text-xs text-text-dim mt-0.5">La chiave attuale verrà invalidata</p>
+                    <p className="text-xs text-text-dim mt-0.5">La chiave attuale verrà sostituita per questo archivio</p>
                   </div>
                 </div>
                 <button onClick={() => setShowRegenerateConfirm(false)} aria-label="Chiudi" className="p-2 hover:bg-card-hover rounded-xl text-text-dim transition-colors group">
@@ -1524,7 +1585,7 @@ export default function SettingsPage({ onLock }) {
             </div>
             <div className="px-8 py-6">
               <p className="text-text-muted text-xs leading-relaxed">
-                Stai per generare una nuova chiave di recovery. <span className="text-text font-semibold">La chiave attuale verrà invalidata</span> e non potrà più essere usata per sbloccare il vault. Procedere?
+                Stai per generare una nuova chiave di recovery. <span className="text-text font-semibold">La chiave attuale non sbloccherà più questo archivio</span>, ma potrà ancora aprire le copie precedenti. Procedere?
               </p>
             </div>
             <div className="modal-footer">
@@ -1547,5 +1608,6 @@ export default function SettingsPage({ onLock }) {
 }
 
 SettingsPage.propTypes = {
+  onSettingsChange: PropTypes.func,
   onLock: PropTypes.func,
 };

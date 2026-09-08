@@ -1,0 +1,21 @@
+{
+  "completed_at": "2026-09-08T00:22:11.059840+02:00",
+  "removed": [
+    "/private/tmp/lexflow-nohello-windows-2026-09-07",
+    "/private/tmp/lexflow-nohello-native-target",
+    "/private/tmp/lexflow-nohello-npm-cache",
+    "/private/tmp/lexflow-nohello-npm-client-cache",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/node_modules",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/client/node_modules",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/client/dist",
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen"
+  ],
+  "icloud_generated_files_observed": [
+    "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/client/node_modules/html2canvas/dist/lib/css/types/angle.js"
+  ],
+  "system_services_stopped": false,
+  "real_user_profiles_touched": false,
+  "license_registry_unchanged": true,
+  "generator_and_private_issuer_preserved": true,
+  "installed_mac_unchanged": true
+}

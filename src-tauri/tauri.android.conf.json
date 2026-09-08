@@ -1,9 +1,5 @@
 {
   "bundle": {
-    "externalBin": [],
-    "resources": [
-      "templates/*",
-      "fonts/*"
-    ]
+    "externalBin": []
   }
 }

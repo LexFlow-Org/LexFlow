@@ -1,0 +1,612 @@
+{
+  "removed_paths": [
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/target",
+      "logical_bytes": 23892658365
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen",
+      "logical_bytes": 42903516
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/client/dist",
+      "logical_bytes": 4691655
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/scripts/__pycache__",
+      "logical_bytes": 59620
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/binaries/typst-aarch64-apple-darwin 2",
+      "logical_bytes": 33631720
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/binaries/typst-x86_64-apple-darwin 2",
+      "logical_bytes": 0
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-hook-expanded.nsi",
+      "logical_bytes": 1570
+    },
+    {
+      "path": "/private/tmp/lexflow-clippy.log",
+      "logical_bytes": 14630
+    },
+    {
+      "path": "/private/tmp/lexflow-cargo-update.log",
+      "logical_bytes": 1246
+    },
+    {
+      "path": "/private/tmp/lexflow-unused-imports.mjs",
+      "logical_bytes": 1040
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-final-clippy.log",
+      "logical_bytes": 213
+    },
+    {
+      "path": "/private/tmp/lexflow-rust-delivery.log",
+      "logical_bytes": 29086
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-universal-build.log",
+      "logical_bytes": 5120
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-package",
+      "logical_bytes": 1691
+    },
+    {
+      "path": "/private/tmp/lexflow-baseline-locks-path",
+      "logical_bytes": 80
+    },
+    {
+      "path": "/private/tmp/lexflow-preview-build.log",
+      "logical_bytes": 3697
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-intel-bundle-1.0.1.log",
+      "logical_bytes": 457
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-webview2-feed.json",
+      "logical_bytes": 303609
+    },
+    {
+      "path": "/private/tmp/lexflow-dmg-detach.log",
+      "logical_bytes": 17
+    },
+    {
+      "path": "/private/tmp/lexflow-npm-advisories.json",
+      "logical_bytes": 806864
+    },
+    {
+      "path": "/private/tmp/lexflow-client-build-final.log",
+      "logical_bytes": 2308
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-installer-acl-extract.log",
+      "logical_bytes": 664
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-hook-check.nsi",
+      "logical_bytes": 309
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-bundle.log",
+      "logical_bytes": 2084
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-webview2-extracted",
+      "logical_bytes": 0
+    },
+    {
+      "path": "/private/tmp/lexflow-fmt-1.0.1.log",
+      "logical_bytes": 939
+    },
+    {
+      "path": "/private/tmp/lexflow-1.0.1-rust-full-suite.log",
+      "logical_bytes": 30209
+    },
+    {
+      "path": "/private/tmp/lexflow-clean-client.py",
+      "logical_bytes": 5002
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-system-root-certs.pem",
+      "logical_bytes": 0
+    },
+    {
+      "path": "/private/tmp/lexflow-typst-release.json",
+      "logical_bytes": 21528
+    },
+    {
+      "path": "/private/tmp/lexflow-rust-warning-updates.log",
+      "logical_bytes": 246
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-intel-build-1.0.1.log",
+      "logical_bytes": 12753
+    },
+    {
+      "path": "/private/tmp/lexflow-typst-package-check",
+      "logical_bytes": 33717032
+    },
+    {
+      "path": "/private/tmp/lexflow-frontend-lint-final.log",
+      "logical_bytes": 14371
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-webview2-signature.log",
+      "logical_bytes": 4044
+    },
+    {
+      "path": "/private/tmp/lexflow-v8-targeted.log",
+      "logical_bytes": 1270
+    },
+    {
+      "path": "/private/tmp/lexflow-rust-audit-updated.json",
+      "logical_bytes": 46184
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-separate-verification.json",
+      "logical_bytes": 15272
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-installer-list.txt",
+      "logical_bytes": 3184
+    },
+    {
+      "path": "/private/tmp/lexflow-cargo-fetch-updated.log",
+      "logical_bytes": 555
+    },
+    {
+      "path": "/private/tmp/lexflow-rust-audit.json",
+      "logical_bytes": 63716
+    },
+    {
+      "path": "/private/tmp/lexflow-pdf-tests.log",
+      "logical_bytes": 2298
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-installer-verified",
+      "logical_bytes": 911215725
+    },
+    {
+      "path": "/private/tmp/lexflow-backend-cleanup.py",
+      "logical_bytes": 11131
+    },
+    {
+      "path": "/private/tmp/lexflow-typst-0.15.1-x86_64.tar.xz",
+      "logical_bytes": 15635600
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-sdk.log",
+      "logical_bytes": 214
+    },
+    {
+      "path": "/private/tmp/lexflow-license-public-1.0.1.json",
+      "logical_bytes": 471
+    },
+    {
+      "path": "/private/tmp/lexflow-qpdf-universal",
+      "logical_bytes": 178293545
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-build-1.0.1.json",
+      "logical_bytes": 131
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-arm-build-1.0.1.log",
+      "logical_bytes": 14294
+    },
+    {
+      "path": "/private/tmp/lexflow-audit-cargo",
+      "logical_bytes": 1101985074
+    },
+    {
+      "path": "/private/tmp/lexflow-consolidate-release-1.0.1.py",
+      "logical_bytes": 3901
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-client-final-lint.log",
+      "logical_bytes": 1259
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-mounted-check",
+      "logical_bytes": 0
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-nsis.json",
+      "logical_bytes": 3762
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-arm-bundle-1.0.1.log",
+      "logical_bytes": 459
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-webview2-extract.log",
+      "logical_bytes": 713
+    },
+    {
+      "path": "/private/tmp/lexflow-rust-decimal-update.log",
+      "logical_bytes": 601
+    },
+    {
+      "path": "/private/tmp/lexflow-client-lint-final.log",
+      "logical_bytes": 14371
+    },
+    {
+      "path": "/private/tmp/lexflow-npm-update.log",
+      "logical_bytes": 72
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-build-final.log",
+      "logical_bytes": 1348
+    },
+    {
+      "path": "/private/tmp/lexflow-typst-0.15.1-aarch64.tar.xz",
+      "logical_bytes": 14438168
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-sdk",
+      "logical_bytes": 647690137
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-first-package",
+      "logical_bytes": 63224769
+    },
+    {
+      "path": "/private/tmp/lexflow-frontend-tests-final.log",
+      "logical_bytes": 631
+    },
+    {
+      "path": "/private/tmp/lexflow-rust-audit-final.json",
+      "logical_bytes": 33871
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-intel-package-1.0.1.log",
+      "logical_bytes": 2135
+    },
+    {
+      "path": "/private/tmp/lexflow-cargo-verified.log",
+      "logical_bytes": 29273
+    },
+    {
+      "path": "/private/tmp/lexflow-final-dmg-detach.log",
+      "logical_bytes": 17
+    },
+    {
+      "path": "/private/tmp/lexflow-dmg-mount.log",
+      "logical_bytes": 1265
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-build.log",
+      "logical_bytes": 13045
+    },
+    {
+      "path": "/private/tmp/lexflow-rustsec-db..lock",
+      "logical_bytes": 0
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-target",
+      "logical_bytes": 3005857533
+    },
+    {
+      "path": "/private/tmp/lexflow-client-lint.log",
+      "logical_bytes": 15498
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-mounted-final",
+      "logical_bytes": 0
+    },
+    {
+      "path": "/private/tmp/lexflow-npm-cleanup-final.log",
+      "logical_bytes": 159
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-webview2-signature.pem",
+      "logical_bytes": 13814
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-tools",
+      "logical_bytes": 2996346528
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-bundle-acl.log",
+      "logical_bytes": 900
+    },
+    {
+      "path": "/private/tmp/LexFlow_1.0.0_universal.dmg",
+      "logical_bytes": 63224675
+    },
+    {
+      "path": "/private/tmp/lexflow-clean-css.mjs",
+      "logical_bytes": 3665
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-client-tests.log",
+      "logical_bytes": 331
+    },
+    {
+      "path": "/private/tmp/lexflow-verify-macos-1.0.1.py",
+      "logical_bytes": 3942
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-local-package.log",
+      "logical_bytes": 2302
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-installer-extract.log",
+      "logical_bytes": 664
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-package-checks.json",
+      "logical_bytes": 1687
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-microsoft-roots.pem",
+      "logical_bytes": 4228
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-rust-workflows.log",
+      "logical_bytes": 1475
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-qpdf-release.json",
+      "logical_bytes": 33521
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-bundle-fixed.log",
+      "logical_bytes": 900
+    },
+    {
+      "path": "/private/tmp/lexflow-npm-cleanup-final.json",
+      "logical_bytes": 1348
+    },
+    {
+      "path": "/private/tmp/lexflow-typst-0.15.1-x86_64",
+      "logical_bytes": 47615129
+    },
+    {
+      "path": "/private/tmp/lexflow-license-generator-before.py",
+      "logical_bytes": 35198
+    },
+    {
+      "path": "/private/tmp/lexflow-clippy-final.log",
+      "logical_bytes": 213
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-arm-build.log",
+      "logical_bytes": 14294
+    },
+    {
+      "path": "/private/tmp/lexflow-cargo-compile-updated.log",
+      "logical_bytes": 2623
+    },
+    {
+      "path": "/private/tmp/lexflow-document-auth.py",
+      "logical_bytes": 8217
+    },
+    {
+      "path": "/private/tmp/lexflow-hardening-tests.log",
+      "logical_bytes": 1464
+    },
+    {
+      "path": "/private/tmp/lexflow-final-dmg-mount.log",
+      "logical_bytes": 1048
+    },
+    {
+      "path": "/private/tmp/lexflow-client-build-1.0.1.log",
+      "logical_bytes": 2308
+    },
+    {
+      "path": "/private/tmp/lexflow-write-audit.py",
+      "logical_bytes": 13736
+    },
+    {
+      "path": "/private/tmp/lexflow-cargo-test.log",
+      "logical_bytes": 39425
+    },
+    {
+      "path": "/private/tmp/lexflow-frontend-build-final.log",
+      "logical_bytes": 2308
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-verified-files.json",
+      "logical_bytes": 101335
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-llvm.json",
+      "logical_bytes": 59590
+    },
+    {
+      "path": "/private/tmp/lexflow-license-tests-final.log",
+      "logical_bytes": 117
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-installer-1.0.1-verified",
+      "logical_bytes": 911218797
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-client-final-tests.log",
+      "logical_bytes": 631
+    },
+    {
+      "path": "/private/tmp/lexflow-license-tests.log",
+      "logical_bytes": 113
+    },
+    {
+      "path": "/private/tmp/lexflow-clippy-delivery.log",
+      "logical_bytes": 213
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-installer-1.0.1-extract.log",
+      "logical_bytes": 664
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-installer-preprocessed.nsi",
+      "logical_bytes": 8365
+    },
+    {
+      "path": "/private/tmp/lexflow-backend-outputs.py",
+      "logical_bytes": 3611
+    },
+    {
+      "path": "/private/tmp/lexflow-osv-npm.zip",
+      "logical_bytes": 222323938
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-build-1.0.1.log",
+      "logical_bytes": 1348
+    },
+    {
+      "path": "/private/tmp/lexflow-android-cleanup-result.json",
+      "logical_bytes": 7008
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-1.0.1-public-key-check.json",
+      "logical_bytes": 672
+    },
+    {
+      "path": "/private/tmp/lexflow-typst-0.15.1-aarch64",
+      "logical_bytes": 45072281
+    },
+    {
+      "path": "/private/tmp/lexflow-rust-final-v8.log",
+      "logical_bytes": 36628
+    },
+    {
+      "path": "/private/tmp/lexflow-npm-offline-baseline.json",
+      "logical_bytes": 61085
+    },
+    {
+      "path": "/private/tmp/lexflow-dmg-create.log",
+      "logical_bytes": 42
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-client-build.log",
+      "logical_bytes": 2308
+    },
+    {
+      "path": "/private/tmp/lexflow-rustsec-db",
+      "logical_bytes": 42515973
+    },
+    {
+      "path": "/private/tmp/lexflow-npm-offline-findings.json",
+      "logical_bytes": 23516
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-final-rust.log",
+      "logical_bytes": 30135
+    },
+    {
+      "path": "/private/tmp/lexflow-generator-tests-1.0.1.log",
+      "logical_bytes": 119
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-frontend-dist-1.0.1",
+      "logical_bytes": 1563885
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-verified-files-1.0.1.json",
+      "logical_bytes": 101335
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-client-lint.log",
+      "logical_bytes": 1259
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-rust-clippy.log",
+      "logical_bytes": 213
+    },
+    {
+      "path": "/private/tmp/lexflow-audit-preview",
+      "logical_bytes": 1612687
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-xwin.json",
+      "logical_bytes": 24157
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-cleanup-inventory-1.0.1.json",
+      "logical_bytes": 2244
+    },
+    {
+      "path": "/private/tmp/lexflow-npm-peer-install.log",
+      "logical_bytes": 21
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-arm-package-1.0.1.log",
+      "logical_bytes": 2510
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-frontend-dist",
+      "logical_bytes": 1563885
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-build.json",
+      "logical_bytes": 124
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-webview2-page.html",
+      "logical_bytes": 59979
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-Intel-verified-1.0.1.json",
+      "logical_bytes": 1419
+    },
+    {
+      "path": "/private/tmp/lexflow-clean-builds-1.0.1.py",
+      "logical_bytes": 3309
+    },
+    {
+      "path": "/private/tmp/lexflow-npm-offline-final.json",
+      "logical_bytes": 1348
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-installer-acl-verified",
+      "logical_bytes": 911215725
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-rust-io.log",
+      "logical_bytes": 579
+    },
+    {
+      "path": "/private/tmp/lexflow-windows-webview2-provenance.json",
+      "logical_bytes": 421
+    },
+    {
+      "path": "/private/tmp/lexflow-cleanup-client-final-build.log",
+      "logical_bytes": 2308
+    },
+    {
+      "path": "/private/tmp/lexflow-document-auth-tests.log",
+      "logical_bytes": 712
+    },
+    {
+      "path": "/private/tmp/lexflow-macos-intel-build.log",
+      "logical_bytes": 11202
+    },
+    {
+      "path": "/private/tmp/lexflow-cargo-test-final.log",
+      "logical_bytes": 28204
+    }
+  ],
+  "logical_bytes_removed_this_step": 35192589294,
+  "android_logical_bytes_removed_prior_step": 7352559473,
+  "preserved": [
+    "project source",
+    "license generator and encrypted registry",
+    "private license keys in Application Support",
+    "Android signing keys in Application Support",
+    "four release installers",
+    "source dependencies and vendor sidecars"
+  ],
+  "physical_ssd_recovery_not_measured": true,
+  "installed_application": {
+    "removed": true,
+    "app_data_removed": true,
+    "update_pending": false
+  }
+}

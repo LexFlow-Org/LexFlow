@@ -12,7 +12,8 @@
                    script-src 'self'; 
                    style-src 'self' 'unsafe-inline'; 
                    img-src 'self' data: blob:; 
-                   font-src 'self' data:; 
+                   font-src 'self' data:;
+                   worker-src 'self' blob:;
                    connect-src ipc: http://ipc.localhost; 
                    object-src 'none';
                    base-uri 'self';
@@ -20,23 +21,11 @@
                    frame-ancestors 'none';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LexFlow</title>
+    <!-- Keep critical styles external: an inline style makes Tauri add a CSP
+         nonce that blocks the runtime style elements used by toast messages. -->
+    <link rel="stylesheet" href="/src/styles/bootstrap.css" />
     <!-- ★ Tema istantaneo: applica PRIMA di qualsiasi rendering per evitare flash nero→bianco -->
-    <script>
-      (function(){
-        var t = localStorage.getItem('lexflow-theme');
-        if (t === 'light') {
-          document.documentElement.setAttribute('data-theme', 'light');
-        }
-      })();
-    </script>
-    <style>
-      /* Background critico pre-rendering: matcha il tema scelto — DEVE corrispondere a index.css */
-      html:not([data-theme="light"]) body { background: #1c1d26; color: #edeef6; }
-      html[data-theme="light"] body { background: #d0d1d5; color: #1c1d22; }
-      /* Nascondi contenuto finché React non è pronto — evita layout shift */
-      #root { opacity: 0; }
-      #root.app-mounted { opacity: 1; transition: opacity 0.15s ease; }
-    </style>
+    <script type="module" src="/src/theme-bootstrap.js"></script>
   </head>
   <body class="antialiased overflow-hidden select-none">
     <div id="root"></div>

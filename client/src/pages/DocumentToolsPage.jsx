@@ -1,3 +1,4 @@
+import { useSessionState } from '../hooks/useSessionState';
 import { useState, useEffect, useMemo } from 'react';
 import {
   FileText, Merge, Split, Scissors, RotateCw,
@@ -9,16 +10,15 @@ import {
 import toast from 'react-hot-toast';
 import * as api from '../tauri-api';
 import { secureCopy } from '../tauri-api';
-import PdfRedactViewer from '../components/PdfRedactViewer';
 
 // NOTE: protect_pdf was removed by BE-4 + BE-8 (deprecated/dead). The corresponding
 // `protectPdf` wrapper has also been removed from `client/src/tauri-api.js`.
 // Do NOT re-add a `protect` tool here.
 const TOOLS = [
   // ── Sicurezza & Protezione (piu' importanti) ──
-  { id: 'secure', label: 'Proteggi PDF', icon: Shield, description: 'Blocca copia, stampa, modifica e condivisione', multiFile: false, accept: '.pdf', needsSecure: true, defaultOutput: 'protetto.pdf' },
+  { id: 'secure', label: 'Proteggi PDF', icon: Shield, description: 'Imposta restrizioni di copia, stampa e modifica', multiFile: false, accept: '.pdf', needsSecure: true, defaultOutput: 'protetto.pdf' },
   { id: 'unsecure', label: 'Rimuovi Protezione', icon: Unlock, description: 'Rimuovi restrizioni da un PDF protetto', multiFile: false, accept: '.pdf', needsUnsecurePassword: true, defaultOutput: 'sbloccato.pdf' },
-  { id: 'redact', label: 'Censura PDF', icon: EyeOff, description: 'Oscura dati sensibili con barre nere (GDPR)', multiFile: false, accept: '.pdf', needsRedact: true, defaultOutput: 'censurato.pdf' },
+  { id: 'redact', label: 'Censura PDF', icon: EyeOff, description: 'Non disponibile: la rimozione irreversibile dei dati non è ancora garantita', disabled: true, multiFile: false, accept: '.pdf', defaultOutput: 'censurato.pdf' },
   { id: 'watermark', label: 'Watermark', icon: Stamp, description: 'Aggiungi BOZZA, RISERVATO, COPIA CONFORME', multiFile: false, accept: '.pdf', needsWatermark: true, defaultOutput: 'watermark.pdf' },
   // ── Operazioni comuni ──
   { id: 'merge', label: 'Unisci PDF', icon: Merge, description: 'Combina piu\' PDF in un unico documento', multiFile: true, accept: '.pdf', defaultOutput: 'unione.pdf' },
@@ -32,7 +32,7 @@ const TOOLS = [
   { id: 'rotate', label: 'Ruota Pagine', icon: RotateCw, description: 'Ruota le pagine di 90\u00b0, 180\u00b0 o 270\u00b0', multiFile: false, accept: '.pdf', needsRotation: true, defaultOutput: 'ruotato.pdf' },
   // ── Conversione ──
   { id: 'text', label: 'Estrai Testo', icon: Type, description: 'Estrai il testo da un PDF', multiFile: false, accept: '.pdf' },
-  { id: 'images2pdf', label: 'Immagini \u2192 PDF', icon: Images, description: 'Converti immagini in un unico PDF', multiFile: true, accept: '.png,.jpg,.jpeg,.webp,.bmp,.tiff,.gif', defaultOutput: 'immagini.pdf' },
+  { id: 'images2pdf', label: 'Immagini \u2192 PDF', icon: Images, description: 'Converti immagini in un unico PDF', multiFile: true, accept: '.png,.jpg,.jpeg,.webp,.gif', defaultOutput: 'immagini.pdf' },
 ];
 
 // Limits for images\u2192PDF tool (FIX-12)
@@ -51,7 +51,8 @@ export default function DocumentToolsPage() {
   const [files, setFiles] = useState([]);
   const [pdfInfo, setPdfInfo] = useState(null);
   const [processing, setProcessing] = useState(false);
-  const [result, setResult] = useState(null);
+  const [result, setResultRaw] = useState(null);
+  const setResult = (next) => { setRevealOwnerPwd(false); setResultRaw(next); };
   const [extractedText, setExtractedText] = useState(null);
 
   // Tool-specific state
@@ -69,9 +70,6 @@ export default function DocumentToolsPage() {
   const [reorderList, setReorderList] = useState([]); // array of page numbers in current order
   const [dragIdx, setDragIdx] = useState(null);
 
-  // Redact state
-  const [redactAreas, setRedactAreas] = useState([]);
-
   // Secure PDF state
   const [secNoCopy, setSecNoCopy] = useState(true);
   const [secNoPrint, setSecNoPrint] = useState(true);
@@ -85,21 +83,8 @@ export default function DocumentToolsPage() {
   // Owner-password reveal state (FIX-2): hidden by default, auto-hides after 60s
   const [revealOwnerPwd, setRevealOwnerPwd] = useState(false);
 
-  // History
-  const [history, setHistory] = useState([]);
-  useEffect(() => {
-    try { setHistory(JSON.parse(localStorage.getItem('lexflow_pdf_history') || '[]')); } catch { setHistory([]); }
-  }, []);
-
-  // FIX-19 STO-1: clear PDF tool history when the vault is locked, so input
-  // filenames (which can leak case context) are not persisted across sessions.
-  useEffect(() => {
-    const off = api.onVaultLocked?.(() => {
-      try { localStorage.removeItem('lexflow_pdf_history'); } catch { /* ignore */ }
-      setHistory([]);
-    });
-    return () => { try { off?.(); } catch { /* ignore */ } };
-  }, []);
+  // Filenames and paths stay in memory until the vault locks.
+  const [history, setHistory] = useSessionState('pdfHistory', []);
 
   const resetState = () => {
     setFiles([]);
@@ -110,7 +95,6 @@ export default function DocumentToolsPage() {
     setProcessing(false);
     setReorderList([]);
     setDragIdx(null);
-    setRedactAreas([]);
     setPageNumPosition('bottom-center');
     setPageNumFormat('Pag. {n} di {total}');
     setPageNumStart(1);
@@ -118,19 +102,13 @@ export default function DocumentToolsPage() {
     setUnsecurePassword('');
   };
 
-  // FIX-9 BUG-5: use a functional updater so consecutive calls don't race on stale state.
-  // FIX-19 STO-1: persist to localStorage from the same updater (single source of truth).
-  // `inputName` is already the basename (caller passes filename only, not full path) — see executeTool.
   const addToHistory = (tool, inputName, outputPath) => {
     const entry = { tool, input: inputName, output: outputPath, date: new Date().toISOString() };
-    setHistory(prev => {
-      const updated = [entry, ...prev].slice(0, 50);
-      try { localStorage.setItem('lexflow_pdf_history', JSON.stringify(updated)); } catch { /* ignore */ }
-      return updated;
-    });
+    setHistory(prev => [entry, ...prev].slice(0, 50));
   };
 
   const selectTool = (tool) => {
+    if (TOOLS.find(item => item.id === tool)?.disabled) return;
     setActiveTool(tool);
     resetState();
   };
@@ -352,14 +330,6 @@ export default function DocumentToolsPage() {
           setResult(res);
           break;
         }
-        case 'redact': {
-          if (redactAreas.length === 0) { setResult({ success: false, message: 'Nessuna area da censurare.' }); break; }
-          const out = await api.selectSavePath(tool.defaultOutput);
-          if (!out) { markCancelled(); break; }
-          res = await api.redactPdf(files[0], out, redactAreas);
-          setResult(res);
-          break;
-        }
         case 'secure': {
           const out = await api.selectSavePath(tool.defaultOutput);
           if (!out) { markCancelled(); break; }
@@ -383,7 +353,7 @@ export default function DocumentToolsPage() {
       }
       // Save to history if successful
       if (res?.success && res?.output_path) {
-        // Store only the basename (FIX-19 STO-1) to avoid persisting user paths in localStorage.
+        // Keep a concise filename for this in-memory session history.
         const inputName = (typeof files[0] === 'string' ? files[0] : '').split('/').pop() || 'file';
         addToHistory(activeTool, inputName, res.output_path);
       }
@@ -401,17 +371,12 @@ export default function DocumentToolsPage() {
   // FIX-17 PERF-1: avoid re-running TOOLS.find on every render
   const currentTool = useMemo(() => TOOLS.find(t => t.id === activeTool), [activeTool]);
 
-  // FIX-2 SEC-2: auto-hide the owner password 60 seconds after it appears,
-  // and reset the reveal toggle whenever a new password is shown.
+  // Expire each reveal after 60 seconds, including a reveal made long after generation.
   useEffect(() => {
-    if (!result?.details?.owner_password) {
-      setRevealOwnerPwd(false);
-      return;
-    }
-    setRevealOwnerPwd(false);
+    if (!revealOwnerPwd) return;
     const id = setTimeout(() => setRevealOwnerPwd(false), 60000);
     return () => clearTimeout(id);
-  }, [result?.details?.owner_password]);
+  }, [revealOwnerPwd]);
 
   // ─── Tool Grid (no tool selected) ────────────────────────
   if (!activeTool) {
@@ -435,8 +400,9 @@ export default function DocumentToolsPage() {
             return (
               <button
                 key={tool.id}
+                disabled={tool.disabled}
                 onClick={() => selectTool(tool.id)}
-                className="glass-card p-6 text-left hover:border-primary/30 transition-all duration-200 group cursor-pointer"
+                className="glass-card p-6 text-left hover:border-primary/30 transition-all duration-200 group cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <div className="flex items-start gap-4">
                   <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center border border-primary/20 group-hover:bg-primary/20 transition-colors">
@@ -790,14 +756,10 @@ export default function DocumentToolsPage() {
           </div>
         )}
 
-        {/* Redact Options — Visual PDF Viewer */}
-        {currentTool.needsRedact && pdfInfo && files[0] && (
-          <PdfRedactViewer
-            filePath={files[0]}
-            redactAreas={redactAreas}
-            onRedactAreasChange={setRedactAreas}
-            totalPages={pdfInfo.pages}
-          />
+        {currentTool.needsSecure && (
+          <p role="note" className="text-sm text-warning bg-warning-soft border border-warning-border rounded-xl p-4">
+            Si apre senza password; altri programmi possono ignorare le restrizioni. Non impedisce la condivisione.
+          </p>
         )}
 
         {/* Secure PDF Options */}

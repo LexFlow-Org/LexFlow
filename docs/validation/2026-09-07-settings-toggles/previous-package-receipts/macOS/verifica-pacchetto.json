@@ -1,0 +1,129 @@
+{
+  "date": "2026-09-07",
+  "artifacts": [
+    {
+      "file": "LexFlow-1.0.1-macOS-Apple-Silicon.dmg",
+      "sha256": "d866355542f537b9d81562b10bd7e3b55aacd38313c096f7969c6217e31223f4",
+      "bytes": 31015302,
+      "version": "1.0.1",
+      "codesign_strict_verified": true,
+      "signature": "ad hoc; not notarized",
+      "binaries": {
+        "lexflow": {
+          "sha256": "1c35f895d721c7d83f59852f902c7d7e2c11a99ba9ecbbc4048bc27f11b317f7",
+          "bytes": 10025104,
+          "architecture": "arm64",
+          "dependencies": [
+            "\t/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 5026.5.4)",
+            "\t/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 5026.5.4)",
+            "\t/System/Library/Frameworks/LocalAuthentication.framework/Versions/A/LocalAuthentication (compatibility version 1.0.0, current version 2005.121.1)",
+            "\t/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61901.120.67)",
+            "\t/System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration (compatibility version 1.0.0, current version 1405.120.5)",
+            "\t/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (compatibility version 45.0.0, current version 2685.60.104)",
+            "\t/System/Library/Frameworks/WebKit.framework/Versions/A/WebKit (compatibility version 1.0.0, current version 624.2.5)",
+            "\t/System/Library/Frameworks/ApplicationServices.framework/Versions/A/ApplicationServices (compatibility version 1.0.0, current version 66.0.0)",
+            "\t/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.5.1)",
+            "\t/System/Library/Frameworks/Carbon.framework/Versions/A/Carbon (compatibility version 2.0.0, current version 170.0.0)",
+            "\t/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo (compatibility version 1.2.0, current version 734.4.0)",
+            "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+            "\t/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)",
+            "\t/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)",
+            "\t/System/Library/Frameworks/ColorSync.framework/Versions/A/ColorSync (compatibility version 1.0.0, current version 3813.5.1)",
+            "\t/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)"
+          ]
+        },
+        "qpdf": {
+          "sha256": "4efe6940716439ccad8afe455a8502cdc4ff8375e167f77ea9f85387626584d1",
+          "bytes": 4018000,
+          "architecture": "arm64",
+          "dependencies": [
+            "\t/usr/lib/libz.1.dylib (compatibility version 1.0.0, current version 1.2.12)",
+            "\t/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)",
+            "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+          ]
+        },
+        "typst": {
+          "sha256": "ecf5d3209a0feedf9bf41fdb09dcc016f011381faca1867f0cd017d7ec654d45",
+          "bytes": 44786384,
+          "architecture": "arm64",
+          "dependencies": [
+            "\t/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 5026.5.4)",
+            "\t/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)",
+            "\t/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61901.120.67)",
+            "\t/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)",
+            "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+          ]
+        }
+      },
+      "runtime_swift_reference_absent": true,
+      "new_license_key_contiguous_in_main": true,
+      "intel_key_note": null,
+      "biometrics_available_with_current_signature": false,
+      "native_full_suite_on_exact_packaged_binary": false
+    },
+    {
+      "file": "LexFlow-1.0.1-macOS-Intel.dmg",
+      "sha256": "265e11770134ac986ed5eb35b3317c822b2fe85c28bc7572fa2c0756b1d3f324",
+      "bytes": 33508128,
+      "version": "1.0.1",
+      "codesign_strict_verified": true,
+      "signature": "ad hoc; not notarized",
+      "binaries": {
+        "lexflow": {
+          "sha256": "2bf9996f3f0d80489ab8ce5535d81ddfac2c1c5d5401b5ff7c66da88300d68ea",
+          "bytes": 11482480,
+          "architecture": "x86_64",
+          "dependencies": [
+            "\t/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 5026.5.4)",
+            "\t/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 5026.5.4)",
+            "\t/System/Library/Frameworks/LocalAuthentication.framework/Versions/A/LocalAuthentication (compatibility version 1.0.0, current version 2005.121.1)",
+            "\t/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61901.120.67)",
+            "\t/System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration (compatibility version 1.0.0, current version 1405.120.5)",
+            "\t/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (compatibility version 45.0.0, current version 2685.60.104)",
+            "\t/System/Library/Frameworks/WebKit.framework/Versions/A/WebKit (compatibility version 1.0.0, current version 624.2.5)",
+            "\t/System/Library/Frameworks/ApplicationServices.framework/Versions/A/ApplicationServices (compatibility version 1.0.0, current version 66.0.0)",
+            "\t/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.5.1)",
+            "\t/System/Library/Frameworks/Carbon.framework/Versions/A/Carbon (compatibility version 2.0.0, current version 170.0.0)",
+            "\t/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo (compatibility version 1.2.0, current version 734.4.0)",
+            "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+            "\t/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)",
+            "\t/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)",
+            "\t/System/Library/Frameworks/ColorSync.framework/Versions/A/ColorSync (compatibility version 1.0.0, current version 3813.5.1)",
+            "\t/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)"
+          ]
+        },
+        "qpdf": {
+          "sha256": "6f1558d0b63551fa2f96bec9770c60230491779c1d6a18884ea314bfca3faee2",
+          "bytes": 4234368,
+          "architecture": "x86_64",
+          "dependencies": [
+            "\t/usr/lib/libz.1.dylib (compatibility version 1.0.0, current version 1.2.12)",
+            "\t/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)",
+            "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+          ]
+        },
+        "typst": {
+          "sha256": "fb7adec87f2c597480e2753fe222eee334f8e41a1e024ddcfdf6360977c14eba",
+          "bytes": 47962848,
+          "architecture": "x86_64",
+          "dependencies": [
+            "\t/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 5026.5.4)",
+            "\t/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)",
+            "\t/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61901.120.67)",
+            "\t/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)",
+            "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+          ]
+        }
+      },
+      "runtime_swift_reference_absent": true,
+      "new_license_key_contiguous_in_main": false,
+      "intel_key_note": "Optimized Intel may synthesize constants as immediates; source freeze and tests verify issuer, contiguous scan alone is not validation.",
+      "biometrics_available_with_current_signature": false,
+      "native_full_suite_on_exact_packaged_binary": false
+    }
+  ],
+  "source_freeze_sha256": "7414b31a96fc7957cf1d755f2d1e74141b94094d361041f3a4e6fcaa3a6f95dd",
+  "rust_tests_passed": 428,
+  "native_gui_intermediate_arm_tested": true,
+  "intel_native_hardware_tested": false
+}

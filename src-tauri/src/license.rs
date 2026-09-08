@@ -17,23 +17,16 @@
 // LOW-S-9 resolved we could optionally HKDF the seed itself; deferred until
 // the burn-registry file format gets a versioned envelope.
 //
-// TODO(audit:LOW-TEST-GAPS): missing unit tests for —
-//   * monotonic_clock_check rollback detection
-//   * burn-key keychain mirror (mock keyring)
-//   * sentinel blob HMAC tamper rejection
-//   * record_hmac_v2 mismatch rejection
-//   * check_existing_license_blocks key-id mismatch path
-
 use crate::constants::*;
 use crate::crypto::{decrypt_data, encrypt_data};
 use crate::io::{atomic_write_with_sync, safe_now_ms};
-use crate::lockout::{check_lockout, clear_lockout, record_failed_attempt};
+use crate::lockout::{check_lockout, clear_lockout, record_failed_attempt_locked};
 use crate::platform::{
     compute_machine_fingerprint, decrypt_local_with_migration, get_local_encryption_key,
 };
 use crate::state::AppState;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, VerifyingKey};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -43,6 +36,13 @@ use tauri::State;
 
 const LAST_CHECK_TS_FILE: &str = ".last-license-check";
 const CLOCK_HIGH_WATERMARK_FILE: &str = ".clock-watermark";
+const MAX_LICENSE_TOKEN_BYTES: usize = 16 * 1024;
+const ACTIVATION_JOURNAL_FILE: &str = ".license-activation-pending";
+const SIGNED_RECORD_VERSION: &str = "ed25519-signed-v3";
+
+fn license_deadline(expiry_ms: u64, grace_days: u64) -> Option<u64> {
+    grace_days.checked_mul(86_400_000)?.checked_add(expiry_ms)
+}
 
 // ─── HKDF sub-key derivation (audit:LOW-S-9) ────────────────
 //
@@ -86,6 +86,7 @@ mod sub_keys {
     pub(super) fn clock_check_key(master: &[u8]) -> Zeroizing<[u8; 32]> {
         derive_subkey(master, b"LexFlow-v1-clock-watermark-hmac")
     }
+    #[cfg(test)]
     pub(super) fn record_hmac_key(master: &[u8]) -> Zeroizing<[u8; 32]> {
         derive_subkey(master, b"LexFlow-v1-license-record-hmac-v2")
     }
@@ -112,9 +113,9 @@ mod sub_keys {
 
 // PUBLIC_KEY_BYTES (must match build.rs exactly)
 pub(crate) const PUBLIC_KEY_BYTES: [u8; 32] = [
-    90u8, 7u8, 33u8, 6u8, 155u8, 146u8, 238u8, 227u8, 219u8, 64u8, 209u8, 178u8, 21u8, 69u8, 177u8,
-    90u8, 181u8, 127u8, 231u8, 233u8, 144u8, 1u8, 54u8, 91u8, 94u8, 113u8, 188u8, 244u8, 168u8,
-    34u8, 31u8, 14u8,
+    174u8, 48u8, 245u8, 149u8, 58u8, 105u8, 117u8, 189u8, 197u8, 166u8, 82u8, 54u8, 39u8, 166u8,
+    166u8, 194u8, 189u8, 248u8, 121u8, 72u8, 199u8, 249u8, 194u8, 97u8, 34u8, 165u8, 16u8, 49u8,
+    44u8, 16u8, 222u8, 13u8,
 ];
 
 // ─── Burned-key registry ────────────────────────────────────
@@ -176,34 +177,6 @@ fn load_burned_keys(dir: &std::path::Path) -> Result<Vec<String>, String> {
         .filter(|l| !l.is_empty())
         .map(|l| l.to_string())
         .collect())
-}
-
-fn burn_key(dir: &std::path::Path, burn_hash: &str) -> Result<(), String> {
-    let mut hashes = load_burned_keys(dir)?;
-    if hashes.contains(&burn_hash.to_string()) {
-        // File registry already has it — still ensure keychain mirror is set.
-        burn_key_keychain(burn_hash);
-        return Ok(());
-    }
-    hashes.push(burn_hash.to_string());
-    let content = hashes.join("\n");
-    // V2: encrypt with the HKDF-derived burn sub-key (key separation).
-    let master = get_local_encryption_key();
-    let burn_subkey = sub_keys::burn_key(&master);
-    let encrypted = encrypt_data(&*burn_subkey, content.as_bytes())
-        .map_err(|e| format!("Errore cifratura registro: {}", e))?;
-    atomic_write_with_sync(&dir.join(BURNED_KEYS_FILE), &encrypted).map_err(|e| {
-        format!(
-            "FATAL: Impossibile salvare il registro aggiornato su disco: {}",
-            e
-        )
-    })?;
-    // Mirror to OS keychain so that wiping the security folder alone does
-    // not allow re-using the same key. Keychain failure is non-fatal —
-    // some platforms (Linux without secret-service, sandboxed envs) may
-    // not expose a keyring; in that case we degrade to file-only.
-    burn_key_keychain(burn_hash);
-    Ok(())
 }
 
 /// Mirror a burn hash into the OS keychain (per-key entry).
@@ -298,78 +271,71 @@ fn compute_clock_hmac_v2(label: &[u8], ts_str: &str) -> String {
     hex::encode(mac.finalize().into_bytes())
 }
 
-fn read_clock_high_watermark(sec_dir: &std::path::Path) -> Option<u64> {
-    let path = sec_dir.join(CLOCK_HIGH_WATERMARK_FILE);
-    let raw = fs::read_to_string(&path).ok()?;
-    let parts: Vec<&str> = raw.trim().splitn(2, ':').collect();
-    if parts.len() != 2 {
-        return None;
+fn read_clock_marker_with(
+    path: &std::path::Path,
+    label: &[u8],
+    verify: impl Fn(&[u8], &str, &[u8]) -> bool,
+) -> Result<Option<u64>, String> {
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err("Indicatore orologio non leggibile.".into()),
+        Ok(_) => {}
     }
-    let stored_ts = parts[0].parse::<u64>().ok()?;
-    let stored_bytes = hex::decode(parts[1]).ok()?;
-    if !verify_clock_hmac_v2_v1(b"CLOCK-HIGH-WATERMARK:", parts[0], &stored_bytes) {
-        return None;
+    let bytes = crate::io::safe_bounded_read(path, 256)?;
+    let raw = std::str::from_utf8(&bytes).map_err(|_| "Indicatore orologio corrotto.")?;
+    let (timestamp, tag) = raw
+        .trim()
+        .split_once(':')
+        .ok_or("Indicatore orologio corrotto.")?;
+    let timestamp_ms = timestamp
+        .parse::<u64>()
+        .map_err(|_| "Timestamp licenza non valido.")?;
+    let tag = hex::decode(tag).map_err(|_| "Autenticazione dell'orologio non valida.")?;
+    if tag.len() != 32 || !verify(label, timestamp, &tag) {
+        return Err("Indicatore orologio manomesso; file originale conservato.".into());
     }
-    Some(stored_ts)
-}
-
-fn write_clock_high_watermark(sec_dir: &std::path::Path, ts_ms: u64) {
-    let path = sec_dir.join(CLOCK_HIGH_WATERMARK_FILE);
-    let ts_str = ts_ms.to_string();
-    let hmac_hex = compute_clock_hmac_v2(b"CLOCK-HIGH-WATERMARK:", &ts_str);
-    let _ = atomic_write_with_sync(&path, format!("{}:{}", ts_str, hmac_hex).as_bytes());
+    Ok(Some(timestamp_ms))
 }
 
 fn monotonic_clock_check(sec_dir: &std::path::Path) -> Result<(), String> {
-    let ts_path = sec_dir.join(LAST_CHECK_TS_FILE);
-    let now_ms = safe_now_ms();
+    monotonic_clock_check_after_proof(sec_dir, false)
+}
 
-    // M1: If license.json exists but the clock-check sentinel doesn't,
-    // the sentinel may have been deleted to bypass the monotonic check.
-    // Log a warning but don't block the user.
-    if !ts_path.exists() && sec_dir.join(LICENSE_FILE).exists() {
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[SECURITY] WARNING: license.json exists but {} is missing. \
-            The clock-check sentinel may have been deleted to bypass monotonic validation.",
-            LAST_CHECK_TS_FILE
+/// Missing historical markers may be initialized only for a new install or
+/// after an explicit signed license proof. Corrupt markers are never reset.
+fn monotonic_clock_check_after_proof(
+    sec_dir: &std::path::Path,
+    signed_proof: bool,
+) -> Result<(), String> {
+    let check_path = sec_dir.join(LAST_CHECK_TS_FILE);
+    let high_path = sec_dir.join(CLOCK_HIGH_WATERMARK_FILE);
+    let checked = read_clock_marker_with(&check_path, b"CLOCK-CHECK:", verify_clock_hmac_v2_v1)?;
+    let high = read_clock_marker_with(
+        &high_path,
+        b"CLOCK-HIGH-WATERMARK:",
+        verify_clock_hmac_v2_v1,
+    )?;
+    if checked.is_none()
+        && high.is_none()
+        && !signed_proof
+        && (sec_dir.join(LICENSE_FILE).exists() || sec_dir.join(LICENSE_SENTINEL_FILE).exists())
+    {
+        return Err(
+            "Indicatori orologio mancanti: reinserisci la licenza originale per verificarla."
+                .into(),
         );
     }
-
-    // High-watermark check (M-CLOCK-4): refuse if the system clock is
-    // earlier than (highest-ever-observed - 60s). This is independent of
-    // the per-call sentinel and survives deletion of `.last-license-check`.
-    if let Some(high_watermark) = read_clock_high_watermark(sec_dir) {
-        if now_ms < high_watermark.saturating_sub(CLOCK_ROLLBACK_SLACK_MS) {
-            return Err(
-                "SECURITY: System clock appears to have been set backwards. License check refused."
-                    .into(),
-            );
-        }
+    let now = safe_now_ms();
+    let previous = checked.into_iter().chain(high).max().unwrap_or(0);
+    if now < previous.saturating_sub(CLOCK_ROLLBACK_SLACK_MS) {
+        return Err("Orologio di sistema arretrato. Ripristina data e ora corrette.".into());
     }
-
-    if let Ok(raw) = fs::read_to_string(&ts_path) {
-        let parts: Vec<&str> = raw.trim().splitn(2, ':').collect();
-        if parts.len() == 2 {
-            let stored_ts = parts[0].parse::<u64>().unwrap_or(0);
-            let hmac_valid = hex::decode(parts[1])
-                .ok()
-                .map(|bytes| verify_clock_hmac_v2_v1(b"CLOCK-CHECK:", parts[0], &bytes))
-                .unwrap_or(false);
-            if hmac_valid && now_ms < stored_ts.saturating_sub(CLOCK_ROLLBACK_SLACK_MS) {
-                return Err("SECURITY: System clock appears to have been set backwards. License check refused.".into());
-            }
-        }
-    }
-
-    let ts_str = now_ms.to_string();
-    let hmac_hex = compute_clock_hmac_v2(b"CLOCK-CHECK:", &ts_str);
-    let _ = atomic_write_with_sync(&ts_path, format!("{}:{}", ts_str, hmac_hex).as_bytes());
-
-    // Bump the high-watermark.
-    let prior = read_clock_high_watermark(sec_dir).unwrap_or(0);
-    write_clock_high_watermark(sec_dir, now_ms.max(prior));
-    Ok(())
+    let timestamp = now.to_string();
+    let tag = compute_clock_hmac_v2(b"CLOCK-CHECK:", &timestamp);
+    atomic_write_with_sync(&check_path, format!("{}:{}", timestamp, tag).as_bytes())?;
+    let timestamp = now.max(previous).to_string();
+    let tag = compute_clock_hmac_v2(b"CLOCK-HIGH-WATERMARK:", &timestamp);
+    atomic_write_with_sync(&high_path, format!("{}:{}", timestamp, tag).as_bytes())
 }
 
 // ─── License types ──────────────────────────────────────────
@@ -408,35 +374,15 @@ pub(crate) struct VerificationResult {
 
 // ─── Helpers ────────────────────────────────────────────────
 
-fn parse_lxfw_payload(token: &str) -> Option<LicensePayload> {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 || parts[0] != "LXFW" {
-        return None;
-    }
-    let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
-    serde_json::from_slice(&payload_bytes).ok()
+/// Bind cached activation records to the only issuer trusted by this build.
+/// This is stored inside the authenticated encrypted license record. Records
+/// predating issuer binding are deliberately revoked, not silently upgraded.
+fn current_signing_key_id() -> String {
+    hex::encode(<Sha256 as sha2::Digest>::digest(PUBLIC_KEY_BYTES))
 }
 
-fn extract_key_id(token: &str) -> Option<String> {
-    parse_lxfw_payload(token).map(|p| p.id)
-}
-
-fn extract_expiry_ms(token: &str) -> Option<u64> {
-    parse_lxfw_payload(token).map(|p| p.e)
-}
-
-/// Compute the read-time-verifiable sentinel HMAC over the encrypted key-id blob,
-/// using the V2 sentinel sub-key. Independent of the legacy compound HMAC that
-/// covers `fingerprint:key_id:now:encrypted_key_id` (which cannot be re-verified
-/// at read time because we don't persist the plaintext fingerprint/key_id/now).
-fn compute_sentinel_blob_hmac(encrypted_key_id_hex: &str) -> Vec<u8> {
-    let master = get_local_encryption_key();
-    let subkey = sub_keys::sentinel_key(&master);
-    let mut mac =
-        <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("HMAC can take key of any size");
-    mac.update(b"SENTINEL-BLOB-V1:");
-    mac.update(encrypted_key_id_hex.as_bytes());
-    mac.finalize().into_bytes().to_vec()
+fn record_has_current_issuer(data: &Value) -> bool {
+    data.get("signingKeyId").and_then(Value::as_str) == Some(current_signing_key_id().as_str())
 }
 
 /// Verify a sentinel blob HMAC against `stored_bytes` using the V2 sentinel
@@ -460,7 +406,8 @@ fn verify_sentinel_blob_hmac_v2_v1(encrypted_key_id_hex: &str, stored_bytes: &[u
 }
 
 fn recover_sentinel_key_id(sentinel_path: &std::path::Path) -> Option<String> {
-    let sentinel_content = fs::read_to_string(sentinel_path).ok()?;
+    let sentinel_bytes = crate::io::safe_bounded_read(sentinel_path, 4096).ok()?;
+    let sentinel_content = std::str::from_utf8(&sentinel_bytes).ok()?;
     let mut lines = sentinel_content.lines();
     let _legacy_compound_hmac = lines.next()?; // original M2 compound HMAC
     let stored_key_id_enc = lines.next().filter(|s| !s.is_empty())?;
@@ -494,87 +441,53 @@ fn recover_sentinel_key_id(sentinel_path: &std::path::Path) -> Option<String> {
     String::from_utf8(dec.to_vec()).ok()
 }
 
-fn check_existing_license_blocks(path: &std::path::Path, new_key: &str) -> Option<Value> {
-    if !path.exists() {
-        return None;
+fn existing_license_allows_replacement(
+    data: &Value,
+    new_id: &str,
+    public: &[u8; 32],
+    now: u64,
+) -> bool {
+    if data.get("signingKeyId").and_then(Value::as_str) != Some(signing_key_id(public).as_str()) {
+        return true; // A revoked issuer cannot block a current issuer.
     }
-    let dec = decrypt_local_with_migration(path)?;
-    let existing: Value = serde_json::from_slice(&dec).ok()?;
-    let new_id = extract_key_id(new_key)?;
-
-    // M-MR-7: prefer a stable key-id comparison over re-running Ed25519
-    // verification on the stored token. The previous logic could be
-    // bypassed by feeding an expired or tampered legacy token (verify_license
-    // returns valid=false → branch falls through to "ok").
-    let existing_id_burned = existing
-        .get("keyId")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
-    let existing_id_legacy = existing
-        .get("key")
-        .and_then(|k| k.as_str())
-        .and_then(extract_key_id);
-
-    let existing_id = existing_id_burned.or(existing_id_legacy);
-
-    if let Some(existing_id) = existing_id {
-        if existing_id != new_id {
-            return Some(
-                json!({"success": false, "error": "Una licenza è già attiva su questa installazione."}),
-            );
-        }
-    }
-    None
+    let Some(token) = data.get("signedToken").and_then(Value::as_str) else {
+        return false;
+    };
+    let Ok(payload) = verified_payload(token, public) else {
+        return false;
+    };
+    payload.id == new_id
+        || license_deadline(payload.e, payload.g.unwrap_or(0))
+            .is_some_and(|deadline| now > deadline)
 }
 
-// TODO(audit:MED-MR-6): require user confirmation before binding fingerprint
-// to existing license. Currently this function is a no-op (security stop-gap):
-// silent rebinding allowed an attacker who copied license.json to a second
-// machine to silently re-bind to the new hardware. The legitimate flow now is
-// `activate_license(...)` with the original key, which is gated by the burn
-// registry + key-id comparison.
-fn silent_upgrade_fingerprint(_data: &Value, _key: &[u8], _path: &std::path::Path, _fp: &str) {
-    // Intentionally empty — see TODO above. Do not re-introduce silent rebinding.
-}
-
-fn write_license_sentinel(
-    sentinel_path: &std::path::Path,
+fn sentinel_bytes(
+    master: &[u8],
     fingerprint: &str,
     key_id: &str,
     now: &str,
-) {
-    let master = get_local_encryption_key();
-    let sentinel_subkey = sub_keys::sentinel_key(&master);
-    // V2: encrypt the key_id with the HKDF-derived sentinel sub-key.
-    let encrypted_key_id = match encrypt_data(&*sentinel_subkey, key_id.as_bytes()) {
-        Ok(enc) => hex::encode(enc),
-        Err(e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("[SECURITY] Failed to encrypt sentinel key_id: {}", e);
-            #[cfg(not(debug_assertions))]
-            let _ = e;
-            return; // SECURITY FIX: don't write sentinel without encrypted key ID
-        }
-    };
-    // M2: compound HMAC covers both plaintext fields AND the encrypted key_id,
-    // so an attacker cannot swap the encrypted blob without invalidating the HMAC
-    // (this can only be re-verified by clients holding the plaintext context).
-    // Keyed with the sentinel sub-key (V2) — never re-verified at read time.
-    let sentinel_data = format!(
-        "LEXFLOW-SENTINEL:{}:{}:{}:{}",
-        fingerprint, key_id, now, encrypted_key_id
+) -> Result<Vec<u8>, String> {
+    let subkey = sub_keys::sentinel_key(master);
+    let encrypted_key_id = hex::encode(encrypt_data(&*subkey, key_id.as_bytes())?);
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("HMAC key length");
+    mac.update(
+        format!(
+            "LEXFLOW-SENTINEL:{}:{}:{}:{}",
+            fingerprint, key_id, now, encrypted_key_id
+        )
+        .as_bytes(),
     );
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&*sentinel_subkey)
-        .expect("HMAC can take key of any size");
-    mac.update(sentinel_data.as_bytes());
-    let sentinel_hmac = hex::encode(mac.finalize().into_bytes());
-
-    // M-SENTINEL-5: blob-only HMAC, verifiable at read time without context.
-    let blob_hmac = hex::encode(compute_sentinel_blob_hmac(&encrypted_key_id));
-
-    let sentinel_content = format!("{}\n{}\n{}", sentinel_hmac, encrypted_key_id, blob_hmac);
-    let _ = atomic_write_with_sync(sentinel_path, sentinel_content.as_bytes());
+    let compound = hex::encode(mac.finalize().into_bytes());
+    let mut blob_mac = <Hmac<Sha256> as Mac>::new_from_slice(&*subkey).expect("HMAC key length");
+    blob_mac.update(b"SENTINEL-BLOB-V1:");
+    blob_mac.update(encrypted_key_id.as_bytes());
+    Ok(format!(
+        "{}\n{}\n{}",
+        compound,
+        encrypted_key_id,
+        hex::encode(blob_mac.finalize().into_bytes())
+    )
+    .into_bytes())
 }
 
 fn check_burned_key_registry(
@@ -610,6 +523,7 @@ fn check_burned_key_registry(
 /// HKDF-derived `sub_keys::record_hmac_key` (V2). The legacy code path
 /// passed the master local-encryption key; that combination is still
 /// accepted on read for backward compatibility.
+#[cfg(test)]
 fn compute_record_hmac_v2(key: &[u8], key_id: &str, expiry_ms: u64, fingerprint: &str) -> String {
     let mut mac =
         <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC can take key of any size");
@@ -625,6 +539,7 @@ fn compute_record_hmac_v2(key: &[u8], key_id: &str, expiry_ms: u64, fingerprint:
 /// Verify a stored record_hmac_v2 against the canonical fields, accepting
 /// either the V2 (HKDF-derived) sub-key or the V1 (master) key. The V2
 /// path is tried first; legacy records keep validating until rewritten.
+#[cfg(test)]
 fn verify_record_hmac_v2(
     master: &[u8],
     stored: &str,
@@ -643,364 +558,260 @@ fn verify_record_hmac_v2(
 
 fn check_license_burned(
     data: &Value,
-    key: &[u8],
-    path: &std::path::Path,
-    current_fp: &str,
-    needs_fp_upgrade: bool,
+    _key: &[u8],
+    _path: &std::path::Path,
+    _current_fp: &str,
+    _needs_fp_upgrade: bool,
 ) -> Value {
-    let token_hmac = data.get("tokenHmac").and_then(|v| v.as_str()).unwrap_or("");
-    let record_hmac_v2 = data
-        .get("recordHmacV2")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let expiry_ms = data.get("expiryMs").and_then(|v| v.as_u64()).unwrap_or(0);
-    let grace_days = data.get("graceDays").and_then(|v| v.as_u64()).unwrap_or(0);
-    let key_id = data.get("keyId").and_then(|v| v.as_str()).unwrap_or("");
-    let stored_fp = data
-        .get("machineFingerprint")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let client = data
-        .get("client")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Studio Legale")
-        .to_string();
-    let lawyer_name = data
-        .get("lawyerName")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let studio_name = data
-        .get("studioName")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let lawyer_title = data
-        .get("lawyerTitle")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Avv.")
-        .to_string();
-
-    if token_hmac.is_empty() {
-        return json!({"activated": false, "reason": "Dati licenza corrotti."});
+    if !record_has_current_issuer(data) {
+        return json!({"activated": false, "revoked": true, "reason": "Licenza revocata: è richiesta una licenza dell'emittente attuale."});
     }
+    json!({"activated": false, "needsLicenseProof": true,
+        "reason": "Per verificare questa attivazione precedente, reinserisci la stessa chiave di licenza originale. Non serve una nuova licenza."})
+}
 
-    // M-MR-2: if the new record-HMAC is present, verify it. This catches
-    // disk-level tampering of expiry / fingerprint / keyId. Older records
-    // (written before this fix) have no `recordHmacV2` field — accept them
-    // for backwards compatibility but the next activation will write the new
-    // field. AEAD on the encrypted file already provides integrity, so the
-    // record-HMAC is defence in depth.
-    if !record_hmac_v2.is_empty() && !key_id.is_empty() {
-        // V2 (record_hmac sub-key) first, V1 (master key) for legacy records.
-        if !verify_record_hmac_v2(key, record_hmac_v2, key_id, expiry_ms, stored_fp) {
-            return json!({
-                "activated": false,
-                "reason": "Dati licenza manomessi: HMAC del record non corrisponde."
-            });
-        }
+fn signing_key_id(public: &[u8; 32]) -> String {
+    hex::encode(<Sha256 as sha2::Digest>::digest(public))
+}
+
+/// Verify issuer proof independently of wall clock, so an expired signed license
+/// can still prove a previous activation and permit an authenticated renewal.
+fn verified_payload(token: &str, public: &[u8; 32]) -> Result<LicensePayload, String> {
+    if token.len() > MAX_LICENSE_TOKEN_BYTES {
+        return Err("Chiave troppo lunga.".into());
     }
-    // TODO(audit:MED-MR-2): once all clients have refreshed, drop the legacy
-    // `tokenHmac` field entirely and require `recordHmacV2`. Until then we
-    // accept either.
-    let now_ms = safe_now_ms();
-    let grace_ms = grace_days * 86_400 * 1000;
+    let parts: Vec<_> = token.split('.').collect();
+    if parts.len() != 3 || parts[0] != "LXFW" {
+        return Err("Formato chiave non valido.".into());
+    }
+    let bytes = URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .map_err(|_| "Errore decodifica payload.")?;
+    let signature = URL_SAFE_NO_PAD
+        .decode(parts[2])
+        .map_err(|_| "Errore decodifica firma.")?;
+    let signature = Signature::from_slice(&signature).map_err(|_| "Firma corrotta.")?;
+    let verifier =
+        VerifyingKey::from_bytes(public).map_err(|_| "Errore chiave pubblica interna.")?;
+    verifier
+        .verify_strict(parts[1].as_bytes(), &signature)
+        .map_err(|_| "Firma non valida o licenza manomessa!")?;
+    let payload: LicensePayload =
+        serde_json::from_slice(&bytes).map_err(|_| "Dati licenza corrotti.")?;
+    if payload.id.trim().is_empty()
+        || payload.id.len() > 512
+        || payload.c.trim().is_empty()
+        || payload.c.len() > 2000
+        || payload.e == 0
+        || payload.g.unwrap_or(0) > 3650
+        || license_deadline(payload.e, payload.g.unwrap_or(0)).is_none()
+    {
+        return Err("Dati licenza non validi.".into());
+    }
+    Ok(payload)
+}
 
-    if now_ms > expiry_ms {
-        if grace_ms > 0 && now_ms <= (expiry_ms + grace_ms) {
-            if needs_fp_upgrade {
-                silent_upgrade_fingerprint(data, key, path, current_fp);
-            }
-            return json!({
-                "activated": true,
-                "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
-                "client": client,
-                "lawyerName": lawyer_name,
-                "lawyerTitle": lawyer_title,
-                "studioName": studio_name,
-                "inGracePeriod": true,
-                "graceDays": grace_days,
-            });
-        }
+fn legacy_proof_matches(
+    data: &Value,
+    token: &str,
+    master: &[u8],
+    fingerprint: &str,
+    public: &[u8; 32],
+) -> bool {
+    let Ok(payload) = verified_payload(token, public) else {
+        return false;
+    };
+    if data.get("signingKeyId").and_then(Value::as_str) != Some(signing_key_id(public).as_str())
+        || data.get("keyId").and_then(Value::as_str) != Some(payload.id.as_str())
+        || data.get("machineFingerprint").and_then(Value::as_str) != Some(fingerprint)
+        || payload
+            .h
+            .as_deref()
+            .is_some_and(|required| required != fingerprint)
+    {
+        return false;
+    }
+    let Some(stored) = data
+        .get("tokenHmac")
+        .and_then(Value::as_str)
+        .and_then(|value| hex::decode(value).ok())
+    else {
+        return false;
+    };
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(master).expect("HMAC key length");
+    mac.update(token.as_bytes());
+    mac.verify_slice(&stored).is_ok()
+}
+
+fn signed_status(data: &Value, public: &[u8; 32], fingerprint: &str, now: u64) -> Value {
+    if data.get("signingKeyId").and_then(Value::as_str) != Some(signing_key_id(public).as_str()) {
+        return json!({"activated": false, "revoked": true, "reason": "Emittente della licenza non valido."});
+    }
+    let Some(token) = data.get("signedToken").and_then(Value::as_str) else {
+        return json!({"activated": false, "reason": "Prova firmata della licenza mancante."});
+    };
+    let payload = match verified_payload(token, public) {
+        Ok(payload) => payload,
+        Err(error) => return json!({"activated": false, "reason": error}),
+    };
+    if data.get("machineFingerprint").and_then(Value::as_str) != Some(fingerprint)
+        || payload
+            .h
+            .as_deref()
+            .is_some_and(|required| required != fingerprint)
+    {
+        return json!({"activated": false, "reason": "Licenza attivata su un altro dispositivo."});
+    }
+    let grace = payload.g.unwrap_or(0);
+    if now > license_deadline(payload.e, grace).unwrap_or(0) {
         return json!({"activated": false, "expired": true, "reason": "Licenza scaduta."});
     }
-    if needs_fp_upgrade {
-        silent_upgrade_fingerprint(data, key, path, current_fp);
-    }
-    json!({
-        "activated": true,
-        "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
-        "client": client,
-        "lawyerName": lawyer_name,
-        "lawyerTitle": lawyer_title,
-        "studioName": studio_name,
-    })
+    json!({"activated": true, "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
+        "client": payload.c, "lawyerName": payload.a.unwrap_or_default(),
+        "lawyerTitle": payload.t.unwrap_or_else(|| "Avv.".into()), "studioName": payload.s.unwrap_or_default(),
+        "inGracePeriod": now > payload.e, "graceDays": grace, "hardwareLocked": payload.h.is_some()})
 }
 
-fn check_license_legacy(
-    data: &Value,
-    license_key: &str,
-    key: &[u8],
-    path: &std::path::Path,
-    sec_dir: &std::path::Path,
-    current_fp: &str,
-) -> Value {
-    let verification = verify_license(license_key.to_string());
-    if !verification.valid {
-        return json!({"activated": false, "expired": true, "reason": verification.message});
-    }
-
-    let mut token_mac =
-        <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC can take key of any size");
-    token_mac.update(license_key.as_bytes());
-    let token_hmac = hex::encode(token_mac.finalize().into_bytes());
-
-    let expiry_ms: u64 = extract_expiry_ms(license_key).unwrap_or(0);
-    let client = verification
-        .client
-        .unwrap_or_else(|| "Studio Legale".to_string());
-    let key_id = extract_key_id(license_key).unwrap_or_else(|| "legacy".to_string());
-
-    let record_hmac_subkey = sub_keys::record_hmac_key(key);
-    let record_hmac_v2 =
-        compute_record_hmac_v2(&*record_hmac_subkey, &key_id, expiry_ms, current_fp);
-    let upgraded = json!({
-        "tokenHmac": token_hmac,
-        "recordHmacV2": record_hmac_v2,
-        "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
-        "client": client,
-        "keyVersion": "ed25519-burned",
-        "machineFingerprint": current_fp,
-        "keyId": key_id,
-        "expiryMs": expiry_ms,
-    });
-
-    if let Ok(bytes) = serde_json::to_vec(&upgraded) {
-        if let Ok(encrypted) = encrypt_data(key, &bytes) {
-            if let Err(e) = atomic_write_with_sync(path, &encrypted) {
-                #[cfg(debug_assertions)]
-                eprintln!("[SECURITY] license upgrade write failed: {}", e);
-                #[cfg(not(debug_assertions))]
-                let _ = e;
-            }
-        }
-    }
-    if let Err(e) = burn_key(sec_dir, &compute_burn_hash(license_key)) {
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[SECURITY] CRITICAL: burn_key failed during legacy upgrade: {}",
-            e
-        );
-        #[cfg(not(debug_assertions))]
-        let _ = e;
-    }
-
-    json!({
-        "activated": true,
-        "activatedAt": data.get("activatedAt").cloned().unwrap_or(Value::Null),
-        "client": client,
-        "lawyerName": "",
-        "studioName": "",
-    })
+#[derive(Serialize, Deserialize)]
+struct ActivationJournal {
+    version: u8,
+    token: String,
+    fingerprint: String,
+    activated_at: String,
+    burned_keys: Vec<String>,
 }
 
-fn perform_license_activation(
+fn journal_key(master: &[u8]) -> zeroize::Zeroizing<[u8; 32]> {
+    sub_keys::derive_subkey(master, b"LexFlow-v1-license-activation-journal")
+}
+
+/// Roll forward an authenticated transaction. The journal is persisted before
+/// any activation file changes and removed only after all three writes succeed.
+/// Repeating any prefix after a crash produces the same complete activation.
+fn finish_activation_with(
     sec_dir: &std::path::Path,
-    path: &std::path::Path,
-    sentinel_path: &std::path::Path,
-    key: &str,
-    client: &str,
+    master: &[u8],
+    public: &[u8; 32],
     fingerprint: &str,
-) -> Value {
-    let now = chrono::Utc::now().to_rfc3339();
-    let key_id = extract_key_id(key).unwrap_or_else(|| "unknown".to_string());
-    let enc_key = get_local_encryption_key();
-
-    let mut token_mac =
-        <Hmac<Sha256> as Mac>::new_from_slice(&enc_key).expect("HMAC can take key of any size");
-    token_mac.update(key.as_bytes());
-    let token_hmac = hex::encode(token_mac.finalize().into_bytes());
-
-    let parsed_payload = parse_lxfw_payload(key);
-    let expiry_ms = parsed_payload.as_ref().map(|p| p.e).unwrap_or(0);
-    let grace_days = parsed_payload.as_ref().and_then(|p| p.g).unwrap_or(0);
-    let hardware_locked = parsed_payload.as_ref().and_then(|p| p.h.as_ref()).is_some();
-    let lawyer_name = parsed_payload
-        .as_ref()
-        .and_then(|p| p.a.clone())
-        .unwrap_or_default();
-    let studio_name = parsed_payload
-        .as_ref()
-        .and_then(|p| p.s.clone())
-        .unwrap_or_default();
-    let lawyer_title = parsed_payload
-        .as_ref()
-        .and_then(|p| p.t.clone())
-        .unwrap_or_else(|| "Avv.".to_string());
-
-    // M-MR-2: also write a record-level HMAC that can be re-verified on read.
-    // Keyed with the HKDF-derived record_hmac sub-key (V2 — domain-separated).
-    let record_hmac_subkey = sub_keys::record_hmac_key(&enc_key);
-    let record_hmac_v2 =
-        compute_record_hmac_v2(&*record_hmac_subkey, &key_id, expiry_ms, fingerprint);
-
-    let record = json!({
-        "tokenHmac": token_hmac,
-        "recordHmacV2": record_hmac_v2,
-        "activatedAt": now,
-        "client": client,
-        "lawyerName": lawyer_name,
-        "lawyerTitle": lawyer_title,
-        "studioName": studio_name,
-        "keyVersion": "ed25519-burned",
-        "machineFingerprint": fingerprint,
-        "keyId": key_id,
-        "expiryMs": expiry_ms,
-        "graceDays": grace_days,
-        "hardwareLocked": hardware_locked,
-    });
-
-    let record_bytes = match serde_json::to_vec(&record) {
-        Ok(b) => b,
-        Err(e) => {
-            return json!({"success": false, "error": format!("Errore serializzazione: {}", e)})
-        }
-    };
-    let encrypted = match encrypt_data(&enc_key, &record_bytes) {
-        Ok(enc) => enc,
-        Err(e) => return json!({"success": false, "error": format!("Errore cifratura: {}", e)}),
-    };
-    if let Err(e) = atomic_write_with_sync(path, &encrypted) {
-        return json!({"success": false, "error": format!("Errore salvataggio: {}", e)});
+    mut write: impl FnMut(&std::path::Path, &[u8]) -> Result<(), String>,
+) -> Result<Option<String>, String> {
+    let journal_path = sec_dir.join(ACTIVATION_JOURNAL_FILE);
+    if !journal_path.try_exists().map_err(|e| e.to_string())? {
+        return Ok(None);
     }
-
-    write_license_sentinel(sentinel_path, fingerprint, &key_id, &now);
-
-    if let Err(e) = burn_key(sec_dir, &compute_burn_hash(key)) {
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[SECURITY] CRITICAL: burn_key failed after activation: {}. Rolling back license file.",
-            e
-        );
-        // Roll back: delete the license file that was just written
-        let _ = std::fs::remove_file(path);
-        return json!({"success": false, "error": format!("Activation failed: could not burn key ({}). License rolled back.", e)});
+    let encrypted = crate::io::safe_bounded_read(&journal_path, MAX_SETTINGS_FILE_SIZE)?;
+    let plain = decrypt_data(&*journal_key(master), &encrypted)?;
+    let journal: ActivationJournal =
+        serde_json::from_slice(&plain).map_err(|_| "Transazione licenza non valida.")?;
+    let payload = verified_payload(&journal.token, public)?;
+    if journal.version != 1
+        || journal.fingerprint != fingerprint
+        || payload
+            .h
+            .as_deref()
+            .is_some_and(|required| required != fingerprint)
+        || journal
+            .burned_keys
+            .iter()
+            .any(|hash| hash.len() != 64 || !hash.bytes().all(|c| c.is_ascii_hexdigit()))
+    {
+        return Err("Transazione licenza non valida per questo dispositivo.".into());
     }
+    let burn_hash = compute_burn_hash(&journal.token);
+    if !journal.burned_keys.contains(&burn_hash) {
+        return Err("Registro della transazione incompleto.".into());
+    }
+    let record = json!({"keyVersion": SIGNED_RECORD_VERSION, "signedToken": journal.token,
+        "signingKeyId": signing_key_id(public), "machineFingerprint": fingerprint,
+        "activatedAt": journal.activated_at, "keyId": payload.id});
+    let burn_bytes = encrypt_data(
+        &*sub_keys::burn_key(master),
+        journal.burned_keys.join("\n").as_bytes(),
+    )?;
+    write(&sec_dir.join(BURNED_KEYS_FILE), &burn_bytes)?;
+    let record_bytes = encrypt_data(
+        master,
+        &serde_json::to_vec(&record).map_err(|e| e.to_string())?,
+    )?;
+    write(&sec_dir.join(LICENSE_FILE), &record_bytes)?;
+    let sentinel = sentinel_bytes(master, fingerprint, &payload.id, &journal.activated_at)?;
+    write(&sec_dir.join(LICENSE_SENTINEL_FILE), &sentinel)?;
+    fs::remove_file(&journal_path).map_err(|e| e.to_string())?;
+    Ok(Some(burn_hash))
+}
 
-    json!({"success": true, "client": client, "lawyerName": lawyer_name, "lawyerTitle": lawyer_title})
+fn recover_pending_activation(sec_dir: &std::path::Path) -> Result<(), String> {
+    if !sec_dir
+        .join(ACTIVATION_JOURNAL_FILE)
+        .try_exists()
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(());
+    }
+    let master = get_local_encryption_key();
+    if let Some(hash) = finish_activation_with(
+        sec_dir,
+        &master,
+        &PUBLIC_KEY_BYTES,
+        &compute_machine_fingerprint(),
+        atomic_write_with_sync,
+    )? {
+        burn_key_keychain(&hash);
+    }
+    Ok(())
+}
+
+fn stage_activation(
+    sec_dir: &std::path::Path,
+    token: &str,
+    fingerprint: &str,
+    activated_at: String,
+) -> Result<(), String> {
+    let mut burned_keys = load_burned_keys(sec_dir)?;
+    let burn_hash = compute_burn_hash(token);
+    if !burned_keys.contains(&burn_hash) {
+        burned_keys.push(burn_hash);
+    }
+    let journal = ActivationJournal {
+        version: 1,
+        token: token.into(),
+        fingerprint: fingerprint.into(),
+        activated_at,
+        burned_keys,
+    };
+    let plain = serde_json::to_vec(&journal).map_err(|e| e.to_string())?;
+    if plain.len() as u64 + 64 > MAX_SETTINGS_FILE_SIZE {
+        return Err("Registro licenze troppo grande.".into());
+    }
+    let master = get_local_encryption_key();
+    let encrypted = encrypt_data(&*journal_key(&master), &plain)?;
+    atomic_write_with_sync(&sec_dir.join(ACTIVATION_JOURNAL_FILE), &encrypted)?;
+    recover_pending_activation(sec_dir)
 }
 
 // ─── Internal helpers / Tauri commands ──────────────────────
 
-// INFO(audit:lib-cleanup): both `get_machine_fingerprint` and `verify_license`
-// were previously exposed as `#[tauri::command]`. Frontend never invokes them
-// directly — they are wrappers over `compute_machine_fingerprint()` and the
-// internal Ed25519 verification logic used by `check_license`/`activate_license`.
-// Removing the attribute shrinks the IPC attack surface; BE-8 removes the
-// matching entries from `lib.rs`'s invoke_handler.
-#[allow(dead_code)]
-pub(crate) fn get_machine_fingerprint() -> String {
-    compute_machine_fingerprint()
+fn invalid_license(message: &str) -> VerificationResult {
+    VerificationResult {
+        valid: false,
+        client: None,
+        message: message.into(),
+        in_grace_period: None,
+        grace_days: None,
+        hardware_locked: None,
+    }
 }
 
 pub(crate) fn verify_license(key_string: String) -> VerificationResult {
-    let parts: Vec<&str> = key_string.split('.').collect();
-    if parts.len() != 3 || parts[0] != "LXFW" {
-        return VerificationResult {
-            valid: false,
-            client: None,
-            message: "Formato chiave non valido.".into(),
-            in_grace_period: None,
-            grace_days: None,
-            hardware_locked: None,
-        };
-    }
+    verify_license_with_key(key_string, &PUBLIC_KEY_BYTES)
+}
 
-    let payload_b64 = parts[1];
-    let signature_b64 = parts[2];
-
-    let payload_bytes = match URL_SAFE_NO_PAD.decode(payload_b64) {
-        Ok(b) => b,
-        Err(_) => {
-            return VerificationResult {
-                valid: false,
-                client: None,
-                message: "Errore decodifica payload.".into(),
-                in_grace_period: None,
-                grace_days: None,
-                hardware_locked: None,
-            }
-        }
-    };
-
-    let signature_bytes = match URL_SAFE_NO_PAD.decode(signature_b64) {
-        Ok(b) => b,
-        Err(_) => {
-            return VerificationResult {
-                valid: false,
-                client: None,
-                message: "Errore decodifica firma.".into(),
-                in_grace_period: None,
-                grace_days: None,
-                hardware_locked: None,
-            }
-        }
-    };
-
-    let public_key = match VerifyingKey::from_bytes(&PUBLIC_KEY_BYTES) {
-        Ok(k) => k,
-        Err(_) => {
-            return VerificationResult {
-                valid: false,
-                client: None,
-                message: "Errore chiave pubblica interna.".into(),
-                in_grace_period: None,
-                grace_days: None,
-                hardware_locked: None,
-            }
-        }
-    };
-
-    let signature = match Signature::from_slice(&signature_bytes) {
-        Ok(s) => s,
-        Err(_) => {
-            return VerificationResult {
-                valid: false,
-                client: None,
-                message: "Firma corrotta.".into(),
-                in_grace_period: None,
-                grace_days: None,
-                hardware_locked: None,
-            }
-        }
-    };
-
-    if public_key
-        .verify(payload_b64.as_bytes(), &signature)
-        .is_err()
-    {
-        return VerificationResult {
-            valid: false,
-            client: None,
-            message: "Firma non valida o licenza manomessa!".into(),
-            in_grace_period: None,
-            grace_days: None,
-            hardware_locked: None,
-        };
-    }
-
-    let payload: LicensePayload = match serde_json::from_slice(&payload_bytes) {
-        Ok(p) => p,
-        Err(_) => {
-            return VerificationResult {
-                valid: false,
-                client: None,
-                message: "Dati licenza corrotti.".into(),
-                in_grace_period: None,
-                grace_days: None,
-                hardware_locked: None,
-            }
-        }
+// Keep the complete verification path testable with synthetic signing keys.
+// Production always supplies the single embedded key through verify_license.
+fn verify_license_with_key(key_string: String, public_key_bytes: &[u8; 32]) -> VerificationResult {
+    let payload = match verified_payload(&key_string, public_key_bytes) {
+        Ok(payload) => payload,
+        Err(error) => return invalid_license(&error),
     };
 
     let hardware_locked = payload.h.is_some();
@@ -1020,10 +831,12 @@ pub(crate) fn verify_license(key_string: String) -> VerificationResult {
 
     let now = safe_now_ms();
     let grace_days = payload.g.unwrap_or(0);
-    let grace_ms = grace_days * 86_400 * 1000;
+    let Some(deadline) = license_deadline(payload.e, grace_days) else {
+        return invalid_license("Durata della licenza non valida.");
+    };
 
     if now > payload.e {
-        if grace_ms > 0 && now <= (payload.e + grace_ms) {
+        if grace_days > 0 && now <= deadline {
             return VerificationResult {
                 valid: true,
                 client: Some(payload.c),
@@ -1063,127 +876,174 @@ pub(crate) fn verify_license(key_string: String) -> VerificationResult {
 
 #[tauri::command]
 pub(crate) fn check_license(state: State<AppState>) -> Value {
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let sec_dir = state
         .security_dir
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
+    if let Err(error) = recover_pending_activation(&sec_dir) {
+        return json!({"activated": false, "activationPending": true, "reason": format!("Completamento dell'attivazione non riuscito: {}. Riavvia per riprovare.", error)});
+    }
+    if let Err(error) = monotonic_clock_check(&sec_dir) {
+        return json!({"activated": false, "reason": error});
+    }
     let path = sec_dir.join(LICENSE_FILE);
-    let sentinel_path = sec_dir.join(LICENSE_SENTINEL_FILE);
-
-    if let Err(e) = monotonic_clock_check(&sec_dir) {
-        #[cfg(debug_assertions)]
-        eprintln!("[SECURITY] {}", e);
-        #[cfg(not(debug_assertions))]
-        let _ = e;
-        return json!({"activated": false, "reason": "Anomalia orologio di sistema rilevata. Verificare data/ora e riprovare."});
-    }
-
     if !path.exists() {
-        if sentinel_path.exists() {
-            return json!({"activated": false, "tampered": true, "reason": "File di licenza rimosso o manomesso. Contattare il supporto."});
-        }
-        return json!({"activated": false});
+        return if sec_dir.join(LICENSE_SENTINEL_FILE).exists() {
+            json!({"activated": false, "tampered": true, "reason": "File di licenza rimosso o manomesso. Contattare il supporto."})
+        } else {
+            json!({"activated": false})
+        };
     }
-
-    let key = get_local_encryption_key();
-    let data: Value = if let Some(dec) = decrypt_local_with_migration(&path) {
-        serde_json::from_slice(&dec).unwrap_or(json!({}))
-    } else {
+    let Some(plain) = decrypt_local_with_migration(&path) else {
         return json!({"activated": false, "reason": "File licenza corrotto o non valido per questo dispositivo."});
     };
-
-    let current_fp = compute_machine_fingerprint();
-    if let Some(stored_fp) = data.get("machineFingerprint").and_then(|v| v.as_str()) {
-        if stored_fp != current_fp {
-            return json!({"activated": false, "reason": "Licenza attivata su un altro dispositivo."});
+    let Ok(data) = serde_json::from_slice::<Value>(&plain) else {
+        return json!({"activated": false, "reason": "Dati licenza corrotti."});
+    };
+    let fingerprint = compute_machine_fingerprint();
+    if data.get("keyVersion").and_then(Value::as_str) == Some(SIGNED_RECORD_VERSION) {
+        return signed_status(&data, &PUBLIC_KEY_BYTES, &fingerprint, safe_now_ms());
+    }
+    // Historical records retaining their signed token can migrate without user input.
+    if let Some(token) = data.get("key").and_then(Value::as_str) {
+        if verified_payload(token, &PUBLIC_KEY_BYTES).is_ok()
+            && data.get("machineFingerprint").and_then(Value::as_str) == Some(fingerprint.as_str())
+        {
+            if let Err(error) = stage_activation(
+                &sec_dir,
+                token,
+                &fingerprint,
+                chrono::Utc::now().to_rfc3339(),
+            ) {
+                return json!({"activated": false, "activationPending": true, "reason": error});
+            }
+            let record = json!({"signedToken": token, "signingKeyId": current_signing_key_id(), "machineFingerprint": fingerprint});
+            return signed_status(&record, &PUBLIC_KEY_BYTES, &fingerprint, safe_now_ms());
         }
     }
-    let needs_fp_upgrade = data.get("machineFingerprint").is_none();
-    let key_version = data
-        .get("keyVersion")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    if key_version == "ed25519-burned" {
-        return check_license_burned(&data, &key, &path, &current_fp, needs_fp_upgrade);
-    }
-
-    let license_key = data.get("key").and_then(|k| k.as_str()).unwrap_or("");
-    if !license_key.is_empty() {
-        return check_license_legacy(&data, license_key, &key, &path, &sec_dir, &current_fp);
-    }
-
-    json!({"activated": false})
+    check_license_burned(&data, &[], &path, &fingerprint, false)
 }
 
 #[tauri::command]
 pub(crate) fn activate_license(state: State<AppState>, key: String) -> Value {
+    if key.len() > MAX_LICENSE_TOKEN_BYTES {
+        return json!({"success": false, "error": "Chiave troppo lunga."});
+    }
+    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
     let sec_dir = state
         .security_dir
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
-
-    if let Err(locked_json) = check_lockout(&state, &sec_dir) {
-        return locked_json;
+    if let Err(error) = recover_pending_activation(&sec_dir) {
+        return json!({"success": false, "activationPending": true, "error": error});
     }
-
-    let key = key.trim().to_string();
+    if let Err(locked) = check_lockout(&state, &sec_dir) {
+        return locked;
+    }
+    let key = key.trim();
+    let payload = match verified_payload(key, &PUBLIC_KEY_BYTES) {
+        Ok(payload) => payload,
+        Err(error) => {
+            record_failed_attempt_locked(&state, &sec_dir);
+            return json!({"success": false, "error": error});
+        }
+    };
+    let fingerprint = compute_machine_fingerprint();
+    if payload
+        .h
+        .as_deref()
+        .is_some_and(|required| required != fingerprint)
+    {
+        record_failed_attempt_locked(&state, &sec_dir);
+        return json!({"success": false, "error": "Licenza bloccata su un altro dispositivo (Hardware ID mismatch)."});
+    }
     let path = sec_dir.join(LICENSE_FILE);
     let sentinel_path = sec_dir.join(LICENSE_SENTINEL_FILE);
-
-    if !path.exists() && sentinel_path.exists() {
-        let stored_key_id = recover_sentinel_key_id(&sentinel_path);
-        let new_key_id = extract_key_id(&key);
-        match (stored_key_id.as_deref(), new_key_id.as_deref()) {
-            (Some(old), Some(new_id)) if old == new_id => {}
-            _ => {
-                return json!({"success": false, "error": "Questa installazione ha già una licenza registrata. Contattare il supporto per assistenza."})
+    let existing = if path.exists() {
+        match decrypt_local_with_migration(&path)
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        {
+            Some(data) => Some(data),
+            None => {
+                return json!({"success": false, "error": "Licenza locale non leggibile. Conserva i file e contatta il supporto."})
             }
         }
-    }
-
-    if let Some(blocked) = check_existing_license_blocks(&path, &key) {
-        return blocked;
-    }
-
-    let verification = verify_license(key.clone());
-    if !verification.valid {
-        record_failed_attempt(&state, &sec_dir);
-        return json!({"success": false, "error": verification.message});
-    }
-
-    let fingerprint = compute_machine_fingerprint();
-
-    if let Err(msg) = check_burned_key_registry(&sec_dir, &key, &fingerprint) {
-        record_failed_attempt(&state, &sec_dir);
-        return msg;
-    }
-
-    if sentinel_path.exists() && !sec_dir.join(BURNED_KEYS_FILE).exists() {
-        record_failed_attempt(&state, &sec_dir);
-        return json!({"success": false, "error": "Registro chiavi compromesso. Contattare il supporto per assistenza."});
-    }
-
-    let client = verification
-        .client
-        .unwrap_or_else(|| "Studio Legale".to_string());
-    let result =
-        perform_license_activation(&sec_dir, &path, &sentinel_path, &key, &client, &fingerprint);
-
-    if result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
-        clear_lockout(&state, &sec_dir);
     } else {
-        record_failed_attempt(&state, &sec_dir);
+        None
+    };
+    let proof = existing.as_ref().is_some_and(|data| {
+        if data.get("keyVersion").and_then(Value::as_str) == Some("ed25519-burned") {
+            return legacy_proof_matches(
+                data,
+                key,
+                &get_local_encryption_key(),
+                &fingerprint,
+                &PUBLIC_KEY_BYTES,
+            );
+        }
+        data.get("keyVersion").and_then(Value::as_str) == Some(SIGNED_RECORD_VERSION)
+            && data.get("signedToken").and_then(Value::as_str) == Some(key)
+            && data.get("signingKeyId").and_then(Value::as_str)
+                == Some(current_signing_key_id().as_str())
+            && data.get("machineFingerprint").and_then(Value::as_str) == Some(fingerprint.as_str())
+    });
+    if let Some(data) = &existing {
+        if !proof
+            && !existing_license_allows_replacement(
+                data,
+                &payload.id,
+                &PUBLIC_KEY_BYTES,
+                safe_now_ms(),
+            )
+        {
+            return json!({"success": false, "needsLicenseProof": data.get("keyVersion").and_then(Value::as_str) != Some(SIGNED_RECORD_VERSION),
+                "error": "La licenza attuale deve essere verificata con la chiave originale oppure deve essere scaduta prima del rinnovo."});
+        }
+    } else if sentinel_path.exists()
+        && recover_sentinel_key_id(&sentinel_path).as_deref() != Some(payload.id.as_str())
+    {
+        return json!({"success": false, "error": "Questa installazione ha già una licenza registrata. Contattare il supporto."});
     }
-
-    result
+    if proof {
+        match is_key_burned(&sec_dir, key, &fingerprint) {
+            Ok(true) => {}
+            _ => {
+                return json!({"success": false, "error": "Impossibile confermare il registro della precedente attivazione."})
+            }
+        }
+    } else {
+        let verification = verify_license(key.to_string());
+        if !verification.valid {
+            record_failed_attempt_locked(&state, &sec_dir);
+            return json!({"success": false, "error": verification.message});
+        }
+        if let Err(error) = check_burned_key_registry(&sec_dir, key, &fingerprint) {
+            return error;
+        }
+        if sentinel_path.exists() && !sec_dir.join(BURNED_KEYS_FILE).exists() {
+            return json!({"success": false, "error": "Registro chiavi compromesso. Contattare il supporto."});
+        }
+    }
+    if let Err(error) = monotonic_clock_check_after_proof(&sec_dir, true) {
+        return json!({"success": false, "error": error});
+    }
+    match stage_activation(&sec_dir, key, &fingerprint, chrono::Utc::now().to_rfc3339()) {
+        Ok(()) => {
+            clear_lockout(&state, &sec_dir);
+            if safe_now_ms() > license_deadline(payload.e, payload.g.unwrap_or(0)).unwrap_or(0) {
+                return json!({"success": false, "proofRestored": proof, "needsLicenseProof": false, "needsRenewal": true,
+                    "error": "La licenza originale è stata verificata, ma è scaduta. Inserisci una nuova licenza di rinnovo."});
+            }
+            json!({"success": true, "client": payload.c, "lawyerName": payload.a.unwrap_or_default(),
+                "lawyerTitle": payload.t.unwrap_or_else(|| "Avv.".into()), "proofRestored": proof,
+                "needsRenewal": safe_now_ms() > license_deadline(payload.e, payload.g.unwrap_or(0)).unwrap_or(0)})
+        }
+        Err(error) => json!({"success": false, "activationPending": true,
+            "error": format!("Attivazione da completare: {}. I dati sono conservati; riavvia LexFlow per riprovare.", error)}),
+    }
 }
 
 // ─── Tests ──────────────────────────────────────────────────
@@ -1191,22 +1051,320 @@ pub(crate) fn activate_license(state: State<AppState>, key: String) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn clock_marker_rejects_corruption_oversize_and_preserves_original() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clock");
+        let verify = |_: &[u8], _: &str, tag: &[u8]| tag == [7; 32];
+        assert_eq!(
+            read_clock_marker_with(&path, b"test", verify).unwrap(),
+            None
+        );
+        for value in [
+            b"".to_vec(),
+            b"corrupt".to_vec(),
+            vec![b'x'; 257],
+            format!("42:{}", "00".repeat(32)).into_bytes(),
+        ] {
+            fs::write(&path, &value).unwrap();
+            assert!(read_clock_marker_with(&path, b"test", verify).is_err());
+            assert_eq!(fs::read(&path).unwrap(), value);
+        }
+        fs::write(&path, format!("42:{}", "07".repeat(32))).unwrap();
+        assert_eq!(
+            read_clock_marker_with(&path, b"test", verify).unwrap(),
+            Some(42)
+        );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn clock_marker_rejects_symlinks_without_following_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        fs::write(&target, b"preserved").unwrap();
+        let path = dir.path().join("clock");
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        assert!(read_clock_marker_with(&path, b"test", |_, _, _| true).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"preserved");
+    }
+
+    fn synthetic_payload(payload: Value) -> (String, [u8; 32]) {
+        use ed25519_dalek::{Signer, SigningKey};
+        let signer = SigningKey::from_bytes(&[91; 32]);
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
+        let signature = URL_SAFE_NO_PAD.encode(signer.sign(payload.as_bytes()).to_bytes());
+        (
+            format!("LXFW.{payload}.{signature}"),
+            signer.verifying_key().to_bytes(),
+        )
+    }
+    fn synthetic_token(id: &str, expiry: u64) -> (String, [u8; 32]) {
+        synthetic_payload(json!({"c":"Synthetic studio","a":"Synthetic lawyer","id":id,"e":expiry}))
+    }
+
+    #[test]
+    fn signed_records_reverify_claims_and_reject_issuer_forgery() {
+        let (token, public) = synthetic_token("signed-test", 10_000);
+        let mut record = json!({"signedToken":token,"signingKeyId":signing_key_id(&public),"machineFingerprint":"fp","expiryMs":u64::MAX,"client":"Forged client"});
+        let status = signed_status(&record, &public, "fp", 5000);
+        assert_eq!(status["activated"], true);
+        assert_eq!(status["client"], "Synthetic studio");
+        assert_eq!(
+            signed_status(&record, &public, "fp", 20_000)["expired"],
+            true
+        );
+        assert_eq!(
+            signed_status(&record, &public, "other-fp", 5000)["activated"],
+            false
+        );
+        record["signedToken"] = json!("LXFW.e30.invalid");
+        assert_eq!(
+            signed_status(&record, &public, "fp", 5000)["activated"],
+            false
+        );
+        record["signedToken"] = json!(token);
+        record["signingKeyId"] = json!("old-issuer");
+        assert_eq!(signed_status(&record, &public, "fp", 5000)["revoked"], true);
+    }
+
+    #[test]
+    fn unsigned_cache_never_grants_access_even_with_matching_public_issuer() {
+        let record = json!({"keyVersion":"ed25519-burned","signingKeyId":current_signing_key_id(),"tokenHmac":"anything","expiryMs":u64::MAX});
+        let result = check_license_burned(
+            &record,
+            &[0; 32],
+            std::path::Path::new("unused"),
+            "fp",
+            false,
+        );
+        assert_eq!(result["activated"], false);
+        assert_eq!(result["needsLicenseProof"], true);
+    }
+
+    #[test]
+    fn previous_activation_proof_requires_exact_token_id_hmac_and_fingerprint() {
+        let (token, public) = synthetic_token("proof-test", 1); // Expired proof can authenticate a renewal.
+        let master = [82; 32];
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&master).unwrap();
+        mac.update(token.as_bytes());
+        let mut record = json!({"keyId":"proof-test","tokenHmac":hex::encode(mac.finalize().into_bytes()),"signingKeyId":signing_key_id(&public),"machineFingerprint":"fp"});
+        assert!(legacy_proof_matches(
+            &record, &token, &master, "fp", &public
+        ));
+        assert!(!legacy_proof_matches(
+            &record, &token, &master, "other", &public
+        ));
+        for field in ["keyId", "tokenHmac", "signingKeyId", "machineFingerprint"] {
+            let original = record[field].clone();
+            record[field] = json!("tampered");
+            assert!(
+                !legacy_proof_matches(&record, &token, &master, "fp", &public),
+                "{field}"
+            );
+            record[field] = original;
+        }
+        let (bound_token, _) = synthetic_payload(
+            json!({"c":"Synthetic","id":"proof-test","e":1,"h":"different-hardware"}),
+        );
+        let mut bound_mac = <Hmac<Sha256> as Mac>::new_from_slice(&master).unwrap();
+        bound_mac.update(bound_token.as_bytes());
+        let mut bound_record = record.clone();
+        bound_record["tokenHmac"] = json!(hex::encode(bound_mac.finalize().into_bytes()));
+        assert!(!legacy_proof_matches(
+            &bound_record,
+            &bound_token,
+            &master,
+            "fp",
+            &public
+        ));
+        assert!(!legacy_proof_matches(
+            &record,
+            "LXFW.e30.invalid",
+            &master,
+            "fp",
+            &public
+        ));
+        let (different_token, _) = synthetic_token("proof-test", 20_000);
+        assert!(!legacy_proof_matches(
+            &record,
+            &different_token,
+            &master,
+            "fp",
+            &public
+        ));
+    }
+
+    #[test]
+    fn renewal_uses_signed_deadline_including_grace_not_cached_expiry() {
+        let (token, public) = synthetic_token("original", 10_000);
+        let record =
+            json!({"signedToken":token,"signingKeyId":signing_key_id(&public),"expiryMs":1});
+        assert!(!existing_license_allows_replacement(
+            &record, "renewal", &public, 5000
+        ));
+        assert!(existing_license_allows_replacement(
+            &record, "renewal", &public, 20_000
+        ));
+        let (with_grace, _) =
+            synthetic_payload(json!({"c":"Synthetic","id":"original","e":10_000,"g":2}));
+        let grace_record = json!({"signedToken":with_grace,"signingKeyId":signing_key_id(&public)});
+        assert!(!existing_license_allows_replacement(
+            &grace_record,
+            "renewal",
+            &public,
+            10_000 + 86_400_000
+        ));
+        assert!(existing_license_allows_replacement(
+            &grace_record,
+            "renewal",
+            &public,
+            10_001 + 2 * 86_400_000
+        ));
+        let unsigned =
+            json!({"keyId":"original","signingKeyId":signing_key_id(&public),"expiryMs":1});
+        assert!(!existing_license_allows_replacement(
+            &unsigned, "renewal", &public, 20_000
+        ));
+    }
+
+    #[test]
+    fn activation_journal_recovers_every_interrupted_write_and_replay() {
+        let master = [83; 32];
+        let (token, public) = synthetic_token("journal", 100_000);
+        for fail_at in 1..=3 {
+            let dir = tempfile::tempdir().unwrap();
+            let journal_path = dir.path().join(ACTIVATION_JOURNAL_FILE);
+            let previous_license = b"previous-expired-record";
+            fs::write(dir.path().join(LICENSE_FILE), previous_license).unwrap();
+            let journal = ActivationJournal {
+                version: 1,
+                token: token.clone(),
+                fingerprint: "fp".into(),
+                activated_at: "2026-09-08T00:00:00Z".into(),
+                burned_keys: vec!["a".repeat(64), compute_burn_hash(&token)],
+            };
+            let encrypted = encrypt_data(
+                &*journal_key(&master),
+                &serde_json::to_vec(&journal).unwrap(),
+            )
+            .unwrap();
+            atomic_write_with_sync(&journal_path, &encrypted).unwrap();
+            let mut writes = 0;
+            let result =
+                finish_activation_with(dir.path(), &master, &public, "fp", |path, bytes| {
+                    writes += 1;
+                    if writes == fail_at {
+                        return Err("simulated crash before durable write".into());
+                    }
+                    atomic_write_with_sync(path, bytes)
+                });
+            assert!(result.is_err());
+            assert!(journal_path.exists());
+            if fail_at <= 2 {
+                assert_eq!(
+                    fs::read(dir.path().join(LICENSE_FILE)).unwrap(),
+                    previous_license
+                );
+            }
+            assert_eq!(
+                finish_activation_with(dir.path(), &master, &public, "fp", atomic_write_with_sync)
+                    .unwrap(),
+                Some(compute_burn_hash(&token))
+            );
+            assert!(!journal_path.exists());
+            let decrypted =
+                decrypt_data(&master, &fs::read(dir.path().join(LICENSE_FILE)).unwrap()).unwrap();
+            let record: Value = serde_json::from_slice(&decrypted).unwrap();
+            assert_eq!(signed_status(&record, &public, "fp", 10)["activated"], true);
+            let burns = decrypt_data(
+                &*sub_keys::burn_key(&master),
+                &fs::read(dir.path().join(BURNED_KEYS_FILE)).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                String::from_utf8(burns.to_vec()).unwrap().lines().count(),
+                2
+            );
+            // Simulate a crash after final unlink whose directory update was not durable.
+            atomic_write_with_sync(&journal_path, &encrypted).unwrap();
+            assert!(finish_activation_with(
+                dir.path(),
+                &master,
+                &public,
+                "fp",
+                atomic_write_with_sync
+            )
+            .unwrap()
+            .is_some());
+            assert!(finish_activation_with(
+                dir.path(),
+                &master,
+                &public,
+                "fp",
+                atomic_write_with_sync
+            )
+            .unwrap()
+            .is_none());
+        }
+    }
+
+    #[test]
+    fn activation_journal_rejects_tampered_or_wrong_issuer_before_any_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let master = [84; 32];
+        let (token, _public) = synthetic_token("journal", 100_000);
+        let journal = ActivationJournal {
+            version: 1,
+            token: token.clone(),
+            fingerprint: "fp".into(),
+            activated_at: "synthetic".into(),
+            burned_keys: vec![compute_burn_hash(&token)],
+        };
+        let encrypted = encrypt_data(
+            &*journal_key(&master),
+            &serde_json::to_vec(&journal).unwrap(),
+        )
+        .unwrap();
+        atomic_write_with_sync(&dir.path().join(ACTIVATION_JOURNAL_FILE), &encrypted).unwrap();
+        assert!(finish_activation_with(
+            dir.path(),
+            &master,
+            &PUBLIC_KEY_BYTES,
+            "fp",
+            |_, _| panic!("unverified journal reached writer")
+        )
+        .is_err());
+        assert!(!dir.path().join(LICENSE_FILE).exists());
+        assert!(!dir.path().join(BURNED_KEYS_FILE).exists());
+    }
+
+    #[test]
+    fn license_duration_rejects_overflow_without_panicking() {
+        assert_eq!(license_deadline(100, 2), Some(172_800_100));
+        assert_eq!(license_deadline(100, u64::MAX), None);
+        assert_eq!(license_deadline(u64::MAX, 1), None);
+        assert_eq!(license_deadline(u64::MAX, 0), Some(u64::MAX));
+    }
+
+    #[test]
+    fn oversized_license_is_rejected_before_decoding() {
+        let result = verify_license(format!(
+            "LXFW.{}.signature",
+            "A".repeat(MAX_LICENSE_TOKEN_BYTES)
+        ));
+        assert!(!result.valid);
+        assert_eq!(result.message, "Chiave troppo lunga.");
+    }
 
     #[test]
     fn test_license_verification_full_cycle() {
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
         use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 
-        // Generate a token signed with the CURRENT embedded public key's private counterpart.
-        // Since we don't have the private key in tests, we test the verification logic
-        // by creating a self-signed token with a fresh keypair and verifying tamper detection.
-
-        // 1. Create a deterministic keypair for testing (NOT the production key)
-        let test_secret: [u8; 32] = [42u8; 32]; // fixed test seed
-        let signing_key = SigningKey::from_bytes(&test_secret);
-        let _verifying_key = VerifyingKey::from(&signing_key);
-
-        // 2. Build a valid payload
+        // Deterministic test-only seeds; never load the real signing key.
+        let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+        let previous_signing_key = SigningKey::from_bytes(&[43u8; 32]);
+        let public = signing_key.verifying_key().to_bytes();
         let expiry_ms = safe_now_ms() + 86_400_000 * 365; // 1 year from now
         let payload = serde_json::json!({
             "c": "pietro_test",
@@ -1214,13 +1372,40 @@ mod tests {
             "id": "test-self-signed"
         });
         let payload_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
-        let message = format!("LXFW.{}", payload_b64);
-        let signature = signing_key.sign(message.as_bytes());
+        // The wire protocol signs only payload_b64, matching the generator.
+        let signature = signing_key.sign(payload_b64.as_bytes());
         let sig_b64 = URL_SAFE_NO_PAD.encode(signature.to_bytes());
-        let token = format!("{}.{}", message, sig_b64);
+        let token = format!("LXFW.{payload_b64}.{sig_b64}");
 
-        // 3. Verify tamper detection: token signed with different key should fail
-        // (our embedded PUBLIC_KEY_BYTES won't match this test keypair)
+        let accepted = verify_license_with_key(token.clone(), &public);
+        assert!(
+            accepted.valid,
+            "Fresh issuer token must pass: {}",
+            accepted.message
+        );
+        assert_eq!(accepted.client.as_deref(), Some("pietro_test"));
+
+        let previous_signature = previous_signing_key.sign(payload_b64.as_bytes());
+        let previous_token = format!(
+            "LXFW.{payload_b64}.{}",
+            URL_SAFE_NO_PAD.encode(previous_signature.to_bytes())
+        );
+        assert!(
+            verify_license_with_key(
+                previous_token.clone(),
+                &previous_signing_key.verifying_key().to_bytes()
+            )
+            .valid,
+            "The previous token is valid under its own synthetic issuer"
+        );
+        let revoked = verify_license_with_key(previous_token, &public);
+        assert!(
+            !revoked.valid,
+            "Previous issuer must be rejected after rotation"
+        );
+        assert_eq!(revoked.message, "Firma non valida o licenza manomessa!");
+
+        // The production entry point still trusts only its embedded public key.
         let result = verify_license(token.clone());
         assert!(
             !result.valid,
@@ -1228,24 +1413,74 @@ mod tests {
             result.message
         );
 
-        // 4. Verify the embedded public key is valid
         let pub_key = VerifyingKey::from_bytes(&PUBLIC_KEY_BYTES);
         assert!(
             pub_key.is_ok(),
             "Embedded PUBLIC_KEY_BYTES must be a valid Ed25519 key"
         );
 
-        // 5. Tamper detection: modify one byte of signature
-        let mut tampered = token.clone();
-        let last = tampered.len() - 3;
-        tampered.replace_range(last..last + 1, "Z");
-        let tamper_result = verify_license(tampered);
+        let altered_payload = json!({"c": "Altered", "e": expiry_ms, "id": "test-self-signed"});
+        let tampered = format!(
+            "LXFW.{}.{sig_b64}",
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&altered_payload).unwrap())
+        );
+        let tamper_result = verify_license_with_key(tampered, &public);
         assert!(!tamper_result.valid, "Tampered token should be rejected");
+
+        let wrong_protocol_signature = signing_key.sign(format!("LXFW.{payload_b64}").as_bytes());
+        let wrong_protocol = format!(
+            "LXFW.{payload_b64}.{}",
+            URL_SAFE_NO_PAD.encode(wrong_protocol_signature.to_bytes())
+        );
+        assert!(!verify_license_with_key(wrong_protocol, &public).valid);
 
         let invalid_format = "TOKEN_SENZA_PUNTI";
         let format_result = verify_license(invalid_format.to_string());
         assert!(!format_result.valid);
         assert_eq!(format_result.message, "Formato chiave non valido.");
+    }
+
+    #[test]
+    fn cached_activations_require_the_current_issuer() {
+        let master = [7u8; 32];
+        let subkey = sub_keys::record_hmac_key(&master);
+        let expiry = u64::MAX;
+        let mut record = json!({
+            "tokenHmac": "synthetic-token-hmac",
+            "recordHmacV2": compute_record_hmac_v2(&*subkey, "cached-test", expiry, "synthetic-fp"),
+            "keyVersion": "ed25519-burned",
+            "keyId": "cached-test",
+            "expiryMs": expiry,
+            "machineFingerprint": "synthetic-fp",
+        });
+        // This helper does no file IO with needs_fp_upgrade=false.
+        let check = |data: &Value| {
+            check_license_burned(
+                data,
+                &master,
+                std::path::Path::new("unused"),
+                "synthetic-fp",
+                false,
+            )
+        };
+        let legacy = check(&record);
+        assert_eq!(legacy["activated"], false);
+        assert_eq!(legacy["revoked"], true);
+
+        record["signingKeyId"] = json!("a-previous-issuer");
+        let revoked = check(&record);
+        assert_eq!(revoked["activated"], false);
+        assert_eq!(revoked["revoked"], true);
+
+        record["signingKeyId"] = json!(current_signing_key_id());
+        assert_eq!(check(&record)["activated"], false);
+        assert_eq!(check(&record)["needsLicenseProof"], true);
+        record["expiryMs"] = json!(1);
+        assert_eq!(
+            check(&record)["activated"],
+            false,
+            "Issuer binding must not skip record authentication"
+        );
     }
 
     /// Verify that PUBLIC_KEY_BYTES matches the key used in build.rs for HMAC integrity.

@@ -1,0 +1,51 @@
+{
+  "scratch_android_open_files": [],
+  "generated_open_files": [
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen/android/buildSrc/.gradle/8.14.3/executionHistory/executionHistory.lock",
+      "pid": 680,
+      "command": "/System/Library/PrivateFrameworks/FileProvider.framework/Support/fileproviderd",
+      "access": "write"
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock",
+      "pid": 680,
+      "command": "/System/Library/PrivateFrameworks/FileProvider.framework/Support/fileproviderd",
+      "access": "write"
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen/android/.gradle/8.14.3/fileHashes/fileHashes.lock",
+      "pid": 680,
+      "command": "/System/Library/PrivateFrameworks/FileProvider.framework/Support/fileproviderd",
+      "access": "write"
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen/android/buildSrc/.gradle/buildOutputCleanup/buildOutputCleanup.lock",
+      "pid": 680,
+      "command": "/System/Library/PrivateFrameworks/FileProvider.framework/Support/fileproviderd",
+      "access": "write"
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen/android/.gradle/noVersion/buildLogic.lock",
+      "pid": 680,
+      "command": "/System/Library/PrivateFrameworks/FileProvider.framework/Support/fileproviderd",
+      "access": "write"
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen/android/.gradle/8.14.3/checksums/checksums.lock",
+      "pid": 680,
+      "command": "/System/Library/PrivateFrameworks/FileProvider.framework/Support/fileproviderd",
+      "access": "write"
+    },
+    {
+      "path": "/Users/pielongo/Library/Mobile Documents/com~apple~CloudDocs/Scrivania/sviluppo applicazioni/LexFlow/src-tauri/gen/android/.gradle/8.14.3/executionHistory/executionHistory.lock",
+      "pid": 680,
+      "command": "/System/Library/PrivateFrameworks/FileProvider.framework/Support/fileproviderd",
+      "access": "write"
+    }
+  ],
+  "gradle_java_rustc_cargo_adb_emulator_processes_found": false,
+  "processes_terminated_during_this_check": [],
+  "files_deleted": [],
+  "note": "iCloud FileProvider retained seven generated lock files; service preserved. Gradle had already stopped successfully."
+}

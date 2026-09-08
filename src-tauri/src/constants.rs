@@ -4,7 +4,6 @@
 
 pub(crate) const VAULT_FILE: &str = "vault.lex";
 pub(crate) const VAULT_SALT_FILE: &str = "vault.salt";
-pub(crate) const VAULT_VERIFY_FILE: &str = "vault.verify";
 pub(crate) const SETTINGS_FILE: &str = "settings.json";
 pub(crate) const AUDIT_LOG_FILE: &str = "vault.audit";
 pub(crate) const NOTIF_SCHEDULE_FILE: &str = "notification-schedule.json";

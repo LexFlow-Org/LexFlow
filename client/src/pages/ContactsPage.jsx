@@ -1,3 +1,4 @@
+import { getSessionGeneration } from '../utils/sessionData';
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import PropTypes from 'prop-types';
 import { Users, Plus, Search, User, Scale, Briefcase, Building, Gavel, UserCheck, Edit3, Trash2, X, Check, Phone, Mail, MapPin, Hash, ChevronRight, Info, Shield } from 'lucide-react';
@@ -7,15 +8,9 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import ModalOverlay from '../components/ModalOverlay';
 import ConflictCheckPanel from '../components/ConflictCheckPanel';
 import { ROLE_LABELS } from '../utils/conflictConstants';
-import { genId } from '../utils/helpers';
+import { genId, normalizeSearchText } from '../utils/helpers';
 import { useDebounce } from '../hooks/useDebounce';
 import { useVirtualList } from '../hooks/useVirtualList';
-
-/**
- * Lowercase + strip diacritics so "Niccolò" matches "niccolo".
- * FIX-3: search must be accent-insensitive on Italian names.
- */
-const normalize = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 const CONTACT_TYPES = [
   { id: 'client', label: 'Cliente', icon: User, color: 'text-materia-civile bg-materia-civile/10 border-materia-civile/20' },
@@ -39,6 +34,8 @@ export default function ContactsPage({ practices, onSelectPractice }) {
   const [activeTab, setActiveTab] = useState('contacts');
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const sessionGeneration = useRef(getSessionGeneration());
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [showCreate, setShowCreate] = useState(false);
@@ -46,67 +43,42 @@ export default function ContactsPage({ practices, onSelectPractice }) {
   const [expandedId, setExpandedId] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const prevContactsRef = useRef([]);
-  // FIX-5: serialize concurrent saves to keep the optimistic backup chain
-  // honest. Without this, two rapid edits race: the second save's "backup"
-  // is the first save's optimistic state, so a rollback restores wrong data.
-  const saveInFlightRef = useRef(false);
-  const saveQueueRef = useRef(null);
+  const saveQueueRef = useRef(Promise.resolve());
 
   // FIX-2: debounce the search query so each keystroke doesn't re-run
   // filter+normalize on the entire list.
   const debouncedQuery = useDebounce(searchQuery, 200);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await api.loadContacts();
-        setContacts(data || []);
-      } catch (e) { console.error(e); toast.error('Errore caricamento contatti'); }
-      setLoading(false);
-    })();
-  }, []);
+  const loadContacts = useCallback(() => api.loadContacts().then(data => {
+    if (sessionGeneration.current !== getSessionGeneration()) return;
+    if (!Array.isArray(data)) throw new Error('Formato contatti non valido');
+    prevContactsRef.current = data;
+    setContacts(data);
+  }).catch(() => setLoadError(true)).finally(() => setLoading(false)), []);
+  useEffect(() => { loadContacts(); }, [loadContacts]);
 
-  const saveContacts = useCallback(async (newContacts) => {
-    // FIX-5: if a save is already running, queue the latest desired state and
-    // bail. The currently-running save will pick it up on completion.
-    if (saveInFlightRef.current) {
-      saveQueueRef.current = newContacts;
-      return;
-    }
-    saveInFlightRef.current = true;
-
-    const runSave = async (next) => {
-      const backup = prevContactsRef.current;
-      prevContactsRef.current = next;
-      setContacts(next);
+  const saveContacts = useCallback((update) => {
+    const pending = saveQueueRef.current.then(async () => {
+      if (sessionGeneration.current !== getSessionGeneration()) throw new Error('Vault bloccato');
       try {
-        await api.saveContacts(next);
-      } catch (e) {
-        console.error(e);
+        const newContacts = update(prevContactsRef.current);
+        await api.saveContacts(newContacts);
+        if (sessionGeneration.current !== getSessionGeneration()) return;
+        prevContactsRef.current = newContacts;
+        setContacts(newContacts);
+      } catch (error) {
         toast.error('Errore salvataggio');
-        setContacts(backup);
-        prevContactsRef.current = backup;
-        throw e;
+        throw error;
       }
-    };
-
-    try {
-      await runSave(newContacts);
-      // Drain the queue if a newer save was requested while we were saving
-      while (saveQueueRef.current) {
-        const queued = saveQueueRef.current;
-        saveQueueRef.current = null;
-        await runSave(queued);
-      }
-    } finally {
-      saveInFlightRef.current = false;
-    }
+    });
+    saveQueueRef.current = pending.catch(() => {});
+    return pending;
   }, []);
 
   const confirmDeleteContact = async () => {
     if (!pendingDeleteId) return;
     try {
-      await saveContacts(contacts.filter(c => c.id !== pendingDeleteId));
+      await saveContacts(current => current.filter(c => c.id !== pendingDeleteId));
       if (expandedId === pendingDeleteId) setExpandedId(null);
       toast.success('Contatto eliminato');
     } catch { /* saveContacts already showed toast.error */ }
@@ -120,24 +92,18 @@ export default function ContactsPage({ practices, onSelectPractice }) {
     [contacts],
   );
 
-  // FIX-2 + FIX-3: filter on the debounced, accent-insensitive query.
+  const searchIndex = useMemo(() => sortedContacts.map(contact => ({
+    contact,
+    text: [contact.name, contact.email, contact.pec, contact.phone, contact.fiscalCode, contact.vatNumber]
+      .map(normalizeSearchText).join('\0'),
+  })), [sortedContacts]);
+
   const filtered = useMemo(() => {
-    let list = sortedContacts;
-    if (filterType !== 'all') list = list.filter(c => c.type === filterType);
-    const raw = debouncedQuery.trim();
-    if (raw) {
-      const q = normalize(raw);
-      list = list.filter(c =>
-        normalize(c.name).includes(q) ||
-        normalize(c.email).includes(q) ||
-        normalize(c.pec).includes(q) ||
-        normalize(c.phone).includes(q) ||
-        normalize(c.fiscalCode).includes(q) ||
-        normalize(c.vatNumber).includes(q)
-      );
-    }
-    return list;
-  }, [sortedContacts, filterType, debouncedQuery]);
+    const query = normalizeSearchText(debouncedQuery.trim());
+    return searchIndex
+      .filter(({ contact, text }) => (filterType === 'all' || contact.type === filterType) && text.includes(query))
+      .map(({ contact }) => contact);
+  }, [searchIndex, filterType, debouncedQuery]);
 
   // PERF: pre-compute contact→practices map once per practices change (avoids O(n*m) per contact)
   const contactPracticesMap = useMemo(() => {
@@ -198,25 +164,24 @@ export default function ContactsPage({ practices, onSelectPractice }) {
 
   const typeCounts = useMemo(() => {
     const counts = { all: contacts.length };
-    CONTACT_TYPES.forEach(t => { counts[t.id] = contacts.filter(c => c.type === t.id).length; });
+    for (const contact of contacts) counts[contact.type] = (counts[contact.type] || 0) + 1;
     return counts;
   }, [contacts]);
 
-  // FIX-1: virtualization for the (collapsed) contact list. We virtualize only
-  // when no row is expanded — expanded rows have variable height and the
-  // detail card is meant to anchor visually next to its row. Above 50 contacts
-  // and with no expansion, rendering all rows at once is wasted work; the
-  // virtualizer handles it. With a row expanded, fall back to the standard
-  // flow so layout stays correct.
+  // Keep rows at a fixed height; large lists show details in a separate dialog.
   const VIRTUAL_THRESHOLD = 50;
   const ITEM_HEIGHT = 80;
-  const useVirtual = !expandedId && filtered.length > VIRTUAL_THRESHOLD;
+  const useVirtual = filtered.length > VIRTUAL_THRESHOLD;
   const {
     containerRef: vlContainerRef,
-    listRef: vlListRef,
     totalHeight: vlTotalHeight,
     items: vlVisibleItems,
   } = useVirtualList({ items: filtered, itemHeight: ITEM_HEIGHT, overscan: 5 });
+
+  if (loadError) return <div role="alert" className="p-6 space-y-4">
+    <p>Impossibile leggere i contatti. Riprova prima di modificarli.</p>
+    <button className="btn-primary" onClick={() => { setLoading(true); setLoadError(false); void loadContacts(); }}>Riprova</button>
+  </div>;
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
 
@@ -299,7 +264,6 @@ export default function ContactsPage({ practices, onSelectPractice }) {
         onSelectPractice={onSelectPractice}
         useVirtual={useVirtual}
         vlContainerRef={vlContainerRef}
-        vlListRef={vlListRef}
         vlTotalHeight={vlTotalHeight}
         vlVisibleItems={vlVisibleItems}
         itemHeight={ITEM_HEIGHT}
@@ -312,11 +276,11 @@ export default function ContactsPage({ practices, onSelectPractice }) {
           onSave={async (contact) => {
             try {
               if (editingContact) {
-                await saveContacts(contacts.map(c => c.id === contact.id ? contact : c));
+                await saveContacts(current => current.map(c => c.id === contact.id ? contact : c));
                 setEditingContact(null);
                 toast.success('Contatto aggiornato');
               } else {
-                await saveContacts([contact, ...contacts]);
+                await saveContacts(current => [contact, ...current]);
                 setShowCreate(false);
                 toast.success('Contatto aggiunto');
               }
@@ -342,11 +306,11 @@ export default function ContactsPage({ practices, onSelectPractice }) {
   );
 }
 
-/* ──── Contact List (virtualized when collapsed, standard when expanded) ──── */
+/* ──── Contact List ──── */
 function ContactList({
   filtered, searchQuery, expandedId, setExpandedId, setEditingContact, setPendingDeleteId,
   getLinkedPractices, getRelatedContacts, onSelectPractice,
-  useVirtual, vlContainerRef, vlListRef, vlTotalHeight, vlVisibleItems, itemHeight,
+  useVirtual, vlContainerRef, vlTotalHeight, vlVisibleItems, itemHeight,
 }) {
   if (filtered.length === 0) {
     return (
@@ -375,7 +339,8 @@ function ContactList({
           {/* Contact Row — single full-row expand button (FIX-6) */}
           <button
             type="button"
-            aria-expanded={isExpanded}
+            aria-expanded={expandable ? isExpanded : undefined}
+            aria-haspopup={expandable ? undefined : 'dialog'}
             aria-label={`${isExpanded ? 'Chiudi' : 'Apri'} dettaglio ${c.name}`}
             onClick={() => setExpandedId(isExpanded ? null : c.id)}
             className={`relative flex items-center gap-3 px-4 py-3 rounded-xl border group transition-colors duration-200 text-left w-full cursor-pointer ${
@@ -456,11 +421,13 @@ function ContactList({
     );
   };
 
-  // Virtualized branch — only when no row is expanded (rows have stable height)
+  // Opening a detail must not replace the virtual list with every contact.
   if (useVirtual) {
+    const selectedContact = filtered.find(c => c.id === expandedId);
     return (
+      <>
       <div ref={vlContainerRef} className="overflow-auto custom-scrollbar" style={{ maxHeight: '70vh' }}>
-        <div ref={vlListRef} style={{ height: vlTotalHeight, position: 'relative' }}>
+        <div style={{ height: vlTotalHeight, position: 'relative' }}>
           {vlVisibleItems.map(({ index, top, item }) => (
             <div
               key={item.id || index}
@@ -471,6 +438,27 @@ function ContactList({
           ))}
         </div>
       </div>
+      {selectedContact && (
+        <ModalOverlay onClose={() => setExpandedId(null)} label={`Dettaglio ${selectedContact.name}`} focusTrap className="w-full max-w-2xl">
+          <div className="bg-surface border border-border rounded-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
+            <div className="flex justify-end">
+              <button type="button" onClick={() => setExpandedId(null)} aria-label="Chiudi dettaglio" className="p-2 rounded-full hover:bg-card">
+                <X size={20} />
+              </button>
+            </div>
+            <ContactDetailCard
+              contact={selectedContact}
+              typeInfo={TYPE_MAP[selectedContact.type] || TYPE_MAP.other}
+              linkedPractices={getLinkedPractices(selectedContact.id)}
+              relatedContacts={getRelatedContacts(selectedContact)}
+              onEdit={() => { setExpandedId(null); setEditingContact({ ...selectedContact }); }}
+              onDelete={() => { setExpandedId(null); setPendingDeleteId(selectedContact.id); }}
+              onSelectPractice={id => { setExpandedId(null); onSelectPractice?.(id); }}
+            />
+          </div>
+        </ModalOverlay>
+      )}
+      </>
     );
   }
 
@@ -495,7 +483,6 @@ ContactList.propTypes = {
   onSelectPractice: PropTypes.func,
   useVirtual: PropTypes.bool,
   vlContainerRef: PropTypes.object,
-  vlListRef: PropTypes.object,
   vlTotalHeight: PropTypes.number,
   vlVisibleItems: PropTypes.array,
   itemHeight: PropTypes.number,

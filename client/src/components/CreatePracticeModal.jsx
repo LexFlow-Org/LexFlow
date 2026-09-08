@@ -320,7 +320,7 @@ export default function CreatePracticeModal({ onClose, onSave }) {
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-bold text-text">Carica documenti PDF</p>
-                  <p className="text-2xs text-text-dim mt-1 opacity-60 italic">I file verranno cifrati nel vault</p>
+                  <p className="text-2xs text-text-dim mt-1 opacity-60 italic">Il vault conserva i riferimenti ai file. I documenti originali restano nella posizione scelta.</p>
                 </div>
               </button>
 

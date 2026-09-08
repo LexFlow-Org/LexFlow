@@ -1,0 +1,9 @@
+{
+  "capture": "/private/tmp/lexflow-validation-2026-09-07/macos/network-20260907-091607.pcapng",
+  "log": "/private/tmp/lexflow-validation-2026-09-07/macos/network-20260907-091607.log",
+  "filter": "proc=lexflow or eproc=lexflow or proc=qpdf or eproc=qpdf or proc=typst or eproc=typst or proc=lexflow-probe or eproc=lexflow-probe",
+  "duration_seconds": 900.047,
+  "exit_code": 0,
+  "snapshot_bytes": 128,
+  "full_device_traffic_captured": false
+}

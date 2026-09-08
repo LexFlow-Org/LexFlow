@@ -1,0 +1,9 @@
+LexFlow Windows components
+Typst 0.15.1: https://github.com/typst/typst/releases/tag/v0.15.1
+Archive SHA-256: 19ce3551153c2fe7ee9fa2f95208310c8f4d3209fedb699e0333faf8913f6736
+qpdf 12.4.1 with its official MSVC runtime DLLs: https://github.com/qpdf/qpdf/releases/tag/v12.4.1
+Archive SHA-256: 3cd016cd433ef7232e42f4c13348a49cc14907a3c7278ef4f99120593126f7a6
+Microsoft WebView2 FixedVersionRuntime 152.0.4191.62 x64 from the official Microsoft download page.
+CAB SHA-256: 2dc7d817ddce4d036f33684425c218f1ca2d073911136e5d3f8ce9b2340569b5
+CAB URL: https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/0a4a34d9-ccaa-4cef-98b4-58cb313fbfeb/Microsoft.WebView2.FixedVersionRuntime.152.0.4191.62.x64.cab
+Microsoft Visual C++ runtime DLLs are redistributed unchanged from the official qpdf Windows binary archive.

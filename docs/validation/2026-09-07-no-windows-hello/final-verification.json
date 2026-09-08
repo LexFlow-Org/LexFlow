@@ -1,0 +1,11 @@
+{
+  "completed_at": "2026-09-08T00:23:35.521542+02:00",
+  "four_installers_verified": true,
+  "windows_installer_sha256": "e01d3ec44017e88808eafcfccf89b3df129444d6c519ea0c112a4bd604733405",
+  "other_three_installers_unchanged": true,
+  "cleanup_paths_absent": true,
+  "changed_sources_match_tested_build_inputs": true,
+  "extra_project_app_bundles": 0,
+  "real_registry_unchanged": true,
+  "native_windows_tested": false
+}

@@ -1,0 +1,969 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M5",
+    "cpuCount": 10,
+    "ramBytes": 25769803776,
+    "node": "v25.9.0",
+    "browser": "151.0.7922.34",
+    "playwright": "1.62.1"
+  },
+  "method": "Production-mode isolated component harness; synthetic records; IPC mocked; mount-to-two-animation-frames excludes dataset generation and module loading; search includes 200ms debounce.",
+  "results": [
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "practices",
+      "records": 1000,
+      "run": 1,
+      "mountMs": 57,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 36,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 264.79999999701977,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "practices",
+      "records": 1000,
+      "run": 2,
+      "mountMs": 25.700000002980232,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 36,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 247.90000000596046,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "practices",
+      "records": 1000,
+      "run": 3,
+      "mountMs": 27,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 36,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 247.40000000596046,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "practices",
+      "records": 10000,
+      "run": 1,
+      "mountMs": 51.79999999701977,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 36,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 259.5,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "practices",
+      "records": 10000,
+      "run": 2,
+      "mountMs": 44.8999999910593,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 36,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 247.6000000089407,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "practices",
+      "records": 10000,
+      "run": 3,
+      "mountMs": 43.3999999910593,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 36,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 247.69999998807907,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "practices",
+      "records": 50000,
+      "run": 1,
+      "mountMs": 52.29999999701977,
+      "domNodes": 1376,
+      "heapBytes": 37300000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 36,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 247.79999999701977,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "practices",
+      "records": 50000,
+      "run": 2,
+      "mountMs": 62,
+      "domNodes": 1376,
+      "heapBytes": 37300000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 36,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 248.6000000089407,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "practices",
+      "records": 50000,
+      "run": 3,
+      "mountMs": 51.900000005960464,
+      "domNodes": 1376,
+      "heapBytes": 37300000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 36,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 247.09999999403954,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "contacts",
+      "records": 1000,
+      "run": 1,
+      "mountMs": 42.70000000298023,
+      "domNodes": 374,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": null
+      },
+      "initialRows": 14,
+      "searchMs": 248.5,
+      "searchFoundLastRecord": true,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "contacts",
+      "records": 1000,
+      "run": 2,
+      "mountMs": 49.099999994039536,
+      "domNodes": 374,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": null
+      },
+      "initialRows": 14,
+      "searchMs": 248.19999998807907,
+      "searchFoundLastRecord": true,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "contacts",
+      "records": 1000,
+      "run": 3,
+      "mountMs": 51.20000000298023,
+      "domNodes": 374,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": null
+      },
+      "initialRows": 14,
+      "searchMs": 247.79999999701977,
+      "searchFoundLastRecord": true,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "contacts",
+      "records": 10000,
+      "run": 1,
+      "mountMs": 53.79999999701977,
+      "domNodes": 374,
+      "heapBytes": 15200000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": null
+      },
+      "initialRows": 14,
+      "searchMs": 245.09999999403954,
+      "searchFoundLastRecord": true,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "contacts",
+      "records": 10000,
+      "run": 2,
+      "mountMs": 45.099999994039536,
+      "domNodes": 374,
+      "heapBytes": 15200000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": null
+      },
+      "initialRows": 14,
+      "searchMs": 248.09999999403954,
+      "searchFoundLastRecord": true,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "contacts",
+      "records": 10000,
+      "run": 3,
+      "mountMs": 47.099999994039536,
+      "domNodes": 374,
+      "heapBytes": 15200000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": null
+      },
+      "initialRows": 14,
+      "searchMs": 248.90000000596046,
+      "searchFoundLastRecord": true,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "contacts",
+      "records": 50000,
+      "run": 1,
+      "mountMs": 67.79999999701977,
+      "domNodes": 374,
+      "heapBytes": 60300000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": null
+      },
+      "initialRows": 14,
+      "searchMs": 248.09999999403954,
+      "searchFoundLastRecord": true,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "contacts",
+      "records": 50000,
+      "run": 2,
+      "mountMs": 68.90000000596046,
+      "domNodes": 374,
+      "heapBytes": 60300000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": null
+      },
+      "initialRows": 14,
+      "searchMs": 248.59999999403954,
+      "searchFoundLastRecord": true,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "cpuSlowdown": 1,
+      "page": "contacts",
+      "records": 50000,
+      "run": 3,
+      "mountMs": 68.79999999701977,
+      "domNodes": 374,
+      "heapBytes": 56800000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": null
+      },
+      "initialRows": 14,
+      "searchMs": 248.29999999701977,
+      "searchFoundLastRecord": true,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "practices",
+      "records": 1000,
+      "run": 1,
+      "mountMs": 89.79999999701977,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 277,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [
+        {
+          "start": 111.59999999403954,
+          "duration": 52
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "practices",
+      "records": 1000,
+      "run": 2,
+      "mountMs": 82.80000001192093,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 277,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [
+        {
+          "start": 101.20000000298023,
+          "duration": 50
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "practices",
+      "records": 1000,
+      "run": 3,
+      "mountMs": 98.3999999910593,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 280.8999999910593,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "practices",
+      "records": 10000,
+      "run": 1,
+      "mountMs": 121.3999999910593,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 277,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "practices",
+      "records": 10000,
+      "run": 2,
+      "mountMs": 122.5,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 279.59999999403954,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "practices",
+      "records": 10000,
+      "run": 3,
+      "mountMs": 122.29999999701977,
+      "domNodes": 1376,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 279.19999998807907,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "practices",
+      "records": 50000,
+      "run": 1,
+      "mountMs": 165.90000000596046,
+      "domNodes": 1376,
+      "heapBytes": 37300000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 279.79999999701977,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [
+        {
+          "start": 100.5,
+          "duration": 86
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "practices",
+      "records": 50000,
+      "run": 2,
+      "mountMs": 165.09999999403954,
+      "domNodes": 1376,
+      "heapBytes": 37300000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 278,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [
+        {
+          "start": 103.3999999910593,
+          "duration": 88
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "practices",
+      "records": 50000,
+      "run": 3,
+      "mountMs": 181.29999999701977,
+      "domNodes": 1376,
+      "heapBytes": 37300000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 24,
+        "grid": "grid"
+      },
+      "initialRows": 50,
+      "searchMs": 278.6000000089407,
+      "selectedCorrect": true,
+      "searchFoundLastRecord": true,
+      "rowsAfterLoadMore": 100,
+      "longTasks": [
+        {
+          "start": 111.09999999403954,
+          "duration": 95
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "contacts",
+      "records": 1000,
+      "run": 1,
+      "mountMs": 119.3999999910593,
+      "domNodes": 328,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 20,
+        "grid": null
+      },
+      "initialRows": 12,
+      "searchMs": 247.19999998807907,
+      "searchFoundLastRecord": true,
+      "longTasks": [
+        {
+          "start": 107.6000000089407,
+          "duration": 51
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "contacts",
+      "records": 1000,
+      "run": 2,
+      "mountMs": 128,
+      "domNodes": 328,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 20,
+        "grid": null
+      },
+      "initialRows": 12,
+      "searchMs": 247.29999999701977,
+      "searchFoundLastRecord": true,
+      "longTasks": [
+        {
+          "start": 101,
+          "duration": 52
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "contacts",
+      "records": 1000,
+      "run": 3,
+      "mountMs": 109.79999999701977,
+      "domNodes": 328,
+      "heapBytes": 10000000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 20,
+        "grid": null
+      },
+      "initialRows": 12,
+      "searchMs": 263.5,
+      "searchFoundLastRecord": true,
+      "longTasks": [
+        {
+          "start": 105,
+          "duration": 51
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "contacts",
+      "records": 10000,
+      "run": 1,
+      "mountMs": 141.3999999910593,
+      "domNodes": 328,
+      "heapBytes": 15200000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 20,
+        "grid": null
+      },
+      "initialRows": 12,
+      "searchMs": 257.69999998807907,
+      "searchFoundLastRecord": true,
+      "longTasks": [
+        {
+          "start": 106.3999999910593,
+          "duration": 76
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "contacts",
+      "records": 10000,
+      "run": 2,
+      "mountMs": 212.6000000089407,
+      "domNodes": 328,
+      "heapBytes": 15200000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 20,
+        "grid": null
+      },
+      "initialRows": 12,
+      "searchMs": 261.70000000298023,
+      "searchFoundLastRecord": true,
+      "longTasks": [
+        {
+          "start": 152.70000000298023,
+          "duration": 117
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "contacts",
+      "records": 10000,
+      "run": 3,
+      "mountMs": 224.5,
+      "domNodes": 328,
+      "heapBytes": 15200000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 20,
+        "grid": null
+      },
+      "initialRows": 12,
+      "searchMs": 263.09999999403954,
+      "searchFoundLastRecord": true,
+      "longTasks": [
+        {
+          "start": 156.6000000089407,
+          "duration": 116
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "contacts",
+      "records": 50000,
+      "run": 1,
+      "mountMs": 416.70000000298023,
+      "domNodes": 328,
+      "heapBytes": 56800000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 20,
+        "grid": null
+      },
+      "initialRows": 12,
+      "searchMs": 262.79999999701977,
+      "searchFoundLastRecord": true,
+      "longTasks": [
+        {
+          "start": 149.29999999701977,
+          "duration": 56
+        },
+        {
+          "start": 234.40000000596046,
+          "duration": 284
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "contacts",
+      "records": 50000,
+      "run": 2,
+      "mountMs": 331.90000000596046,
+      "domNodes": 328,
+      "heapBytes": 56800000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 20,
+        "grid": null
+      },
+      "initialRows": 12,
+      "searchMs": 262,
+      "searchFoundLastRecord": true,
+      "longTasks": [
+        {
+          "start": 189.09999999403954,
+          "duration": 218
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "mobile-simulated",
+      "cpuSlowdown": 4,
+      "page": "contacts",
+      "records": 50000,
+      "run": 3,
+      "mountMs": 329.40000000596046,
+      "domNodes": 328,
+      "heapBytes": 56800000,
+      "horizontalOverflowPx": 0,
+      "styles": {
+        "headingPx": 20,
+        "grid": null
+      },
+      "initialRows": 12,
+      "searchMs": 262.20000000298023,
+      "searchFoundLastRecord": true,
+      "longTasks": [
+        {
+          "start": 181.8999999910593,
+          "duration": 220
+        }
+      ],
+      "errors": [],
+      "blockedExternalRequests": [],
+      "status": "passed"
+    },
+    {
+      "profile": "desktop",
+      "page": "contacts-expansion",
+      "records": 1000,
+      "cpuSlowdown": 1,
+      "expandMs": 31.799999997019768,
+      "renderedContactRows": 14,
+      "domNodes": 437,
+      "heapBytes": 10000000,
+      "focusInDialog": true,
+      "focusRestored": true,
+      "status": "measured"
+    },
+    {
+      "profile": "desktop",
+      "page": "contacts-expansion",
+      "records": 10000,
+      "cpuSlowdown": 1,
+      "expandMs": 28.299999997019768,
+      "renderedContactRows": 14,
+      "domNodes": 437,
+      "heapBytes": 16100000,
+      "focusInDialog": true,
+      "focusRestored": true,
+      "status": "measured"
+    },
+    {
+      "profile": "desktop-cpu4x",
+      "page": "contacts-expansion",
+      "records": 10000,
+      "cpuSlowdown": 4,
+      "expandMs": 68.29999999701977,
+      "renderedContactRows": 14,
+      "domNodes": 437,
+      "heapBytes": 16100000,
+      "focusInDialog": true,
+      "focusRestored": true,
+      "status": "measured"
+    },
+    {
+      "profile": "desktop-cpu4x",
+      "page": "contacts-expansion",
+      "records": 50000,
+      "cpuSlowdown": 4,
+      "expandMs": 62.1000000089407,
+      "renderedContactRows": 14,
+      "domNodes": 437,
+      "heapBytes": 60300000,
+      "focusInDialog": true,
+      "focusRestored": true,
+      "status": "measured"
+    }
+  ]
+}

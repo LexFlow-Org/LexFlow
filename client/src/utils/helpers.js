@@ -89,3 +89,8 @@ export function mapAgendaToScheduleItems(events, defaultPreavviso = 30) {
       customRemindTime: e.customRemindTime || null,
     }));
 }
+
+/** Accent-insensitive local search, shared by contacts and practices. */
+export function normalizeSearchText(value) {
+  return String(value ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}

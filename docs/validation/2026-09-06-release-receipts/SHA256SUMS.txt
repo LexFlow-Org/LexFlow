@@ -1,0 +1,4 @@
+d309259a92fba34f5dc2c4fa3a055357159470714693415621ccdd97e3023f3a  macOS/LexFlow-1.0.1-macOS-Apple-Silicon.dmg
+f50033489da93a82c30192f6962ba4e0023e0113636f3ac9201059c6400114f1  macOS/LexFlow-1.0.1-macOS-Intel.dmg
+b601d51d5a4eae3333e051e99d2becac48c62b2cfdb93bf9085430c373a499da  Windows/LexFlow_1.0.1_x64-setup.exe
+913ef6f3c74b96828570a3a015b17e07f02e23a01717406d987e3c27d0113e8f  Android/LexFlow-1.0.1-Android-arm64.apk

@@ -1,0 +1,94 @@
+{
+  "date": "2026-09-06",
+  "product": "LexFlow",
+  "version": "1.0.1",
+  "target": "x86_64-pc-windows-msvc",
+  "installer": "LexFlow_1.0.1_x64-setup.exe",
+  "installer_bytes": 305791903,
+  "sha256": "b601d51d5a4eae3333e051e99d2becac48c62b2cfdb93bf9085430c373a499da",
+  "build": {
+    "host": "macOS arm64",
+    "cargo_xwin": "0.23.1",
+    "llvm": "22.1.8",
+    "nsis": "3.12",
+    "rust_release_build": "passed",
+    "tauri_nsis_bundle": "passed",
+    "signed": false
+  },
+  "verification": {
+    "installer_extraction": "7z: Everything is Ok",
+    "extracted_files": 578,
+    "application_resource_files_compared_sha256": 573,
+    "webview2_fixed_runtime_files_compared_sha256": 548,
+    "vendor_qpdf_dlls": 9,
+    "pe_x64_checked": [
+      "lexflow.exe",
+      "typst.exe",
+      "qpdf.exe",
+      "qpdf30.dll",
+      "binaries/windows-webview2/msedgewebview2.exe"
+    ],
+    "webview2_authenticode": "CAB digest, Microsoft chain and timestamp verified; CRL online check disabled",
+    "native_windows_execution": false,
+    "windows_network_capture": false,
+    "webview2_appcontainer_acl_hook": {
+      "source": "src-tauri/windows/installer-hooks.nsh",
+      "hook": "NSIS_HOOK_POSTINSTALL",
+      "scope": "$INSTDIR\\binaries\\windows-webview2",
+      "grants": [
+        "S-1-15-2-2:(OI)(CI)(RX)",
+        "S-1-15-2-1:(OI)(CI)(RX)"
+      ],
+      "failure_handling": "MessageBox + SetErrorLevel 1 + Abort when ExecWait fails or icacls returns nonzero",
+      "validation": "NSIS macro preprocessing and complete NSIS compilation passed; icacls not executed on this macOS host",
+      "reference": "https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution"
+    },
+    "executable_sha256": "7fa5abeb6030c617ce919dd938d50fd57d32a457ea4f06b35fae7e8fcc35c164",
+    "executable_version_fixed_file_info": [
+      [
+        1,
+        0,
+        1,
+        0
+      ]
+    ],
+    "new_public_key_sha256": "4ff69b87240948576d916234273c2468e0906c1468e190f2b9a2ac3a5230672f",
+    "new_public_key_bytes_present": true,
+    "previous_public_key_bytes_present": false,
+    "license_runtime_validation": "Static binary inspection only on this macOS host; native Windows license activation was not executed."
+  },
+  "components": [
+    {
+      "name": "Typst",
+      "version": "0.15.1",
+      "url": "https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-pc-windows-msvc.zip",
+      "sha256": "19ce3551153c2fe7ee9fa2f95208310c8f4d3209fedb699e0333faf8913f6736"
+    },
+    {
+      "name": "qpdf",
+      "version": "12.4.1",
+      "url": "https://github.com/qpdf/qpdf/releases/download/v12.4.1/qpdf-12.4.1-msvc64.zip",
+      "sha256": "3cd016cd433ef7232e42f4c13348a49cc14907a3c7278ef4f99120593126f7a6"
+    },
+    {
+      "name": "Microsoft WebView2 FixedVersionRuntime",
+      "version": "152.0.4191.62",
+      "url": "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/0a4a34d9-ccaa-4cef-98b4-58cb313fbfeb/Microsoft.WebView2.FixedVersionRuntime.152.0.4191.62.x64.cab",
+      "sha256": "2dc7d817ddce4d036f33684425c218f1ca2d073911136e5d3f8ce9b2340569b5"
+    }
+  ],
+  "source_sha256_at_build": {
+    "src-tauri/Cargo.toml": "767c85bb5ca8354c1356e1717d8f8fb2d810f894b87ff9ba407dec7327c8dac9",
+    "src-tauri/Cargo.lock": "3145cc254b5cb6de29bf2e63d0fdb483f4b8164264c66911407eaa2ebb27f170",
+    "src-tauri/build.rs": "1a868babbb7461df2cf60640cb8d40284f6a742531aaf1e31d4b1d7ff65e552d",
+    "src-tauri/src/license.rs": "fa3d5f2023cbf734ef1720a9a529bec1ae21e9850881e4f64bde2d1b52086f88",
+    "src-tauri/tauri.conf.json": "78ca6510019e3ce9f18df7c8ad457d3deaed1b7061c402b1688eef32398b26fa",
+    "src-tauri/tauri.windows.conf.json": "e52c6c7bd9319c4e1ec168f6e78baab24bbe306b2443d16e153b718427a19255",
+    "src-tauri/windows/installer-hooks.nsh": "ad3ccd14570eef0d4f0388b21bef257e7d73b3b52cebc7bcb557508f5845b8f8"
+  },
+  "post_build_formatting": {
+    "file": "src-tauri/build.rs",
+    "change": "rustfmt line wrapping only; public key and HMAC inputs unchanged",
+    "final_sha256": "58417e77f5dc663bab3630ce459a11b3d3bc9bd11ee7cda14b26f598d56169b7"
+  }
+}

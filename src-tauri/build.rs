@@ -15,11 +15,11 @@ fn main() {
     seed.extend_from_slice(&(3u32).to_le_bytes()); // ARGON2_T_COST
     seed.extend_from_slice(&(1u32).to_le_bytes()); // ARGON2_P_COST
                                                    // PUBLIC_KEY_BYTES (must match license.rs exactly)
-                                                   // ROTATED 2026-05-11: v5.1 — synced with license.rs
+                                                   // ROTATED 2026-09-06: v1.0.1 — previous issuer revoked
     seed.extend_from_slice(&[
-        90u8, 7u8, 33u8, 6u8, 155u8, 146u8, 238u8, 227u8, 219u8, 64u8, 209u8, 178u8, 21u8, 69u8,
-        177u8, 90u8, 181u8, 127u8, 231u8, 233u8, 144u8, 1u8, 54u8, 91u8, 94u8, 113u8, 188u8, 244u8,
-        168u8, 34u8, 31u8, 14u8,
+        174u8, 48u8, 245u8, 149u8, 58u8, 105u8, 117u8, 189u8, 197u8, 166u8, 82u8, 54u8, 39u8,
+        166u8, 166u8, 194u8, 189u8, 248u8, 121u8, 72u8, 199u8, 249u8, 194u8, 97u8, 34u8, 165u8,
+        16u8, 49u8, 44u8, 16u8, 222u8, 13u8,
     ]);
     seed.extend_from_slice(&(10u32).to_le_bytes()); // DEK_WIPE_THRESHOLD
 
@@ -34,5 +34,79 @@ fn main() {
 
     println!("cargo:rustc-env=LEXFLOW_INTEGRITY_HMAC={}", hex_str);
 
+    // Android 15+ can run with 16 KiB memory pages. NDK r27 defaults to 4 KiB.
+    // Apply alignment to the final shared library without changing desktop flags.
+    // https://developer.android.com/guide/practices/page-sizes
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
+        println!("cargo:rustc-link-arg=-Wl,-z,max-page-size=16384");
+        println!("cargo:rustc-link-arg=-Wl,-z,common-page-size=16384");
+    }
+
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        build_macos_biometry();
+    }
+
     tauri_build::build();
+}
+
+/// Compile only while building macOS, on the developer's machine/CI. The user
+/// receives linked framework calls and does not need Swift, Xcode or CLT.
+fn build_macos_biometry() {
+    use std::path::PathBuf;
+    use std::process::Command;
+    let architecture = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+        Ok("aarch64") => "arm64",
+        Ok("x86_64") => "x86_64",
+        other => panic!("Unsupported macOS architecture: {other:?}"),
+    };
+    let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR"));
+    let object = output.join("macos_biometry.o");
+    let archive = output.join("liblexflow_biometry.a");
+    println!("cargo:rerun-if-changed=src/macos_biometry.m");
+    println!("cargo:rerun-if-env-changed=DEVELOPER_DIR");
+    println!("cargo:rerun-if-env-changed=SDKROOT");
+    let sdk = Command::new("/usr/bin/xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-path"])
+        .output()
+        .expect("macOS SDK lookup failed");
+    assert!(sdk.status.success(), "macOS SDK unavailable");
+    let sdk = String::from_utf8(sdk.stdout).expect("SDK path must be UTF-8");
+    let status = Command::new("/usr/bin/xcrun")
+        .args([
+            "--sdk",
+            "macosx",
+            "clang",
+            "-arch",
+            architecture,
+            "-isysroot",
+            sdk.trim(),
+            "-mmacosx-version-min=11.0",
+            "-fobjc-arc",
+            "-O2",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-c",
+            "src/macos_biometry.m",
+            "-o",
+        ])
+        .arg(&object)
+        .status()
+        .expect("macOS biometric bridge compiler failed");
+    assert!(
+        status.success(),
+        "macOS biometric bridge compilation failed"
+    );
+    let status = Command::new("/usr/bin/xcrun")
+        .args(["--sdk", "macosx", "ar", "crs"])
+        .arg(&archive)
+        .arg(&object)
+        .status()
+        .expect("macOS bridge archiver failed");
+    assert!(status.success(), "macOS biometric bridge archive failed");
+    println!("cargo:rustc-link-search=native={}", output.display());
+    println!("cargo:rustc-link-lib=static=lexflow_biometry");
+    println!("cargo:rustc-link-lib=framework=Foundation");
+    println!("cargo:rustc-link-lib=framework=LocalAuthentication");
+    println!("cargo:rustc-link-lib=framework=Security");
 }

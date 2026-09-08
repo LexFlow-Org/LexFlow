@@ -68,5 +68,12 @@ scripts/.lexflow-registry-*.bak.enc
 agents/
 scripts/.lexflow-issued-keys 2.enc
 lexflow-crypto/target/
-lexflow-crypto/target/
 .claude/
+
+scripts/.lexflow-license-manager.lock
+
+scripts/.lexflow-stage-*
+
+# Local delivery packages and private signing material
+releases/
+signing/

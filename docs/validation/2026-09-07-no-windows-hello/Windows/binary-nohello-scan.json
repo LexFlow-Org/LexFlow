@@ -1,0 +1,25 @@
+{
+  "exe_bytes": 11023872,
+  "exe_sha256": "fa063da04990e92e4509b4a25ad2a1af0e5a87772b9a7d9f11b6cff17c015339",
+  "old_hello_api_tokens_present": {
+    "UserConsentVerifier": {
+      "utf-8": false,
+      "utf-16le": false
+    },
+    "RequestVerificationAsync": {
+      "utf-8": false,
+      "utf-16le": false
+    },
+    "WindowsRuntimeSystemExtensions": {
+      "utf-8": false,
+      "utf-16le": false
+    },
+    "Windows.Security.Credentials.UI": {
+      "utf-8": false,
+      "utf-16le": false
+    }
+  },
+  "current_license_public_key_present": true,
+  "revoked_public_key_present": false,
+  "public_key_sha256": "4ff69b87240948576d916234273c2468e0906c1468e190f2b9a2ac3a5230672f"
+}

@@ -1,0 +1,2 @@
+16 KiB alignment verified for 1 native 64-bit libraries.
+Release APK verified: no Internet permission, cleartext and debugging disabled, backup disabled with exclusion rules.

@@ -1,0 +1,70 @@
+{
+  "verify-dmgs.py": {
+    "sha256": "3bec2f74967b7736b5b7ff988043864c0139a8c2da8fee5760d88ffed4c55c4d",
+    "bytes": 2634
+  },
+  "final-sidecars.log": {
+    "sha256": "102b70cd3f70f35b012d13bb2422f75b3c45734946e6c8601baef9d96b290e05",
+    "bytes": 77
+  },
+  "network-20260907-093403.pcapng": {
+    "sha256": "da0c0ec63886a1770e3c02264dbc3691ba0cfdeb7e6d40ef5d39c3c43539719a",
+    "bytes": 1168
+  },
+  "network-20260907-091607.pcapng": {
+    "sha256": "2d3560d2f3f0fec06bf7ee9d3e3d8d070e8a086bced5c8759048b9ebe699c607",
+    "bytes": 1168
+  },
+  "package-arm.log": {
+    "sha256": "c7d98caf8d750cce5a3d4f871530a8f0c4e300121f4379fa52b44e8f1937b4ba",
+    "bytes": 2442
+  },
+  "license-generator-tests.log": {
+    "sha256": "ddeee1e69f9a87691bbb9c52b8c6d79bca2fbfed7dfab45708a6bd41987b067d",
+    "bytes": 119
+  },
+  "final-arm-build.log": {
+    "sha256": "19bf5f4d5abfd036366718489d91f035b07328a26c036a04bbd83a23efbf3b53",
+    "bytes": 692
+  },
+  "final-intel-build.log": {
+    "sha256": "b67796cfd7400e8aa4fdf5fbcd3491cb118a3da05eb48a530ab97c8aa5dc8dcb",
+    "bytes": 689
+  },
+  "native-hardening-tests.log": {
+    "sha256": "fe2a4d391c48bdc7e95df1f7d0137c7a495cf650b3bbe4052b6f0cbe2cbe84fb",
+    "bytes": 109
+  },
+  "native-rust-test.log": {
+    "sha256": "abcd3cac61ff68643dfd5f0de60faeb60140e44c182a8410e1054107c5277628",
+    "bytes": 42764
+  },
+  "final-rust-tests.log": {
+    "sha256": "0ef6b365e0724ce51008be5648a8bacbdd50d683ffd9aab273b0b54d2ab106ff",
+    "bytes": 31896
+  },
+  "source-freeze.json": {
+    "sha256": "7414b31a96fc7957cf1d755f2d1e74141b94094d361041f3a4e6fcaa3a6f95dd",
+    "bytes": 15232
+  },
+  "package-intel.log": {
+    "sha256": "5dc4188daf4e8e142a3201f3b579c0c244454b243bc5c8b57fa970a43916d690",
+    "bytes": 2067
+  },
+  "network-20260907-093403.log": {
+    "sha256": "6bb1a2884f84bbfcb727e3efc06f528ee4d7c4c174877651439868f63e7e21ff",
+    "bytes": 292
+  },
+  "network-20260907-091607.log": {
+    "sha256": "a632fcb9faaa5e03a5ab0d15a4c48ad538ba75488729fa15b899cb531ebae885",
+    "bytes": 294
+  },
+  "offline-audit-tests.log": {
+    "sha256": "7eae484b2459abe88a9dbc2866a3df81733ee1b0d4b87b82f767a6dd5ef5d8b0",
+    "bytes": 103
+  },
+  "native-results.json": {
+    "sha256": "2bd1e46337f8d9f6ada5f149d71b030f507ff0e0762af7fe1cda3abfea5727fd",
+    "bytes": 2204
+  }
+}

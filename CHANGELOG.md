@@ -1,5 +1,44 @@
 # Changelog
 
+## In preparazione — audit backend dell’8 settembre 2026
+
+- Verifica crittografica della licenza salvata e conferma del codice originale per le vecchie attivazioni, senza rotazione dell'emittente; rinnovi e attivazioni interrotte gestiti con journal cifrato.
+- Corretti reset, lockout, recupero, limiti di scrittura e registro attività; conservazione della storia durante rotazione e importazione.
+- Corrette esportazioni PDF/CSV, cache e sessione di ricerca, validazione delle impostazioni, privacy e disattivazione delle notifiche.
+- Correzioni nei sorgenti destinate alla prossima 1.0.2; quattro installer 1.0.1 invariati. [Audit, prove e limiti](docs/AUDIT-BACKEND-2026-09-08.md).
+
+## [1.0.1] — Windows, aggiornamento dell’8 settembre 2026
+
+- Rimosso Windows Hello e il deposito della relativa credenziale generica; sblocco con Master Password. Il nuovo installer elimina la vecchia credenziale di LexFlow all’avvio senza leggere il segreto o modificare il vault.
+- Rimossi controlli e prompt PowerShell dedicati; nessuna modifica alla cifratura o alle licenze. Il destinatario deve conoscere la Master Password prima dell’aggiornamento.
+- Pacchetti Mac e Android invariati. Motivazioni, prove e limiti nel [rapporto](docs/RIMOZIONE-WINDOWS-HELLO-2026-09-08.md).
+
+## [1.0.1] — aggiornamento del 7 settembre 2026
+
+- Corretti gli interruttori delle Impostazioni: pallino contenuto in entrambi gli stati, area premibile 44 px, etichette accessibili e layout verificato con testo ingrandito.
+- La diagnosi biometrica distingue Touch ID pronto da firma dell'app non autorizzata. I pacchetti Mac ad hoc richiedono ancora la Master Password: non includono una firma Apple con accesso al Portachiavi biometrico.
+- Ricompilati gli installer mantenendo emittente delle licenze e certificato APK. Le licenze valide della precedente 1.0.1 restano valide; Android passa al codice interno 253.
+- Nuove misure e correzioni di ricerca, backup, importazione e autenticazione documentate nel [collaudo](docs/COLLAUDO-2026-09-07.md). I limiti di Windows non eseguito e dell'emulatore Android restano espliciti.
+
+## [1.0.1] — 2026-09-06
+
+- Nuova coppia Ed25519 per le licenze: rifiuto delle firme precedenti e delle vecchie attivazioni salvate; nuova attivazione richiesta dopo l’aggiornamento. Nessuna revoca a distanza sulle vecchie app offline.
+- Generatore Mac collegato alla nuova chiave privata locale, conservata fuori da iCloud con accesso esclusivo al proprietario.
+- Distribuzioni macOS Apple Silicon e Intel separate, Windows x64 e Android ARM64.
+
+## Correzioni integrate nella 1.0.1 — 2026-09-06
+
+- Audit di sicurezza, funzionamento locale, collegamento frontend/backend e prestazioni; risultati e limiti nel [rapporto corrente](docs/AUDIT-SICUREZZA-2026-09-06.md).
+- Vault V8 con snapshot atomico, manifest obbligatorio, migrazione autenticata e correzioni al cambio password, recupero, backup e blocco della sessione.
+- Rimossi dati sensibili dagli archivi persistenti del browser; corretti salvataggi concorrenti e risultati asincroni ricevuti dopo il blocco.
+- Sospesa la redazione PDF non sicura; isolati i file temporanei degli strumenti PDF e ristrette le capacità del frontend.
+- Ridotti il bundle iniziale e gli asset frontend; aggiornate dipendenze con verifica degli avvisi di sicurezza disponibili.
+- Rimossi quattro documenti Typst superati: copia del README, release notes, guida v2.5 e whitepaper V4. Conservati rapporto di audit, note tecniche e questa cronologia; corretti i riferimenti della documentazione.
+
+## Cronologia precedente
+
+Le voci seguenti sono conservate come cronologia delle versioni precedenti e non sono una descrizione verificata del comportamento attuale. Numeri di versione, test, prestazioni e garanzie di sicurezza vanno confrontati con il rapporto di audit corrente. La versione nei manifest del progetto è attualmente 1.0.1; queste voci non attestano che i pacchetti citati siano quelli da distribuire.
+
 ## [2.5.0] — 2026-03-21
 
 ### Security
@@ -63,12 +102,6 @@
 - User Guide (Typst PDF)
 - Release Notes v2.0 (Typst PDF)
 
-
-# Changelog -- LexFlow
-
-Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
-
----
 
 ## [1.6.5] -- 2026-03-14
 
@@ -557,5 +590,3 @@ Formato: [SemVer](https://semver.org/) -- `MAJOR.MINOR.PATCH`
 - Aggiunto `releases/`
 - Script npm standardizzati
 - .gitignore aggiornato
-
-# v2.0.2

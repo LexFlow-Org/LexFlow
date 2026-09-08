@@ -1,0 +1,47 @@
+[
+  {
+    "tool": "LLVM",
+    "version": "22.1.8",
+    "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-macOS-ARM64.tar.xz",
+    "sha256": "f260f4f7c0d430828a81ae8a3826a1d63fc0963ec2459489308cc23b1f7eab4f",
+    "verified": true
+  },
+  {
+    "tool": "cargo-xwin",
+    "version": "0.23.1",
+    "url": "https://files.pythonhosted.org/packages/11/4c/acf34ad8e67b44c84a01a119b4a2310be1fb4f3541f35e50b275096deeb6/cargo_xwin-0.23.1-py3-none-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl",
+    "sha256": "8ef713ecad812fb1df708ee91a9b0067432b99a176fb082a75fe7015e968ae9a",
+    "verified": true
+  },
+  {
+    "tool": "NSIS Homebrew bottle",
+    "version": "3.12",
+    "url": "https://ghcr.io/v2/homebrew/core/makensis/blobs/sha256:864af32755ca54ded9664cf2dc5340248f5ea16f1fe01796cf9e3c63de09638b",
+    "sha256": "864af32755ca54ded9664cf2dc5340248f5ea16f1fe01796cf9e3c63de09638b",
+    "verified": true,
+    "relocation": "Unmodified binary invoked through local wrapper restoring NSISDIR/NSISCONFDIR after Tauri clears them"
+  },
+  {
+    "tool": "Microsoft Windows SDK + MSVC CRT via cargo-xwin",
+    "sdk": "10.0.26100",
+    "crt": "14.44.17.14",
+    "architecture": "x86_64",
+    "cache": "isolated scratch directory",
+    "xwin_done_manifest": [
+      "x86_64",
+      "ucrt.msi",
+      "Win11SDK_10.0.26100_store_headers.msi",
+      "Win11SDK_10.0.26100_uap_headers.msi",
+      "Microsoft.VC.14.44.17.14.CRT.x64.Store.base.vsix",
+      "Win11SDK_10.0.26100_store_headers_onecoreuap.msi",
+      "Win11SDK_10.0.26100_x64_uap_headers.msi",
+      "Win11SDK_10.0.26100_x64_headers.msi",
+      "Microsoft.VC.14.44.17.14.CRT.x64.Desktop.base.vsix",
+      "Microsoft.VC.14.44.17.14.CRT.Headers.base.vsix",
+      "Win11SDK_10.0.26100_libs_x86_64.msi",
+      "Win11SDK_10.0.26100_headers.msi",
+      "Win11SDK_10.0.26100_store_libs.msi"
+    ],
+    "xwin_done_sha256": "acb9a017511ee8fe9c1eec1e6a29d10a8ef911ed77dda4a318fea36ef8a63a23"
+  }
+]

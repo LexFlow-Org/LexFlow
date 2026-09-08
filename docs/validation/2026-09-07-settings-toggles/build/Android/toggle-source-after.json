@@ -1,0 +1,391 @@
+{
+  "algorithm": "SHA256 of sorted per-file SHA256, two spaces, relative path, newline",
+  "source_fingerprint_sha256": "492e707912113aa41ed910333182f49f9da9f6e1705426736a60875070f7a52a",
+  "files": [
+    {
+      "path": "client/dist/assets/AgendaPage-CzUJF2bd.js",
+      "sha256": "a6cb4ee5a98aeb2e6dffdbe4bee2682ddcf19b425d668171243b0c40012fff5d",
+      "bytes": 45019
+    },
+    {
+      "path": "client/dist/assets/ConfirmDialog-DNFQdnPq.js",
+      "sha256": "e62bdcea82b99287a9c6da54a0485ef494f9d28b1893f3543f689b9a4c90f99d",
+      "bytes": 1913
+    },
+    {
+      "path": "client/dist/assets/ContactsPage-DiPyQkGF.js",
+      "sha256": "0ea996f8adba6a2da343eb5dda47a08c1bc41d7e27f067ad9688ea09cbb4c42c",
+      "bytes": 58310
+    },
+    {
+      "path": "client/dist/assets/CreatePracticeModal-BRK5FoQL.js",
+      "sha256": "279b88efd9bdc6c2bb243535a9d17b6f35a27fa40ce0b7a9806897320562b373",
+      "bytes": 11756
+    },
+    {
+      "path": "client/dist/assets/Dashboard-7ebbbrbR.js",
+      "sha256": "a2f427663e253484d1ef06eb16af3d9dd2204fdf7bcac9370723a8d3731ee78f",
+      "bytes": 10111
+    },
+    {
+      "path": "client/dist/assets/DeadlinesPage-BRca2Bxm.js",
+      "sha256": "3c75e7f85216c76eaff7d5915b9b13de040e6833c244ffbb090416e23925f9e7",
+      "bytes": 10500
+    },
+    {
+      "path": "client/dist/assets/DocumentToolsPage-8Z-SLZjD.js",
+      "sha256": "ca473872e96cfcf307be30c7e1e1235ad927d331fcaa7b29eb633600a97ffc29",
+      "bytes": 24442
+    },
+    {
+      "path": "client/dist/assets/ModalOverlay-C379OFLz.js",
+      "sha256": "a5d42d2e506cbc8ee61e81db25c22724c1ff416f5df39f0ca02bf0a3e84c813f",
+      "bytes": 2097
+    },
+    {
+      "path": "client/dist/assets/OnboardingWizard-8V-64iDw.js",
+      "sha256": "a8a9c50d810127a10f33ea19b63bca2a7007e398d16db7f15a3d05c65ddd55fc",
+      "bytes": 2763
+    },
+    {
+      "path": "client/dist/assets/PracticeDetail-CXgr4dYT.js",
+      "sha256": "8560c89aed391ab3e7a1f3e7b39a4e1a2371b48ce23667e85657b667e15b2e58",
+      "bytes": 40458
+    },
+    {
+      "path": "client/dist/assets/PracticesList-DXD2_ZS2.js",
+      "sha256": "33c615a40f66719f5892533e2c64848747e5967f7f3cc9d552f72cc5a9d879ce",
+      "bytes": 11853
+    },
+    {
+      "path": "client/dist/assets/ReportPage-Cd-PGB2u.js",
+      "sha256": "b5d4d35e9c482bd2cec03757e2a3f5079aebf1ddcd4dc11911f3ebe56245c96c",
+      "bytes": 7406
+    },
+    {
+      "path": "client/dist/assets/SettingsPage-CMElqqPk.js",
+      "sha256": "2de4bb5b7595003c5d273045c681c244a6545766854104a12d2a78cc6bd6b1f1",
+      "bytes": 51485
+    },
+    {
+      "path": "client/dist/assets/TimeTrackingPage-C9vCLT6o.js",
+      "sha256": "e35661a1cdf2582b0104d36b6e0ca27c2dc6f5366df6d23847ceb8fd35e8ca89",
+      "bytes": 36264
+    },
+    {
+      "path": "client/dist/assets/html2canvas.esm-BJJ5nGCg.js",
+      "sha256": "83f9fc1fd6024afea4589b08f769e124169ba2b3cf792b89abfa9ad86d17d1c5",
+      "bytes": 198605
+    },
+    {
+      "path": "client/dist/assets/index-C4oyfN8G.js",
+      "sha256": "852bab630db4ab456b9f2e72b0f6cd282d4dd32938afcffab8da72e6a6acd660",
+      "bytes": 257912
+    },
+    {
+      "path": "client/dist/assets/index-CvDTVyCQ.css",
+      "sha256": "c5b14d5d7239913dbdb41c5e3444010b44fe695d979c694fd94665f854ddd368",
+      "bytes": 105533
+    },
+    {
+      "path": "client/dist/assets/index.es-C8w6vnkc.js",
+      "sha256": "6dbeeb53ee2bc4de3e45234018bb2367d6899a4c419aaa976a4538f907e6c14a",
+      "bytes": 156172
+    },
+    {
+      "path": "client/dist/assets/jspdf.es.min-BzOvN1rw.js",
+      "sha256": "58fef5c35e50e60f141ec9c694bc7cd4f02070b632946288dad6cf0d541bc5eb",
+      "bytes": 382247
+    },
+    {
+      "path": "client/dist/assets/jspdf.plugin.autotable-goT7YI1H.js",
+      "sha256": "f995d43af139b25c73ba7cb1dab75fca9cc526ba638e9650bb9f2fd27638d457",
+      "bytes": 29851
+    },
+    {
+      "path": "client/dist/assets/logo-BE65CySj.svg",
+      "sha256": "a81ccfdefaa37a0ad60bf35a4a663d15e4251518c20bcb7405da4d19adfa18fa",
+      "bytes": 6284
+    },
+    {
+      "path": "client/dist/assets/purify.es-CMRSewIb.js",
+      "sha256": "31a017da1907d3f87ea55c5445259f77e799f9f276ed234ed9759ee5a656a7b5",
+      "bytes": 28800
+    },
+    {
+      "path": "client/dist/assets/useDebounce-Cc8aCv4G.js",
+      "sha256": "bc9c824883aa55828ca320bf1e1394b57e247b77db004e1be5f7009068479233",
+      "bytes": 199
+    },
+    {
+      "path": "client/dist/assets/vendor-react-aXoZQAs2.js",
+      "sha256": "e8bee1eef2142e67b8ea89d7f2d2c5000d0f4d08299b22d6df7fae980ebb78aa",
+      "bytes": 49761
+    },
+    {
+      "path": "client/dist/assets/vendor-tauri-BvAitHZH.js",
+      "sha256": "66593bc2789c6e1d1615cd8a183c535994b2abf07b2ee8eebaf2d6e14d4ebf25",
+      "bytes": 2298
+    },
+    {
+      "path": "client/dist/assets/vendor-ui-DCIFN7kk.js",
+      "sha256": "9812b3ea8c636d280bd72802bf1df96d3b8ba9882ce7b92a20f63258130d4b18",
+      "bytes": 32518
+    },
+    {
+      "path": "client/dist/index.html",
+      "sha256": "67361359b6849909e1234d22ec8c04249179919fb0bfc6a110e68d1618400d44",
+      "bytes": 1891
+    },
+    {
+      "path": "scripts/harden-android.py",
+      "sha256": "0c8450012fda92fbe5a4a1f9001487e082b002888693f98976dd13f0ade07ca0",
+      "bytes": 10022
+    },
+    {
+      "path": "src-tauri/Cargo.lock",
+      "sha256": "3145cc254b5cb6de29bf2e63d0fdb483f4b8164264c66911407eaa2ebb27f170",
+      "bytes": 168057
+    },
+    {
+      "path": "src-tauri/Cargo.toml",
+      "sha256": "767c85bb5ca8354c1356e1717d8f8fb2d810f894b87ff9ba407dec7327c8dac9",
+      "bytes": 3100
+    },
+    {
+      "path": "src-tauri/build.rs",
+      "sha256": "dc0d11550a33abbf14efa834d744cfe40293df6ee9068aa073b15fa9062d48b7",
+      "bytes": 4789
+    },
+    {
+      "path": "src-tauri/capabilities/default.json",
+      "sha256": "96e04e412b1a582cd0205e811fc5b5183eadc82151fbfdf7a14eb7072d7d80c7",
+      "bytes": 982
+    },
+    {
+      "path": "src-tauri/capabilities/mobile.json",
+      "sha256": "6df07ee954a4ad48f495ae8814ec7d6ac81ffea8fd4d919d44ee19e41679be38",
+      "bytes": 879
+    },
+    {
+      "path": "src-tauri/fonts/LibertinusSerif-Bold.otf",
+      "sha256": "0264914210ed51b3231ebc92ce529e9f2e166ba9eebf0cd4a579558690a27b64",
+      "bytes": 293908
+    },
+    {
+      "path": "src-tauri/fonts/LibertinusSerif-BoldItalic.otf",
+      "sha256": "47a665259f09f554f5d133d7718cdad43ff462c6a6b2328f38023465e62d57ce",
+      "bytes": 259176
+    },
+    {
+      "path": "src-tauri/fonts/LibertinusSerif-Italic.otf",
+      "sha256": "9a393d63d6e05f620d3dc0190dfd35a8ede58c0808cf0fc9de7fcb9c723e4c24",
+      "bytes": 332312
+    },
+    {
+      "path": "src-tauri/fonts/LibertinusSerif-Regular.otf",
+      "sha256": "fcf06307a77367394fcb0ccb241e59eea70dba3d732be309647611224679c733",
+      "bytes": 337132
+    },
+    {
+      "path": "src-tauri/licenses/Libertinus-OFL.txt",
+      "sha256": "9aeecc8107c489ec1ec0068b0313e531a760edf3493705b32ab8ab8215a8794e",
+      "bytes": 4426
+    },
+    {
+      "path": "src-tauri/licenses/qpdf/libjpeg-turbo-LICENSE.md",
+      "sha256": "ba6bceebcba0fdd35488477c2cca8c4632ce82c74dbfbc87d886ce6fc4433579",
+      "bytes": 6077
+    },
+    {
+      "path": "src-tauri/licenses/qpdf/libjpeg-turbo-README.ijg",
+      "sha256": "75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6",
+      "bytes": 12799
+    },
+    {
+      "path": "src-tauri/licenses/qpdf/qpdf-LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358
+    },
+    {
+      "path": "src-tauri/licenses/qpdf/qpdf-NOTICE.md",
+      "sha256": "b207f65a9e5491195ded63b2941199b19a4d30148871f2742c88eae7bfc513a6",
+      "bytes": 2729
+    },
+    {
+      "path": "src-tauri/licenses/typst-LICENSE.txt",
+      "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+      "bytes": 9723
+    },
+    {
+      "path": "src-tauri/licenses/typst-NOTICE.txt",
+      "sha256": "1778244777547c281b6f5fa9fc0c18ab21f8d4491c803f64e09046800f5fcb26",
+      "bytes": 21066
+    },
+    {
+      "path": "src-tauri/licenses/windows-components.txt",
+      "sha256": "be023f685cad07844d49fbe7a7375bf76230875a2d25100ef30b8004b64a532a",
+      "bytes": 824
+    },
+    {
+      "path": "src-tauri/src/audit.rs",
+      "sha256": "6a9611512b20b3fe356e74db883282b680869c98ba7057e004a0799557f8f248",
+      "bytes": 20543
+    },
+    {
+      "path": "src-tauri/src/backup.rs",
+      "sha256": "d09c313bf19946d3614767e5098c506b38ffa22e245d9d6be8c548fd56f5fab1",
+      "bytes": 12010
+    },
+    {
+      "path": "src-tauri/src/bio.rs",
+      "sha256": "cbd70d2ae817d428a2687b7a4a08f5fefbc1e4a07394681a6f612577b2aa4841",
+      "bytes": 42908
+    },
+    {
+      "path": "src-tauri/src/constants.rs",
+      "sha256": "39823d3e070671a3a79834fc9381b579abe196d6cbdeb43c58044c4fd48c482d",
+      "bytes": 2448
+    },
+    {
+      "path": "src-tauri/src/crypto.rs",
+      "sha256": "ca9d0b09937c53373abc348611da6af6ec5d723e15dbdcd8b643789abcabd42a",
+      "bytes": 15943
+    },
+    {
+      "path": "src-tauri/src/csv_export.rs",
+      "sha256": "3f8b0d8ada38644e81528bb94ae8f041a1d570e632179729173b17b678d26b7f",
+      "bytes": 7326
+    },
+    {
+      "path": "src-tauri/src/doc_tools.rs",
+      "sha256": "cf52fd342790fef1cb640a97652e1a6040ea2f150b24e165b7644c715d841578",
+      "bytes": 82982
+    },
+    {
+      "path": "src-tauri/src/files.rs",
+      "sha256": "d9080445ee188109a9ba8fffc4a68ad87fd33ac36cb29ff14a3290e0b9f9f464",
+      "bytes": 35515
+    },
+    {
+      "path": "src-tauri/src/hardening.rs",
+      "sha256": "1eeb1bee8e99afa3dff21d04d67d4e3f1013c65c6cb4de3bb55a9fb19da92353",
+      "bytes": 6853
+    },
+    {
+      "path": "src-tauri/src/import_export.rs",
+      "sha256": "0da868ba9e40e3bcea510d7066517d86de3a15605db8aef756e6a4c9e45b1157",
+      "bytes": 17099
+    },
+    {
+      "path": "src-tauri/src/io.rs",
+      "sha256": "d3ce43bfa3d780c4b97a43a5ef8d61259123a484c99dd9e049b9451e6561e85a",
+      "bytes": 15183
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "sha256": "da2e285f7c074afc270776e917bb1e6bbf1c503b4ef8c06eccc57313076bf140",
+      "bytes": 12961
+    },
+    {
+      "path": "src-tauri/src/license.rs",
+      "sha256": "fa3d5f2023cbf734ef1720a9a529bec1ae21e9850881e4f64bde2d1b52086f88",
+      "bytes": 64290
+    },
+    {
+      "path": "src-tauri/src/lockout.rs",
+      "sha256": "3f375605cba3087a945f147c91df577dce3924ec68b231e0dd61fe83d0689cce",
+      "bytes": 23344
+    },
+    {
+      "path": "src-tauri/src/macos_biometry.m",
+      "sha256": "6c1218d73563a7e413f0b782c9b25ebb03977dc07cd44ad233f18963947b94ed",
+      "bytes": 2557
+    },
+    {
+      "path": "src-tauri/src/main.rs",
+      "sha256": "45d0e146869185bdbf9b9c50dbf56dae960c4bfbb737b46ea7fc77706286551f",
+      "bytes": 102
+    },
+    {
+      "path": "src-tauri/src/notifications.rs",
+      "sha256": "60280b2ca8f2d6caea21f46b38536ae1329c86eee2750a94a7d4b995911bf86c",
+      "bytes": 41688
+    },
+    {
+      "path": "src-tauri/src/platform.rs",
+      "sha256": "a256e25628e7b99a99347e84186ea24def09cfc106450fea39492d7f8f3111b0",
+      "bytes": 27834
+    },
+    {
+      "path": "src-tauri/src/search.rs",
+      "sha256": "ff5f362a9f257ffb2ce6fa2182d097d20592ed5afb7c7a6678fefa64dca31ce5",
+      "bytes": 36985
+    },
+    {
+      "path": "src-tauri/src/security.rs",
+      "sha256": "26a742ba34b83583782e6e24a7ad10ebc8411a6594e02781222189d722e89358",
+      "bytes": 8661
+    },
+    {
+      "path": "src-tauri/src/settings.rs",
+      "sha256": "d17884db8cf28bcf6d76e302ac4312df1ac1eac4454925f5cd67647d5bbe9252",
+      "bytes": 6765
+    },
+    {
+      "path": "src-tauri/src/setup.rs",
+      "sha256": "6f8895309b9c69dc95b8c0304642d05d66b7809c5d817f4e00a7508052cb8f6d",
+      "bytes": 55617
+    },
+    {
+      "path": "src-tauri/src/state.rs",
+      "sha256": "bb9abf59eac6621353030e01589e1a74afc4e0fd1221eb4bb5c0b7324b50b03c",
+      "bytes": 11576
+    },
+    {
+      "path": "src-tauri/src/validation.rs",
+      "sha256": "f0ba5fbb19024479d5cdbc73312bfb4cd85480fee6583aa94583424bf295a8a0",
+      "bytes": 13435
+    },
+    {
+      "path": "src-tauri/src/vault.rs",
+      "sha256": "84bcb089959d4b16fc3e9fd28d1cbd3ee0bd8b5daa22ffb124970550fdf6aca4",
+      "bytes": 69935
+    },
+    {
+      "path": "src-tauri/src/vault_engine.rs",
+      "sha256": "951ce91bdf440491664292339cfbabbd13478db285e1f4fc89258ee309642b8c",
+      "bytes": 78313
+    },
+    {
+      "path": "src-tauri/src/vault_engine_tests.rs",
+      "sha256": "95c76933df5e3f1577ba40dc527de2d626170ea186fde34752b6232e8b2a1e2b",
+      "bytes": 239574
+    },
+    {
+      "path": "src-tauri/src/window.rs",
+      "sha256": "3f30f1548bf40bf7af08f99faa36bb0fc2ee2455162df2a3f0ea30c65fecdc64",
+      "bytes": 4933
+    },
+    {
+      "path": "src-tauri/tauri.android.conf.json",
+      "sha256": "142bfec4a208660ba3eee813aa92a7f83363722c7e2f1db712abd97af1ea4db1",
+      "bytes": 44
+    },
+    {
+      "path": "src-tauri/tauri.conf.json",
+      "sha256": "cc1fcd48ef8a477ed2fe64fd624a8a4ec12bae740a0aa4e91154f8372b91f733",
+      "bytes": 2012
+    },
+    {
+      "path": "src-tauri/tauri.windows.conf.json",
+      "sha256": "e52c6c7bd9319c4e1ec168f6e78baab24bbe306b2443d16e153b718427a19255",
+      "bytes": 540
+    },
+    {
+      "path": "src-tauri/templates/fascicolo.typ",
+      "sha256": "bb6d5839067e777a9bb89224eadf1e49c22d508d99fb346843fd7829723e4ff6",
+      "bytes": 5814
+    }
+  ]
+}

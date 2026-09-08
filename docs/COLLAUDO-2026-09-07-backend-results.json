@@ -1,0 +1,473 @@
+{
+  "machine": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "architecture": "arm64",
+    "logical_cpus": 10
+  },
+  "source_sha256": {
+    "src-tauri/src/constants.rs": "39823d3e070671a3a79834fc9381b579abe196d6cbdeb43c58044c4fd48c482d",
+    "src-tauri/src/io.rs": "d3ce43bfa3d780c4b97a43a5ef8d61259123a484c99dd9e049b9451e6561e85a",
+    "src-tauri/src/crypto.rs": "ca9d0b09937c53373abc348611da6af6ec5d723e15dbdcd8b643789abcabd42a",
+    "src-tauri/src/security.rs": "26a742ba34b83583782e6e24a7ad10ebc8411a6594e02781222189d722e89358",
+    "src-tauri/src/vault_engine.rs": "951ce91bdf440491664292339cfbabbd13478db285e1f4fc89258ee309642b8c",
+    "src-tauri/src/vault.rs": "84bcb089959d4b16fc3e9fd28d1cbd3ee0bd8b5daa22ffb124970550fdf6aca4",
+    "src-tauri/src/search.rs": "ff5f362a9f257ffb2ce6fa2182d097d20592ed5afb7c7a6678fefa64dca31ce5",
+    "src-tauri/src/backup.rs": "d09c313bf19946d3614767e5098c506b38ffa22e245d9d6be8c548fd56f5fab1",
+    "scripts/validate-backend.py": "e5d95dc7f7c97101f2bd48973991b25695cd572d94f7e544bd24bfe5a8443013",
+    "scripts/validation/backend_main.rs": "3ee5a7ddd6af09b689e874875edf1b4a633b4519ef5fff4a55f8ac47ad57fc12",
+    "scripts/validation/crash_interpose.c": "3ad0f1bdfb08af8f380010519732ec30348ff5bed3f156d229082a6d8f9e4ead"
+  },
+  "cases": [
+    {
+      "arguments": [
+        "reliability",
+        "/private/tmp/lexflow-validation-2026-09-07/backend.noindex/reliability"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 7.673418292004499,
+      "result": {
+        "kind": "reliability",
+        "limits": [
+          "No Tauri IPC/dialogs or OS identity integration",
+          "Snapshot restore uses production IO, not an installer/UI flow"
+        ],
+        "passed": [
+          "snapshot backup byte equality",
+          "backup HMAC under synthetic platform identity",
+          "restore and compare all 25 records",
+          "altered snapshot rejection",
+          "wrong password rejection",
+          "backup rotation retains 3 complete pairs",
+          "password change survives reopen",
+          "latest split data selected",
+          "unmigrated split backup refused",
+          "V7 split migration to V8",
+          "retained corrupt split cannot override V8",
+          "failed rename preserves original and removes staging"
+        ],
+        "peak_rss_bytes": 210649088
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "vault",
+        "/private/tmp/lexflow-validation-2026-09-07/backend.noindex/vault-1000",
+        "1000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 3.5047541670064675,
+      "result": {
+        "backup_ms": 12.933667,
+        "commit_ms": 20.512708,
+        "create_ms": 3113.848708,
+        "decrypt_all_and_assert_ms": 17.050625,
+        "encrypt_records_ms": 37.438458000000004,
+        "integrity": "all synthetic records compared",
+        "kdf": {
+          "iterations": 3,
+          "m_kib": 131072,
+          "parallelism": 2
+        },
+        "kind": "vault",
+        "peak_rss_bytes": 216514560,
+        "plaintext_bytes": 521021,
+        "records": 1000,
+        "single_record_commit_ms": 16.555041,
+        "snapshot_bytes": 750200,
+        "unlock_and_manifest_ms": 272.553292
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "vault",
+        "/private/tmp/lexflow-validation-2026-09-07/backend.noindex/vault-10000",
+        "10000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 6.101920542001608,
+      "result": {
+        "backup_ms": 55.770125,
+        "commit_ms": 137.50745799999999,
+        "create_ms": 3832.8981249999997,
+        "decrypt_all_and_assert_ms": 374.13775,
+        "encrypt_records_ms": 952.582959,
+        "integrity": "all synthetic records compared",
+        "kdf": {
+          "iterations": 3,
+          "m_kib": 131072,
+          "parallelism": 1
+        },
+        "kind": "vault",
+        "peak_rss_bytes": 282411008,
+        "plaintext_bytes": 5242076,
+        "records": 10000,
+        "single_record_commit_ms": 132.347375,
+        "snapshot_bytes": 7531606,
+        "unlock_and_manifest_ms": 553.575
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "vault",
+        "/private/tmp/lexflow-validation-2026-09-07/backend.noindex/vault-50000",
+        "50000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 8.84837108400825,
+      "result": {
+        "backup_ms": 194.091667,
+        "commit_ms": 529.355292,
+        "create_ms": 2449.991,
+        "decrypt_all_and_assert_ms": 1674.6684579999999,
+        "encrypt_records_ms": 2551.779292,
+        "integrity": "all synthetic records compared",
+        "kdf": {
+          "iterations": 3,
+          "m_kib": 65536,
+          "parallelism": 3
+        },
+        "kind": "vault",
+        "peak_rss_bytes": 531365888,
+        "plaintext_bytes": 26342045,
+        "records": 50000,
+        "single_record_commit_ms": 540.695834,
+        "snapshot_bytes": 37715412,
+        "unlock_and_manifest_ms": 708.184167
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "search",
+        "1000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.10317970799223986,
+      "result": {
+        "cache_ciphertext_base64_bytes": 199944,
+        "cache_decrypt_ms": 3.014208,
+        "cache_decrypted_bytes": 972534,
+        "cache_encrypt_ms": 5.068417,
+        "cache_exact_roundtrip": true,
+        "cache_parses": true,
+        "index_build_ms": 65.064208,
+        "kind": "search",
+        "peak_rss_bytes": 25427968,
+        "queries": [
+          {
+            "hits": 50,
+            "median_ms": 0.5785,
+            "query": "SYN-000999",
+            "samples_ms": [
+              0.575458,
+              0.5778340000000001,
+              0.5785,
+              0.581333,
+              0.6691670000000001
+            ],
+            "zero_score_hits": 0
+          },
+          {
+            "hits": 50,
+            "median_ms": 0.224458,
+            "query": "contratto",
+            "samples_ms": [
+              0.21762499999999999,
+              0.22195900000000002,
+              0.224458,
+              0.226458,
+              0.247417
+            ],
+            "zero_score_hits": 0
+          },
+          {
+            "hits": 50,
+            "median_ms": 0.221917,
+            "query": "contrato",
+            "samples_ms": [
+              0.21725,
+              0.22145800000000002,
+              0.221917,
+              0.223417,
+              0.223583
+            ],
+            "zero_score_hits": 0
+          },
+          {
+            "hits": 0,
+            "median_ms": 0.006875,
+            "query": "termineinesistentexyz",
+            "samples_ms": [
+              0.006333,
+              0.006333,
+              0.006875,
+              0.010417000000000001,
+              0.012208
+            ],
+            "zero_score_hits": 0
+          }
+        ],
+        "records": 1000,
+        "serialized_index_bytes": 972534
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "search",
+        "10000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.8547762500093086,
+      "result": {
+        "cache_ciphertext_base64_bytes": 2333416,
+        "cache_decrypt_ms": 28.887,
+        "cache_decrypted_bytes": 9916868,
+        "cache_encrypt_ms": 55.8215,
+        "cache_exact_roundtrip": true,
+        "cache_parses": true,
+        "index_build_ms": 570.752625,
+        "kind": "search",
+        "peak_rss_bytes": 141524992,
+        "queries": [
+          {
+            "hits": 50,
+            "median_ms": 3.0088329999999996,
+            "query": "SYN-009999",
+            "samples_ms": [
+              2.847166,
+              2.9850839999999996,
+              3.0088329999999996,
+              3.100958,
+              4.3467080000000005
+            ],
+            "zero_score_hits": 0
+          },
+          {
+            "hits": 50,
+            "median_ms": 3.002041,
+            "query": "contratto",
+            "samples_ms": [
+              2.789375,
+              2.944125,
+              3.002041,
+              3.015875,
+              3.4477499999999996
+            ],
+            "zero_score_hits": 0
+          },
+          {
+            "hits": 50,
+            "median_ms": 2.997042,
+            "query": "contrato",
+            "samples_ms": [
+              2.921209,
+              2.9351249999999998,
+              2.997042,
+              3.050125,
+              3.076833
+            ],
+            "zero_score_hits": 0
+          },
+          {
+            "hits": 0,
+            "median_ms": 0.007125,
+            "query": "termineinesistentexyz",
+            "samples_ms": [
+              0.006791,
+              0.006958,
+              0.007125,
+              0.007791,
+              0.015959
+            ],
+            "zero_score_hits": 0
+          }
+        ],
+        "records": 10000,
+        "serialized_index_bytes": 9916868
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "search",
+        "50000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 4.683166167000309,
+      "result": {
+        "cache_ciphertext_base64_bytes": 13515956,
+        "cache_decrypt_ms": 164.720583,
+        "cache_decrypted_bytes": 50215632,
+        "cache_encrypt_ms": 268.397583,
+        "cache_exact_roundtrip": true,
+        "cache_parses": true,
+        "index_build_ms": 3406.648542,
+        "kind": "search",
+        "peak_rss_bytes": 620691456,
+        "queries": [
+          {
+            "hits": 50,
+            "median_ms": 10.377416,
+            "query": "SYN-049999",
+            "samples_ms": [
+              9.917,
+              10.02225,
+              10.377416,
+              10.614709,
+              15.619208
+            ],
+            "zero_score_hits": 0
+          },
+          {
+            "hits": 50,
+            "median_ms": 9.420625,
+            "query": "contratto",
+            "samples_ms": [
+              9.333292,
+              9.352041999999999,
+              9.420625,
+              10.026916,
+              13.116459
+            ],
+            "zero_score_hits": 0
+          },
+          {
+            "hits": 50,
+            "median_ms": 9.242666,
+            "query": "contrato",
+            "samples_ms": [
+              8.989709,
+              9.192667,
+              9.242666,
+              9.259542000000001,
+              9.653375
+            ],
+            "zero_score_hits": 0
+          },
+          {
+            "hits": 0,
+            "median_ms": 0.004667,
+            "query": "termineinesistentexyz",
+            "samples_ms": [
+              0.004208,
+              0.004458,
+              0.004667,
+              0.004834,
+              0.010041
+            ],
+            "zero_score_hits": 0
+          }
+        ],
+        "records": 50000,
+        "serialized_index_bytes": 50215632
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "search-snapshot",
+        "/private/tmp/lexflow-validation-2026-09-07/backend.noindex/vault-50000",
+        "50000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 9.915837500011548,
+      "result": {
+        "authenticated_snapshot_records_matched": 50000,
+        "cache_file_bytes": 13688566,
+        "cached_load_ms": 1949.374084,
+        "cold_build_ms": 6895.314082999999,
+        "kind": "search-snapshot",
+        "peak_rss_bytes": 687226880,
+        "records": 50000
+      },
+      "stderr": ""
+    }
+  ],
+  "fidelity": "Production core source; search/backup bodies exclude IPC wrappers. Backup OS identity uses explicit synthetic fixtures. No app/installer integration.",
+  "crash_cases": [
+    {
+      "kind": "crash",
+      "phase": "mid_write",
+      "checkpoint_observed": true,
+      "child_exit_code": -9,
+      "status": "passed",
+      "verified": {
+        "arguments": [
+          "verify-crash",
+          "/private/tmp/lexflow-validation-2026-09-07/backend.noindex/crash-mid_write"
+        ],
+        "exit_code": 0,
+        "wall_seconds": 0.2778609170054551,
+        "result": {
+          "authenticated_records": 250,
+          "generation": "old",
+          "kind": "crash-verification"
+        },
+        "stderr": ""
+      },
+      "stderr": "",
+      "orphan_staging_files": 1
+    },
+    {
+      "kind": "crash",
+      "phase": "after_temp_fsync",
+      "checkpoint_observed": false,
+      "child_exit_code": 0,
+      "status": "failed",
+      "verified": null,
+      "stderr": "",
+      "orphan_staging_files": 0
+    },
+    {
+      "kind": "crash",
+      "phase": "before_rename",
+      "checkpoint_observed": true,
+      "child_exit_code": -9,
+      "status": "passed",
+      "verified": {
+        "arguments": [
+          "verify-crash",
+          "/private/tmp/lexflow-validation-2026-09-07/backend.noindex/crash-before_rename"
+        ],
+        "exit_code": 0,
+        "wall_seconds": 0.250978625001153,
+        "result": {
+          "authenticated_records": 250,
+          "generation": "old",
+          "kind": "crash-verification"
+        },
+        "stderr": ""
+      },
+      "stderr": "",
+      "orphan_staging_files": 1
+    },
+    {
+      "kind": "crash",
+      "phase": "after_rename",
+      "checkpoint_observed": true,
+      "child_exit_code": -9,
+      "status": "passed",
+      "verified": {
+        "arguments": [
+          "verify-crash",
+          "/private/tmp/lexflow-validation-2026-09-07/backend.noindex/crash-after_rename"
+        ],
+        "exit_code": 0,
+        "wall_seconds": 0.30739116700715385,
+        "result": {
+          "authenticated_records": 250,
+          "generation": "new",
+          "kind": "crash-verification"
+        },
+        "stderr": ""
+      },
+      "stderr": "",
+      "orphan_staging_files": 0
+    }
+  ]
+}

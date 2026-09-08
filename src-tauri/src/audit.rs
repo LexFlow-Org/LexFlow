@@ -1,13 +1,14 @@
 // ═══════════════════════════════════════════════════════════
-//  AUDIT — Encrypted audit log with HMAC tamper-evident chain
+//  AUDIT — Encrypted activity history; local retention is not an external audit anchor
 // ═══════════════════════════════════════════════════════════
 
 use crate::constants::*;
 use crate::crypto::{decrypt_data, encrypt_data};
 use crate::io::{atomic_write_with_sync, safe_bounded_read};
-use crate::state::{get_vault_key, with_vault_dek, AppState};
+use crate::state::{get_vault_dek, get_vault_key, AppState};
+use base64::{engine::general_purpose::STANDARD, Engine};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::sync::{Mutex, OnceLock};
 use tauri::State;
 use zeroize::Zeroizing;
 
@@ -17,66 +18,13 @@ const MAX_AUDIT_SIZE: u64 = 10 * 1024 * 1024;
 /// Genesis prev_hash placeholder (64 hex chars of zero) for the first chain entry.
 const GENESIS_PREV_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
-/// Hard error state — once tripped, no further audit appends are accepted until
-/// the user acknowledges the corruption. This is a tamper-evident posture.
-static AUDIT_HARD_ERROR: OnceLock<Mutex<bool>> = OnceLock::new();
-
-fn audit_hard_error_flag() -> &'static Mutex<bool> {
-    AUDIT_HARD_ERROR.get_or_init(|| Mutex::new(false))
-}
-
-fn is_audit_locked() -> bool {
-    *audit_hard_error_flag()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-}
-
-fn set_audit_locked(v: bool) {
-    *audit_hard_error_flag()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = v;
-}
-
-/// One-time warning latch for legacy (pre-chain) audit logs.
-static LEGACY_LOG_WARNED: OnceLock<Mutex<bool>> = OnceLock::new();
-
 fn warn_legacy_log_once() {
-    let cell = LEGACY_LOG_WARNED.get_or_init(|| Mutex::new(false));
-    let mut warned = cell.lock().unwrap_or_else(|e| e.into_inner());
-    if !*warned {
+    static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    WARNED.get_or_init(|| {
         eprintln!(
-            "[LexFlow] NOTICE: legacy audit log detected (no HMAC chain). Chain will start \
-             from genesis on the next append. Existing entries cannot be retroactively verified."
-        );
-        *warned = true;
-    }
-}
-
-/// Lock-time audit queue: when the vault is locked we cannot encrypt, so we
-/// buffer events here and flush on next unlock via [`flush_pending_audit_events`].
-static PENDING_AUDIT: OnceLock<Mutex<Vec<Value>>> = OnceLock::new();
-
-fn pending_audit_queue() -> &'static Mutex<Vec<Value>> {
-    PENDING_AUDIT.get_or_init(|| Mutex::new(Vec::new()))
-}
-
-/// Drain & flush queued lock-time audit events. Call right after a successful unlock.
-#[allow(dead_code)]
-pub(crate) fn flush_pending_audit_events(state: &State<AppState>) {
-    let drained: Vec<Value> = {
-        let mut q = pending_audit_queue()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        std::mem::take(&mut *q)
-    };
-    for ev in drained {
-        let name = ev
-            .get("event")
-            .and_then(|v| v.as_str())
-            .unwrap_or("PENDING_EVENT")
-            .to_string();
-        let _ = append_audit_log(state, &name);
-    }
+            "[LexFlow] Legacy audit history: earlier events cannot be retroactively verified."
+        )
+    });
 }
 
 /// Canonical JSON serialization of an entry for HMAC computation.
@@ -155,6 +103,16 @@ fn verify_chain(key: &[u8], logs: &[Value]) -> Result<(), String> {
         return Ok(());
     }
 
+    for entry in logs {
+        if !entry.is_object()
+            || entry.get("event").and_then(Value::as_str).is_none()
+            || entry.get("time").and_then(Value::as_str).is_none()
+            || ((entry.get("prev_hash").is_some() || entry.get("seq").is_some())
+                && !entry_is_chained(entry))
+        {
+            return Err("Audit entry schema invalid".into());
+        }
+    }
     let any_chained = logs.iter().any(entry_is_chained);
     if !any_chained {
         // Pure legacy log — predates the HMAC chain. Don't verify, warn once.
@@ -240,198 +198,208 @@ fn verify_chain(key: &[u8], logs: &[Value]) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn append_audit_log(state: &State<AppState>, event_name: &str) -> Result<(), String> {
-    if is_audit_locked() {
-        eprintln!(
-            "[LexFlow] Audit append refused: hard error state (tampering suspected): {}",
-            event_name
-        );
-        return Err("audit log locked due to suspected tampering".into());
+const AUDIT_MAGIC: &[u8] = b"LEXFLOW_AUDIT_V2\n";
+const MAX_AUDIT_ENTRIES: usize = 10_000;
+
+/// A stable random history key survives DEK rotation. During a rotation, two
+/// wrappers let either the old or the newly committed vault open the history.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuditEnvelope {
+    wrapped_keys: Vec<String>,
+    ciphertext: String,
+}
+
+struct AuditDocument {
+    key: Zeroizing<Vec<u8>>,
+    entries: Vec<Value>,
+}
+
+impl Drop for AuditDocument {
+    fn drop(&mut self) {
+        self.entries.iter_mut().for_each(crate::state::scrub_json);
     }
-    let key = match get_vault_key(state) {
-        Ok(k) => k,
-        Err(_) => {
-            // Vault locked — buffer event in memory and flush on next unlock.
-            // SEC-AUDIT-2: do not just print to stderr; preserve the event.
-            let mut q = pending_audit_queue()
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            // Bound the queue to avoid runaway memory if an attacker spams events.
-            const MAX_PENDING: usize = 1024;
-            if q.len() < MAX_PENDING {
-                q.push(json!({
-                    "event": event_name,
-                    "time": chrono::Local::now().to_rfc3339(),
-                    "queued_while_locked": true,
-                }));
-            }
-            eprintln!(
-                "[LexFlow] Audit event buffered (vault locked): {}",
-                event_name
-            );
-            return Ok(());
+}
+
+fn new_audit_key() -> Zeroizing<Vec<u8>> {
+    let mut key = Zeroizing::new(vec![0; AES_KEY_LEN]);
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut key);
+    key
+}
+
+/// Re-anchor only after an authenticated migration or intentional retention.
+/// The outer AEAD authenticates the complete retained document, including seq=0.
+fn reanchor_chain(entries: &mut [Value], key: &[u8]) -> Result<(), String> {
+    let mut previous = Vec::new();
+    for (seq, entry) in entries.iter_mut().enumerate() {
+        let canonical = canonical_json(&entry_without_chain_fields(entry))?;
+        let hash = if seq == 0 {
+            GENESIS_PREV_HASH.into()
+        } else {
+            hex::encode(compute_chain_hmac(key, &previous, &canonical))
+        };
+        let object = entry
+            .as_object_mut()
+            .ok_or("Audit entry is not an object")?;
+        object.insert("seq".into(), json!(seq));
+        object.insert("prev_hash".into(), json!(hash));
+        previous = canonical;
+    }
+    Ok(())
+}
+
+fn load_audit_document(path: &std::path::Path, dek: &[u8]) -> Result<AuditDocument, String> {
+    match std::fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(AuditDocument {
+                key: new_audit_key(),
+                entries: Vec::new(),
+            });
         }
+        Err(_) => {
+            return Err("Impossibile leggere il registro attività; originale conservato.".into())
+        }
+        Ok(_) => {}
+    }
+    let raw = safe_bounded_read(path, MAX_AUDIT_SIZE)
+        .map_err(|_| "Impossibile leggere il registro attività; originale conservato.")?;
+    let (key, plaintext, legacy) = if let Some(body) = raw.strip_prefix(AUDIT_MAGIC) {
+        let envelope: AuditEnvelope = serde_json::from_slice(body)
+            .map_err(|_| "Registro attività danneggiato; originale conservato.")?;
+        if !(1..=2).contains(&envelope.wrapped_keys.len()) {
+            return Err("Registro attività: numero di chiavi non valido.".into());
+        }
+        let key = envelope
+            .wrapped_keys
+            .iter()
+            .filter(|wrapped| wrapped.len() <= 256)
+            .find_map(|wrapped| {
+                STANDARD
+                    .decode(wrapped)
+                    .ok()
+                    .and_then(|bytes| decrypt_data(dek, &bytes).ok())
+                    .filter(|key| key.len() == AES_KEY_LEN)
+            })
+            .ok_or("Registro attività non autenticabile; originale conservato.")?;
+        let encrypted = STANDARD
+            .decode(&envelope.ciphertext)
+            .map_err(|_| "Registro attività danneggiato; originale conservato.")?;
+        let plaintext = decrypt_data(&key, &encrypted)?;
+        (key, plaintext, false)
+    } else {
+        (Zeroizing::new(dek.to_vec()), decrypt_data(dek, &raw)?, true)
     };
-    let _guard = state.write_mutex.lock().unwrap_or_else(|e| e.into_inner());
+    let entries: Vec<Value> = serde_json::from_slice(&plaintext)
+        .map_err(|_| "Registro attività: contenuto non valido; originale conservato.")?;
+    let mut document = AuditDocument { key, entries };
+    verify_chain(&document.key, &document.entries)?;
+    if legacy {
+        // Older files used the vault key directly. Migrate only authenticated
+        // history; neither parse errors nor broken chains may reset the file.
+        let key = new_audit_key();
+        reanchor_chain(&mut document.entries, &key)?;
+        document.key = key;
+    }
+    Ok(document)
+}
+
+fn write_audit_document(
+    path: &std::path::Path,
+    document: &AuditDocument,
+    wrapping_keys: &[&[u8]],
+) -> Result<(), String> {
+    let plaintext = Zeroizing::new(
+        serde_json::to_vec(&document.entries).map_err(|_| "Audit serialization failed")?,
+    );
+    let wrapped_keys = wrapping_keys
+        .iter()
+        .map(|dek| encrypt_data(dek, &document.key).map(|bytes| STANDARD.encode(bytes)))
+        .collect::<Result<Vec<_>, _>>()?;
+    let envelope = AuditEnvelope {
+        wrapped_keys,
+        ciphertext: STANDARD.encode(encrypt_data(&document.key, &plaintext)?),
+    };
+    let mut raw = AUDIT_MAGIC.to_vec();
+    serde_json::to_writer(&mut raw, &envelope)
+        .map_err(|_| "Audit envelope serialization failed")?;
+    if raw.len() as u64 > MAX_AUDIT_SIZE {
+        return Err("Registro attività troppo grande; originale conservato.".into());
+    }
+    atomic_write_with_sync(path, &raw)
+}
+
+fn append_event(document: &mut AuditDocument, event: &str) -> Result<(), String> {
+    if event.len() > 1024 {
+        return Err("Audit event too long".into());
+    }
+    let mut entry = json!({"event": event, "time": chrono::Local::now().to_rfc3339()});
+    let previous = document
+        .entries
+        .last()
+        .map(entry_without_chain_fields)
+        .map(|value| canonical_json(&value))
+        .transpose()?
+        .unwrap_or_default();
+    let hash = if previous.is_empty() {
+        GENESIS_PREV_HASH.into()
+    } else {
+        hex::encode(compute_chain_hmac(
+            &document.key,
+            &previous,
+            &canonical_json(&entry)?,
+        ))
+    };
+    entry["seq"] = json!(document.entries.len());
+    entry["prev_hash"] = json!(hash);
+    document.entries.push(entry);
+    if document.entries.len() > MAX_AUDIT_ENTRIES {
+        let excess = document.entries.len() - MAX_AUDIT_ENTRIES;
+        for mut discarded in document.entries.drain(..excess) {
+            crate::state::scrub_json(&mut discarded);
+        }
+        reanchor_chain(&mut document.entries, &document.key)?;
+    }
+    Ok(())
+}
+
+/// Caller holds write_mutex. No nested lock: unlock/change/recovery already
+/// serialize their transaction and must log using this entry point.
+pub(crate) fn append_audit_log_locked(state: &AppState, event: &str) -> Result<(), String> {
+    let dek = get_vault_dek(state).or_else(|_| get_vault_key(state))?;
     let path = state
         .data_dir
         .read()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(|error| error.into_inner())
         .join(AUDIT_LOG_FILE);
-    let mut logs: Vec<Value> = if path.exists() {
-        // SECURITY FIX: bounded read prevents OOM from inflated audit file
-        let enc = safe_bounded_read(&path, MAX_AUDIT_SIZE).unwrap_or_default();
-        match decrypt_data(&key, &enc) {
-            Ok(dec) => serde_json::from_slice(&dec).unwrap_or_default(),
-            Err(_) => {
-                // SEC-AUDIT-1: do NOT silently reset to empty on decrypt failure
-                // (that would let an attacker erase history by corrupting the file).
-                // Instead: quarantine the corrupt file, set hard error state,
-                // refuse new appends until user acknowledges.
-                let ts = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
-                let corrupt_backup = path.with_extension(format!("log.corrupt.{}", ts));
-                let _ = std::fs::rename(&path, &corrupt_backup);
-                eprintln!(
-                    "[LexFlow] SECURITY: Audit log decryption failed — tampering suspected. Quarantined to {:?}. New appends BLOCKED until user acknowledges.",
-                    corrupt_backup
-                );
-                set_audit_locked(true);
-                return Err(
-                    "audit log corrupted/tampered — quarantined; user must acknowledge".into(),
-                );
-            }
-        }
-    } else {
-        vec![]
-    };
+    let mut document = load_audit_document(&path, &dek)?;
+    append_event(&mut document, event)?;
+    write_audit_document(&path, &document, &[&dek])
+}
 
-    // SEC-AUDIT-1 (HMAC chain): verify the chain on the existing log before
-    // appending. If verification fails, set hard error state and refuse the
-    // append — an attacker with KEK could otherwise rewrite history coherently.
-    //
-    // Key selection: prefer the v4 DEK via `with_vault_dek` (mlock'd, no
-    // clone). If unavailable (v2 legacy vault), fall back to the same key we
-    // used to decrypt the file. The chain HMAC is keyed by whichever key was
-    // in effect when the chain was created, so consistency across vault formats
-    // requires that the user not switch keys mid-chain. (Re-keying flows
-    // outside this file are responsible for re-anchoring the chain genesis.)
-    let chain_verify = with_vault_dek(state, |dek| (verify_chain(dek, &logs), dek.to_vec()));
-    let (verify_outcome, chain_key) = match chain_verify {
-        Ok((outcome, dek_bytes)) => (outcome, dek_bytes),
-        Err(_) => {
-            // No DEK available — fall back to the v2 vault_key.
-            (verify_chain(&key, &logs), key.to_vec())
-        }
-    };
-    if let Err(chain_err) = verify_outcome {
-        // Chain broken — quarantine and set hard error.
-        let ts = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
-        let corrupt_backup = path.with_extension(format!("log.corrupt.{}", ts));
-        let _ = std::fs::rename(&path, &corrupt_backup);
-        eprintln!(
-            "[LexFlow] SECURITY: {} — quarantined to {:?}. Appends BLOCKED.",
-            chain_err, corrupt_backup
-        );
-        set_audit_locked(true);
-        // Best-effort wipe of the chain key copy before returning.
-        {
-            let mut k = chain_key;
-            zeroize::Zeroize::zeroize(&mut k);
-        }
-        return Err(format!(
-            "{} — quarantined; user must acknowledge",
-            chain_err
-        ));
+pub(crate) fn append_audit_log(state: &AppState, event: &str) -> Result<(), String> {
+    let _guard = state
+        .write_mutex
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    append_audit_log_locked(state, event)
+}
+
+/// Prepare before committing the rotated vault. On failure the caller must
+/// retain the old vault. If the vault commit fails/crashes, its old DEK remains
+/// usable; after success the new DEK works. A later append drops the old slot.
+pub(crate) fn prepare_audit_key_rotation(
+    directory: &std::path::Path,
+    old_dek: &[u8],
+    new_dek: &[u8],
+) -> Result<(), String> {
+    let path = directory.join(AUDIT_LOG_FILE);
+    match std::fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err("Impossibile verificare il registro prima della rotazione.".into()),
+        Ok(_) => {}
     }
-    // Decide whether we still need to insert a chain genesis marker. We do iff
-    // (a) at least one legacy (non-chained) entry exists AND (b) no chained
-    // entry exists yet — i.e. this is the first append after the upgrade.
-    let needs_genesis_marker =
-        logs.iter().any(|e| !entry_is_chained(e)) && !logs.iter().any(entry_is_chained);
-    // Also handle the pristine case: a brand-new file with no entries at all
-    // does NOT need a genesis marker — the first appended event becomes the
-    // genesis itself (seq=0, prev_hash=GENESIS_PREV_HASH) via the normal path.
-    let legacy_present = needs_genesis_marker;
-
-    // If the loaded log is legacy (no chain), drop it and restart from genesis
-    // on this append. The historical entries remain in the file ONLY in the
-    // sense that they were just verified to decrypt — but going forward the
-    // chain starts fresh. We keep the legacy entries appended below the new
-    // chain header so the user can still read history; however, they will not
-    // be re-verified by future appends because the chain header marks the
-    // chain start.
-    //
-    // Strategy: if legacy_present, mark the chain genesis with a synthetic
-    // header entry (`event = "audit.chain.genesis"`) and treat all prior
-    // legacy entries as "before the chain". On future reads we still warn-once
-    // about legacy entries that precede the genesis marker.
-    if legacy_present {
-        // Insert a chain genesis marker as the first chained entry. All legacy
-        // entries already in `logs` remain in place (untouched, unverifiable).
-        // The new genesis marker has seq = 0 relative to the chain and
-        // prev_hash = GENESIS_PREV_HASH (the all-zero placeholder).
-        let now = chrono::Local::now().to_rfc3339();
-        let mut genesis = Map::new();
-        genesis.insert("event".into(), json!("audit.chain.genesis"));
-        genesis.insert("time".into(), json!(now.clone()));
-        genesis.insert("chain_genesis_ts".into(), json!(now));
-        genesis.insert("prev_hash".into(), json!(GENESIS_PREV_HASH));
-        genesis.insert("seq".into(), json!(0u64));
-        logs.push(Value::Object(genesis));
-    }
-
-    // Determine the previous chained entry (if any) and the next seq.
-    let (prev_canonical, next_seq) = {
-        let last_chained = logs.iter().rev().find(|e| entry_is_chained(e));
-        match last_chained {
-            Some(prev) => {
-                let prev_for_hash = entry_without_chain_fields(prev);
-                let prev_canonical = canonical_json(&prev_for_hash)?;
-                let prev_seq = prev.get("seq").and_then(|v| v.as_u64()).unwrap_or(0);
-                (prev_canonical, prev_seq.saturating_add(1))
-            }
-            None => (Vec::new(), 0u64),
-        }
-    };
-
-    // Build the new entry without chain fields, compute its HMAC, then attach
-    // prev_hash + seq.
-    let mut new_entry_map = Map::new();
-    new_entry_map.insert("event".into(), json!(event_name));
-    new_entry_map.insert("time".into(), json!(chrono::Local::now().to_rfc3339()));
-    let new_entry_for_hash = Value::Object(new_entry_map.clone());
-    let new_canonical = canonical_json(&new_entry_for_hash)?;
-
-    let prev_hash_hex = if prev_canonical.is_empty() {
-        // Genesis of the chain — no previous entry.
-        GENESIS_PREV_HASH.to_string()
-    } else {
-        let mac = compute_chain_hmac(&chain_key, &prev_canonical, &new_canonical);
-        hex::encode(mac)
-    };
-
-    new_entry_map.insert("prev_hash".into(), json!(prev_hash_hex));
-    new_entry_map.insert("seq".into(), json!(next_seq));
-    logs.push(Value::Object(new_entry_map));
-
-    // Best-effort: zeroize the temporary chain key copy.
-    {
-        let mut k = chain_key;
-        zeroize::Zeroize::zeroize(&mut k);
-    }
-
-    if logs.len() > 10000 {
-        let excess = logs.len() - 10000;
-        logs.drain(0..excess);
-    }
-    // SECURITY FIX: propagate serialization error instead of unwrap_or_default
-    // (which would encrypt an empty blob, destroying the entire log)
-    let plaintext = Zeroizing::new(
-        serde_json::to_vec(&logs).map_err(|e| format!("Audit serialization failed: {}", e))?,
-    );
-    let enc = encrypt_data(&key, &plaintext)?;
-    atomic_write_with_sync(&path, &enc)?;
-    Ok(())
+    let document = load_audit_document(&path, old_dek)?;
+    write_audit_document(&path, &document, &[old_dek, new_dek])
 }
 
 #[tauri::command]
@@ -440,59 +408,169 @@ pub(crate) fn get_audit_log(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<Value, String> {
-    if is_audit_locked() {
-        return Err("audit log locked due to suspected tampering".into());
-    }
-    let key = get_vault_key(&state)?;
+    let _guard = state
+        .write_mutex
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let dek = get_vault_dek(&state).or_else(|_| get_vault_key(&state))?;
     let path = state
         .data_dir
         .read()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(|error| error.into_inner())
         .join(AUDIT_LOG_FILE);
-    if !path.exists() {
-        return Ok(json!([]));
-    }
-    // SECURITY FIX: bounded read
-    let enc = safe_bounded_read(&path, MAX_AUDIT_SIZE).map_err(|e| e.to_string())?;
-    let dec = decrypt_data(&key, &enc)?;
-    let all: Vec<Value> = serde_json::from_slice(&dec).map_err(|e| e.to_string())?;
-
-    // SEC-AUDIT-1 (HMAC chain): verify the full chain on read. Any mismatch =>
-    // hard error state, refuse further appends, return Err. Legacy logs (no
-    // chain fields anywhere) are accepted with a one-time warning.
-    let verify_result = with_vault_dek(&state, |dek| verify_chain(dek, &all));
-    match verify_result {
-        Ok(Ok(())) => {}
-        Ok(Err(chain_err)) => {
-            set_audit_locked(true);
-            eprintln!(
-                "[LexFlow] SECURITY: {} — locking audit subsystem.",
-                chain_err
-            );
-            return Err(chain_err);
-        }
-        Err(_) => {
-            // No DEK available (v2 vault). Verify with the same key we used to
-            // decrypt the file — that's the only key material we have.
-            if let Err(chain_err) = verify_chain(&key, &all) {
-                set_audit_locked(true);
-                eprintln!(
-                    "[LexFlow] SECURITY: {} — locking audit subsystem.",
-                    chain_err
-                );
-                return Err(chain_err);
-            }
-        }
-    }
-
-    // SEC-AUDIT-3: pagination — cap limit, default to a sane window.
-    const MAX_LIMIT: usize = 1000;
+    let document = load_audit_document(&path, &dek)?;
     let off = offset.unwrap_or(0);
-    let lim = limit.unwrap_or(MAX_LIMIT).min(MAX_LIMIT);
-    let end = off.saturating_add(lim).min(all.len());
-    if off >= all.len() {
+    let end = off
+        .saturating_add(limit.unwrap_or(1000).min(1000))
+        .min(document.entries.len());
+    if off >= end {
         return Ok(json!([]));
     }
-    let slice: Vec<Value> = all[off..end].to_vec();
-    Ok(Value::Array(slice))
+    Ok(Value::Array(document.entries[off..end].to_vec()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn current_vault_dek_records_events_without_a_legacy_password_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().into(), dir.path().into());
+        let dek = [8u8; 32];
+        *state.vault_dek.lock().unwrap() =
+            Some(crate::state::SecureKey::new(Zeroizing::new(dek.to_vec())));
+        assert!(state.vault_key.lock().unwrap().is_none());
+        append_audit_log(&state, "first-v4-event").unwrap();
+        {
+            let _guard = state.write_mutex.lock().unwrap();
+            append_audit_log_locked(&state, "inside-vault-transaction").unwrap();
+        }
+        let path = dir.path().join(AUDIT_LOG_FILE);
+        let document = load_audit_document(&path, &dek).unwrap();
+        assert_eq!(document.entries.len(), 2);
+        state.lock_vault();
+        let before = std::fs::read(&path).unwrap();
+        assert!(append_audit_log(&state, "locked-event").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn audit_retention_keeps_chain_valid_after_10000_events() {
+        let mut document = AuditDocument {
+            key: new_audit_key(),
+            entries: Vec::new(),
+        };
+        for i in 0..(MAX_AUDIT_ENTRIES + 2) {
+            append_event(&mut document, &format!("synthetic-event-{i}")).unwrap();
+        }
+        assert_eq!(document.entries.len(), MAX_AUDIT_ENTRIES);
+        assert_eq!(document.entries[0]["event"], "synthetic-event-2");
+        verify_chain(&document.key, &document.entries).unwrap();
+        document.entries[1]["event"] = json!("changed");
+        assert!(verify_chain(&document.key, &document.entries).is_err());
+    }
+
+    #[test]
+    fn audit_rotation_preserves_history_before_and_after_vault_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(AUDIT_LOG_FILE);
+        let old = [1u8; 32];
+        let new = [2u8; 32];
+        let mut document = load_audit_document(&path, &old).unwrap();
+        append_event(&mut document, "synthetic-sensitive-event").unwrap();
+        write_audit_document(&path, &document, &[&old]).unwrap();
+        let raw = std::fs::read(&path).unwrap();
+        assert!(!String::from_utf8_lossy(&raw).contains("synthetic-sensitive-event"));
+        assert!(load_audit_document(&path, &new).is_err());
+        prepare_audit_key_rotation(dir.path(), &old, &new).unwrap();
+        // Both sides of a crash between the auxiliary write and vault commit.
+        assert_eq!(
+            load_audit_document(&path, &old).unwrap().entries,
+            document.entries
+        );
+        let mut opened = load_audit_document(&path, &new).unwrap();
+        assert_eq!(opened.entries, document.entries);
+        append_event(&mut opened, "after-rotation").unwrap();
+        write_audit_document(&path, &opened, &[&new]).unwrap();
+        assert!(load_audit_document(&path, &old).is_err());
+        assert_eq!(load_audit_document(&path, &new).unwrap().entries.len(), 2);
+    }
+
+    #[test]
+    fn importing_a_backup_with_a_different_dek_preserves_activity_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let current_path = dir.path().join(AUDIT_LOG_FILE);
+        let (mut current, current_dek) =
+            crate::vault_engine::create_vault("synthetic-current-password").unwrap();
+        crate::vault_engine::write_canonical_vault(dir.path(), &mut current, &current_dek).unwrap();
+        let mut history = load_audit_document(&current_path, &current_dek).unwrap();
+        append_event(&mut history, "before-import").unwrap();
+        write_audit_document(&current_path, &history, &[&current_dek]).unwrap();
+        let (mut imported, imported_dek) =
+            crate::vault_engine::create_vault("synthetic-backup-password").unwrap();
+        crate::import_export::commit_import_snapshot(
+            dir.path(),
+            dir.path(),
+            current.rotation.writes,
+            &mut imported,
+            &current_dek,
+            &imported_dek,
+        )
+        .unwrap();
+        let (opened_vault, opened_dek) =
+            crate::vault_engine::open_current_vault(dir.path(), "synthetic-backup-password")
+                .unwrap();
+        assert_eq!(opened_vault.rotation.writes, imported.rotation.writes);
+        let mut after_import = load_audit_document(&current_path, &opened_dek).unwrap();
+        assert_eq!(after_import.entries, history.entries);
+        append_event(&mut after_import, "after-import").unwrap();
+        write_audit_document(&current_path, &after_import, &[&opened_dek]).unwrap();
+        assert!(load_audit_document(&current_path, &current_dek).is_err());
+        assert_eq!(
+            load_audit_document(&current_path, &opened_dek)
+                .unwrap()
+                .entries
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn audit_corruption_or_invalid_authenticated_json_never_erases_original() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(AUDIT_LOG_FILE);
+        let key = [4u8; 32];
+        for invalid in [
+            b"broken".to_vec(),
+            encrypt_data(&key, b"{}").unwrap(),
+            encrypt_data(&key, br#"[{"event":"x","time":"x","seq":0}]"#).unwrap(),
+        ] {
+            std::fs::write(&path, &invalid).unwrap();
+            assert!(load_audit_document(&path, &key).is_err());
+            assert!(prepare_audit_key_rotation(dir.path(), &key, &[5u8; 32]).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), invalid);
+        }
+    }
+
+    #[test]
+    fn legacy_audit_history_migrates_only_after_authentication() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(AUDIT_LOG_FILE);
+        let key = [6u8; 32];
+        let entries = vec![json!({"event":"legacy-event","time":"2026-09-08T00:00:00Z"})];
+        std::fs::write(
+            &path,
+            encrypt_data(&key, &serde_json::to_vec(&entries).unwrap()).unwrap(),
+        )
+        .unwrap();
+        let mut document = load_audit_document(&path, &key).unwrap();
+        append_event(&mut document, "new-event").unwrap();
+        write_audit_document(&path, &document, &[&key]).unwrap();
+        assert!(std::fs::read(&path).unwrap().starts_with(AUDIT_MAGIC));
+        let opened = load_audit_document(&path, &key).unwrap();
+        assert_eq!(opened.entries[0]["event"], "legacy-event");
+        assert_eq!(opened.entries[1]["event"], "new-event");
+        verify_chain(&opened.key, &opened.entries).unwrap();
+    }
 }
